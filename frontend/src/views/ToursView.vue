@@ -15,7 +15,7 @@ import { type GeoBox } from '@/composables/useTourSearch'
 import {
   Bike, PersonStanding, Waves, Footprints, Mountain, Activity as ActivityIcon,
   Filter, ChevronDown, ChevronRight, Ruler, Timer, Tag as TagIcon,
-  PanelLeftClose, PanelLeftOpen, X, Pencil, Map as MapIcon,
+  PanelLeftClose, PanelLeftOpen, X, Pencil, Map as MapIcon, MapPin,
   Bookmark, Save, Trash2, RotateCcw,
 } from 'lucide-vue-next'
 import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
@@ -79,6 +79,9 @@ async function onActivityDrop(e: DragEvent, activity: ActivitySummary) {
 
 // View | Edit toggle for the right pane.
 const rightMode = ref<'view' | 'edit'>('view')
+// "Tours" overlay — when on, pin every OTHER tour whose start falls in the
+// current map view, so you can spot & jump to nearby rides. Default off.
+const showNearbyTours = ref(false)
 function startEdit() { if (selectedId.value) rightMode.value = 'edit' }
 function endEdit() { rightMode.value = 'view' }
 
@@ -874,6 +877,12 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
             @click="startEdit">
             <Pencil :size="11" /> Edit
           </button>
+          <label v-if="rightMode === 'view'"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded cursor-pointer select-none text-muted-fg hover:text-foreground"
+            title="Pin other tours whose start is in the current map view — click a pin to jump there">
+            <input type="checkbox" v-model="showNearbyTours" class="accent-primary" />
+            <MapPin :size="11" /> Tours
+          </label>
         </div>
         <!-- Tour title, centred next to the map; click to edit it in the details. -->
         <button class="flex-1 min-w-0 text-center text-[12px] font-semibold text-foreground truncate px-2 hover:text-primary transition-colors"
@@ -882,7 +891,7 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
       </div>
 
       <div class="flex-1 min-h-0">
-        <ActivityViewer v-if="rightMode === 'view'" :activity-id="selectedId" />
+        <ActivityViewer v-if="rightMode === 'view'" :activity-id="selectedId" :show-nearby-tours="showNearbyTours" />
         <EditTourPanel v-else-if="selectedId" :activity-id="selectedId" @done="endEdit" @cancel="endEdit" />
       </div>
     </Pane>

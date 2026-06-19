@@ -108,6 +108,19 @@ select optgroup {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
 
+/* "Tours" overlay — other rides' start points pinned in the current viewport. */
+.map-nearby-tour {
+  width: 14px;
+  height: 14px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: #64748b;            /* slate — clearly not the current ride */
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+.map-nearby-tour:hover { background: #3b82f6; }
+
 /* Photo legend swatches (gallery + map overlay) — mirror the marker colours. */
 .photo-legend-dot {
   display: inline-flex;

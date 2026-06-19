@@ -20,7 +20,7 @@ import { useHrZones } from '@/composables/useHrZones'
 import { useRaceCompare } from '@/composables/useRaceCompare'
 import { VIEWER_LAYOUT_SLOT, autoLayoutRef } from '@/composables/useLayoutState'
 
-const props = defineProps<{ activityId: string | null }>()
+const props = defineProps<{ activityId: string | null; showNearbyTours?: boolean }>()
 
 const qc = useQueryClient()
 const mapRef = ref<any>(null)
@@ -139,6 +139,10 @@ const photoUrl = (m: RideMedia) => activityMediaUrl(activityId.value!, m.name)
 // Toggle photo pins + replay fades on/off in the tour (persisted).
 const showPhotos = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showPhotos', true)
 const hasPhotos = computed(() => (media.value?.length ?? 0) > 0)
+// Auto-detected highlights (passes crossed + named peaks) → map markers, toggled
+// like Photos. Persisted on; only offered when this ride actually has any.
+const showHighlights = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showHighlights', true)
+const hasHighlights = computed(() => ((highlights.value?.passes.length ?? 0) + (highlights.value?.peaks.length ?? 0)) > 0)
 const discovering = ref(false)
 
 // Bottom pane: switch between the elevation graph and the photo gallery.
@@ -232,6 +236,15 @@ const { data: activities } = useQuery({ queryKey: ['activities'], queryFn: getAc
 const activity = computed<ActivitySummary | null>(() =>
   activities.value?.find(a => a.id === activityId.value) ?? null,
 )
+
+// "Tours" overlay: every OTHER ride's start point, for the map to pin whichever
+// fall in the current viewport (empty when the toggle is off).
+const nearbyTours = computed(() =>
+  props.showNearbyTours
+    ? (activities.value ?? [])
+        .filter(a => a.id != null && a.id !== activityId.value && a.startLat != null && a.startLon != null)
+        .map(a => ({ id: a.id!, name: a.name ?? '', lat: a.startLat!, lon: a.startLon! }))
+    : [])
 
 const { user: currentUser } = useCurrentUser()
 const { zones: hrZones, tiz, totalSec: hrTotalSec } = useHrZones(
@@ -366,21 +379,36 @@ let playbackStartMs = 0
 let playbackStartIdx = 0
 const hoverCoords = ref<[number, number] | null>(null)
 
-// Catmull-Rom spline through 4 surrounding points — gives a true curve
-// through bends instead of the visible zig-zag a linear lerp produces between
-// FIT sample points. Uniform parameterization is fine here because FIT files
-// sample at near-constant time intervals; centripetal would buy us a little
-// less overshoot on hairpins but cost noticeably more math per frame.
-function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
-  const t2 = t * t, t3 = t2 * t
-  return 0.5 * (
-    (2 * p1)
-    + (-p0 + p2) * t
-    + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2
-    + (-p0 + 3 * p1 - 3 * p2 + p3) * t3
-  )
+// CENTRIPETAL Catmull-Rom spline (α = 0.5) through 4 surrounding points —
+// gives a true curve through bends instead of the zig-zag a linear lerp makes
+// between FIT samples, AND (unlike the uniform variant) never overshoots or
+// loops back on itself on hairpins / unevenly-spaced points. That overshoot was
+// the source of the marker occasionally appearing to step ~1px backwards.
+// Evaluated with the Barry-Goldman pyramid; knots are spaced by inter-point
+// distance^α (plain lon/lat Euclidean — only the *relative* spacing matters).
+type LL = { lat: number; lon: number }
+function crAxis(v0: number, v1: number, v2: number, v3: number,
+                t0: number, t1: number, t2: number, t3: number, tt: number): number {
+  const I = (a: number, b: number, ta: number, tb: number) => ((tb - tt) * a + (tt - ta) * b) / (tb - ta)
+  const a1 = I(v0, v1, t0, t1), a2 = I(v1, v2, t1, t2), a3 = I(v2, v3, t2, t3)
+  const b1 = I(a1, a2, t0, t2), b2 = I(a2, a3, t1, t3)
+  return I(b1, b2, t1, t2)
 }
-function interpAt(pts: { lat: number; lon: number }[], fracIdx: number): [number, number] {
+function centripetal(p0: LL, p1: LL, p2: LL, p3: LL, t: number): [number, number] {
+  const knot = (ti: number, a: LL, b: LL) => ti + Math.sqrt(Math.hypot(b.lon - a.lon, b.lat - a.lat))
+  const t0 = 0, t1 = knot(t0, p0, p1), t2 = knot(t1, p1, p2), t3 = knot(t2, p2, p3)
+  // Coincident points → zero-length knot interval; fall back to a straight lerp
+  // between p1 and p2 to avoid divide-by-zero.
+  if (t1 === t0 || t2 === t1 || t3 === t2) {
+    return [p1.lon + (p2.lon - p1.lon) * t, p1.lat + (p2.lat - p1.lat) * t]
+  }
+  const tt = t1 + (t2 - t1) * t
+  return [
+    crAxis(p0.lon, p1.lon, p2.lon, p3.lon, t0, t1, t2, t3, tt),
+    crAxis(p0.lat, p1.lat, p2.lat, p3.lat, t0, t1, t2, t3, tt),
+  ]
+}
+function interpAt(pts: LL[], fracIdx: number): [number, number] {
   const n = pts.length
   if (n === 0) return [0, 0]
   if (n === 1 || fracIdx <= 0) return [pts[0].lon, pts[0].lat]
@@ -390,11 +418,7 @@ function interpAt(pts: { lat: number; lon: number }[], fracIdx: number): [number
   const i0 = Math.max(0, i1 - 1)
   const i2 = Math.min(n - 1, i1 + 1)
   const i3 = Math.min(n - 1, i1 + 2)
-  const p0 = pts[i0], p1 = pts[i1], p2 = pts[i2], p3 = pts[i3]
-  return [
-    catmullRom(p0.lon, p1.lon, p2.lon, p3.lon, t),
-    catmullRom(p0.lat, p1.lat, p2.lat, p3.lat, t),
-  ]
+  return centripetal(pts[i0], pts[i1], pts[i2], pts[i3], t)
 }
 
 // Precomputed ONCE per track (cached by Vue until the track changes): a lightly
@@ -577,7 +601,8 @@ const activeColorLabel = computed(() =>
           :replay-strategy="replayStrategy"
           :is-following="isFollowing"
           :show-hillshade="showHillshade"
-          :highlights="highlights ?? null"
+          :highlights="showHighlights ? (highlights ?? null) : null"
+          :nearby-tours="nearbyTours"
           :show-photos="showPhotos || bottomView === 'photos'"
           :compare-lines="compareLines.length ? compareLines : null"
           :compare-cursors="compareCursors.length ? compareCursors : null"
@@ -759,6 +784,10 @@ const activeColorLabel = computed(() =>
           <label v-if="hasPhotos" class="inline-flex items-center gap-1 text-[11px] text-muted-fg cursor-pointer select-none" title="Show photo pins + replay fades">
             <input type="checkbox" v-model="showPhotos" class="accent-primary" />
             <span>Photos</span>
+          </label>
+          <label v-if="hasHighlights" class="inline-flex items-center gap-1 text-[11px] text-muted-fg cursor-pointer select-none" title="Show auto-detected passes crossed + named peaks">
+            <input type="checkbox" v-model="showHighlights" class="accent-primary" />
+            <span>Highlights</span>
           </label>
         </div>
 

@@ -7,6 +7,10 @@ replay, advanced per-ride analytics, a ghost-chase compare mode, geo-matched
 photos, and a JIRA-style faceted search across everything. It all runs on your
 machine; your data never leaves it.
 
+**🌐 Overview & screenshots: [tourgaze.github.io](https://tourgaze.github.io)**
+
+![TourGaze ghost-chase compare — racing a ride against your past self on the same route, with a live gap (metres + HR) and a Mario-Kart off-screen arrow when the ghost leaves the viewport.](doc/img/screenshot-ride-against-self.jpg)
+
 > License: **AGPL-3.0** · No account, no cloud, no telemetry.
 
 ---
@@ -20,8 +24,8 @@ machine; your data never leaves it.
   `sport:cycling year:2014..2018 gear:"Race Bike" tag:alpine dist:>50`.
 - **Hierarchical tags** (a parent matches all descendants), drag-to-apply, recursive filtering.
 - **Gear** (bikes / shoes / …) with per-gear stats and bulk-assign across filtered rides.
-- **Cinematic replay** — chase / drone / hollywood / helicopter / follow / top-down
-  cameras, with a rider marker, HR/slope-coloured track, and photo fades.
+- **Cinematic replay** — drone / helicopter / follow / top-down cameras (smooth,
+  anti-jitter), with a rider marker, HR/slope-coloured track, and photo fades.
 - **Elite stats** — best efforts, climbing & VAM, gradient distribution, HR zones,
   training load (TRIMP), aerobic decoupling, and estimated cycling power (NP / VI).
 - **Compare (ghost-chase)** — finds rides on the *same route* (GPS overlap or shared

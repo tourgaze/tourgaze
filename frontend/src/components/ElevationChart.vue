@@ -47,6 +47,10 @@ const emit = defineEmits<{
 }>()
 
 const chartRef = ref<any>(null)
+// The tooltip popup should only appear when the pointer is actually over the
+// graph — NOT when it's pushed in from map-hover / replay (that was making the
+// popup pop up while the mouse was elsewhere).
+const mouseInGraph = ref(false)
 
 // ── Drag-to-measure ─────────────────────────────────────────────────────────
 // Press + drag across the chart to select a segment; we report its distance and
@@ -282,10 +286,12 @@ const option = computed(() => {
   }
 })
 
-// Drive the chart cursor from map hover
+// Drive the chart cursor from map hover / replay. Only surface the tooltip
+// popup when the mouse is actually in the graph; otherwise we'd pop a tooltip
+// over the chart while the user is panning the map or watching the replay.
 watch(() => props.activeChartIndex, (idx) => {
   if (!chartRef.value?.chart) return
-  if (idx == null) {
+  if (idx == null || !mouseInGraph.value) {
     chartRef.value.chart.dispatchAction({ type: 'hideTip' })
   } else {
     chartRef.value.chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
@@ -354,7 +360,9 @@ const fmtSigned = (n: number, digits = 0) => (n >= 0 ? '+' : '') + n.toFixed(dig
 </script>
 
 <template>
-  <div class="relative w-full h-full">
+  <div class="relative w-full h-full"
+    @mouseenter="mouseInGraph = true"
+    @mouseleave="mouseInGraph = false; onChartMouseout()">
     <VChart
       ref="chartRef"
       class="w-full h-full"

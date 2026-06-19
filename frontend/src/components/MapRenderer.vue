@@ -38,6 +38,7 @@ const props = defineProps<{
   compareLines?: { id: string; color: string; points: { lat: number; lon: number }[] }[] | null
   compareCursors?: { id: string; color: string; lat: number; lon: number }[] | null
   highlights?: { passes: any[]; peaks: any[] } | null
+  nearbyTours?: { id: string; name: string; lat: number; lon: number }[]
 }>()
 
 const emit = defineEmits<{
@@ -101,6 +102,7 @@ defineExpose({
     :compare-lines="compareLines"
     :compare-cursors="compareCursors"
     :highlights="highlights"
+    :nearby-tours="nearbyTours"
     @user-interacted="emit('userInteracted')"
     @photo-jump="emit('photoJump', $event)"
   />

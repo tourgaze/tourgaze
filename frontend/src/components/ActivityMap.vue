@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getTrack, getActivityMedia, activityMediaUrl, isVideoFile,
   getMarkersForActivity, createMarker, updateMarker, deleteMarker, type Marker, type Highlight } from '@/api/client'
@@ -66,6 +67,8 @@ const props = defineProps<{
   compareCursors?: { id: string; color: string; lat: number; lon: number }[] | null
   /** Auto-detected highlights (OSM passes crossed + named peaks) → map markers. */
   highlights?: { passes: Highlight[]; peaks: Highlight[] } | null
+  /** "Tours" overlay: other rides' start points; pin those in the viewport. */
+  nearbyTours?: { id: string; name: string; lat: number; lon: number }[]
 }>()
 
 /**
@@ -658,9 +661,12 @@ function initMap(provider: string) {
     renderPhotoMarkers()
     renderMarkers()
     renderHighlightMarkers()
+    renderNearbyTours()
     renderGhostLines()
     // Keep the off-screen ghost arrows pinned to the edge as the camera moves.
     map!.on('move', updateGhostEdges)
+    // Re-pin the "Tours" overlay to whatever rides are now in view.
+    map!.on('moveend', renderNearbyTours)
     map!.on('mousedown', onMapMouseDown)
     map!.on('contextmenu', onMapContextMenu)
   })
@@ -1101,6 +1107,7 @@ onUnmounted(() => {
   photoMarkers = []
   clearGhosts()
   clearHighlights()
+  clearNearbyTours()
   markerEls.forEach(m => m.remove())
   markerEls = []
   resizeObserver?.disconnect()
@@ -1375,6 +1382,43 @@ function clearHighlights() {
   highlightMarkers.clear()
 }
 
+// ── "Tours" overlay — pin other rides whose start is in the current viewport ──
+// Only the rides currently on screen get a pin (recomputed on every move), so a
+// big library doesn't carpet the map. Click a pin → navigate to that tour.
+const router = useRouter()
+const nearbyMarkers = new Map<string, maplibregl.Marker>()
+
+function nearbyTourEl(t: { id: string; name: string }): HTMLElement {
+  const el = document.createElement('div')
+  el.className = 'map-nearby-tour'
+  el.title = t.name || 'tour'
+  el.addEventListener('click', (e) => {
+    e.stopPropagation()
+    router.push({ path: '/tours', query: { id: t.id } })
+  })
+  return el
+}
+
+function renderNearbyTours() {
+  if (!map) return
+  const list = props.nearbyTours ?? []
+  const bounds = list.length ? map.getBounds() : null
+  const live = new Set<string>()
+  if (bounds) for (const t of list) if (bounds.contains([t.lon, t.lat])) live.add(t.id)
+  for (const [id, m] of nearbyMarkers) if (!live.has(id)) { m.remove(); nearbyMarkers.delete(id) }
+  if (!bounds) return
+  for (const t of list) {
+    if (nearbyMarkers.has(t.id) || !bounds.contains([t.lon, t.lat])) continue
+    const m = new maplibregl.Marker({ element: nearbyTourEl(t), anchor: 'bottom' }).setLngLat([t.lon, t.lat]).addTo(map)
+    nearbyMarkers.set(t.id, m)
+  }
+}
+
+function clearNearbyTours() {
+  for (const m of nearbyMarkers.values()) m.remove()
+  nearbyMarkers.clear()
+}
+
 function placeCursor(lngLat: maplibregl.LngLatLike) {
   if (!map) return
   if (!cursorMarker) {
@@ -1399,6 +1443,7 @@ watch(() => props.hoverCoords, (coords) => {
 watch(() => props.compareLines, () => { if (mapLoaded) renderGhostLines() }, { deep: true })
 watch(() => props.compareCursors, () => { if (mapLoaded) positionGhostMarkers() })
 watch(() => props.highlights, () => { if (mapLoaded) renderHighlightMarkers() }, { deep: true })
+watch(() => props.nearbyTours, () => { if (mapLoaded) renderNearbyTours() })
 
 watch(() => props.hoverIndex, (idx) => {
   if (!map || !mapLoaded || !points.value?.length) return
