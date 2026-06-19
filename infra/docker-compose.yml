@@ -1,0 +1,22 @@
+services:
+  tourgaze:
+    build:
+      context: ..              # project root — the Dockerfile copies server/target/*.jar
+      dockerfile: infra/Dockerfile
+    image: mschwehl/tourgaze:latest
+    container_name: tourgaze
+    ports:
+      - "8085:8085"
+    environment:
+      # H2 file DB, media, cache and tiles all live under this dir (volume below).
+      - TOURGAZE_DATA_DIR=/data
+    volumes:
+      # Named volume — inherits the image's /data ownership (writable by the
+      # non-root container user). Inspect/back up with `docker volume`.
+      # For host-visible data instead, swap for a bind mount: "../data:/data"
+      # and ensure that dir is writable by the container UID.
+      - tourgaze-data:/data
+    restart: unless-stopped
+
+volumes:
+  tourgaze-data:

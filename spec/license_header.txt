@@ -1,0 +1,7 @@
+/*
+ * Copyright (c) $YEAR Tourgaze
+ * This program is dual-licensed under:
+ * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
+ * Commercial License - Proprietary, Closed Source.
+ * See the LICENSE file for full details.
+ */

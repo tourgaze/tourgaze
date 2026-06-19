@@ -1,0 +1,6 @@
+# 1. Ignore everything
+*
+# 2. Un-ignore only the path to the fat JAR (parents must be re-included to reach it)
+!server/
+!server/target/
+!server/target/tourgaze-server-*.jar

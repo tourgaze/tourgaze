@@ -1,0 +1,467 @@
+@import "tailwindcss";
+@import "splitpanes/dist/splitpanes.css";
+@import "notivue/notification.css";
+@import "notivue/animations.css";
+
+/* ── Design tokens — light mode ────────────────────────────────────────────── */
+:root {
+  --background:    0 0% 100%;
+  --foreground:    222.2 84% 4.9%;
+  --border:        214.3 31.8% 91.4%;
+  --muted:         210 40% 96.1%;
+  --muted-fg:      215.4 16.3% 46.9%;
+  --primary:       221.2 83.2% 53.3%;
+  --primary-light: 213.8 100% 96.9%;
+  --destructive:   0 84.2% 60.2%;
+  --success:       160.1 84.1% 39.4%;
+  --warning:       37.7 92.1% 50.2%;
+  --card:          0 0% 100%;
+  --shell-bg:      #f8f9fa;
+}
+
+/* ── Dark mode tokens ───────────────────────────────────────────────────────── */
+.dark {
+  --background:    222.2 84% 4.9%;
+  --foreground:    210 40% 98%;
+  --border:        217.2 32.6% 17.5%;
+  --muted:         217.2 32.6% 17.5%;
+  --muted-fg:      215 20.2% 65.1%;
+  --primary:       213.1 93.9% 67.8%;
+  --primary-light: 222 47% 11%;
+  --destructive:   0 62.8% 50.6%;
+  --card:          222.2 84% 7%;
+  --shell-bg:      #000;
+}
+
+/* ── Colour utilities via CSS vars ─────────────────────────────────────────── */
+.bg-background  { background-color: hsl(var(--background)); }
+.bg-muted       { background-color: hsl(var(--muted)); }
+.bg-card        { background-color: hsl(var(--card)); }
+.text-foreground { color: hsl(var(--foreground)); }
+.text-muted-fg  { color: hsl(var(--muted-fg)); }
+.border-border  { border-color: hsl(var(--border)); }
+.text-primary   { color: hsl(var(--primary)); }
+
+/* Native <select> option popups don't inherit the control's (often transparent)
+   styles — in dark mode browsers render them as a white popup with light text,
+   i.e. unreadable. Theme the options explicitly so they read in both modes. */
+select option,
+select optgroup {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Photo pins on the activity map. */
+.map-photo-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  background: hsl(var(--background));
+  border: 2px solid hsl(var(--primary));
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  text-decoration: none;
+}
+.map-photo-pin > * { transform: rotate(45deg); }
+.map-photo-pin:hover { filter: brightness(1.1); }
+/* Distinct marker per photo origin (see legend): public = emerald globe,
+   personal = slate person. Icon colour follows the border so the glyph reads. */
+.map-photo-pin--public   { border-color: #059669; color: #059669; }
+.map-photo-pin--personal { border-color: #475569; color: #475569; }
+.dark .map-photo-pin--public   { border-color: #34d399; color: #34d399; }
+.dark .map-photo-pin--personal { border-color: #94a3b8; color: #94a3b8; }
+
+/* Auto-detected highlights (OSM passes / named peaks): a small coloured icon
+   chip with an optional name label, anchored at its geo point. */
+.map-highlight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+  transform: translateY(-2px);
+}
+.map-highlight .hl-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  flex: none;
+}
+.map-highlight .hl-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  background: hsl(var(--background) / 0.85);
+  padding: 1px 5px;
+  border-radius: 6px;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+/* Photo legend swatches (gallery + map overlay) — mirror the marker colours. */
+.photo-legend-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: #fff;
+  flex-shrink: 0;
+}
+.photo-legend-dot--public   { background: #059669; }
+.photo-legend-dot--personal { background: #475569; }
+
+/* User-placed POI markers — a coloured teardrop with a white category glyph.
+   Background colour is set inline per category (see markerCategories.ts). */
+.map-marker-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50% 50% 50% 0;
+  transform: rotate(-45deg);
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+.map-marker-pin > svg { transform: rotate(45deg); }
+.map-marker-pin:hover { filter: brightness(1.08); }
+/* General markers (not tied to a ride): white dashed ring + halo so they're
+   distinguishable from this ride's solid-bordered pins. */
+.map-marker-pin--general {
+  border-style: dashed;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 1px 6px rgba(0, 0, 0, 0.45);
+}
+
+/* Photo lightbox — native Popover API in the top layer, with @starting-style
+   entry transitions (latest CSS standard) and a dimmed ::backdrop. */
+.photo-popover {
+  margin: auto;                 /* centers the popover in the viewport */
+  inset: 0;
+  width: max-content;
+  max-width: 92vw;
+  max-height: 88vh;
+  padding: 0;
+  border: none;
+  background: transparent;
+  overflow: visible;
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease,
+    overlay 0.25s ease allow-discrete,
+    display 0.25s ease allow-discrete;
+}
+.photo-popover:popover-open {
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .photo-popover:popover-open {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+/* Transparent backdrop: do NOT dim or blur the map — the photo just floats
+   over it. Click-outside / Esc still dismiss (it's still a popover backdrop). */
+.photo-popover::backdrop {
+  background: transparent;
+}
+.photo-popover__fig { margin: 0; display: flex; flex-direction: column; align-items: center; }
+.photo-popover__img {
+  max-width: 92vw;
+  max-height: 80vh;
+  border-radius: 8px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+  object-fit: contain;
+}
+.photo-popover__cap { margin-top: 0.5rem; font-size: 11px; color: rgba(255, 255, 255, 0.8); }
+.photo-popover__close {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  border: none;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.photo-popover__close:hover { background: rgba(0, 0, 0, 0.85); }
+.bg-primary     { background-color: hsl(var(--primary)); }
+
+/* ── Pane header strip ──────────────────────────────────────────────────────── */
+.pane-header {
+  height: 35px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 6px;
+  background-color: hsl(var(--muted) / 0.5);
+  border-bottom: 1px solid hsl(var(--border));
+  flex-shrink: 0;
+}
+.pane-header h2 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: hsl(var(--muted-fg));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+/* Tours list rows — skip layout/paint of off-screen cards so scrolling a long
+   library stays smooth (60fps), and reserve a stable height so the scrollbar
+   doesn't jump. `auto` lets the browser remember each row's real rendered size. */
+.tour-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 40px;
+}
+
+/* ── Activity item card ─────────────────────────────────────────────────────── */
+.activity-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+  margin-bottom: 10px;
+  cursor: pointer;
+  background-color: hsl(var(--card));
+  transition: border-color 150ms, box-shadow 150ms;
+}
+.activity-card:hover {
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.08);
+}
+.activity-card.selected {
+  background-color: hsl(var(--primary-light));
+  border-color: hsl(var(--primary) / 0.7);
+  box-shadow: 0 0 0 1px hsl(var(--primary) / 0.4);
+}
+/* blue left accent on selected */
+.activity-card.selected::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 6px; bottom: 6px;
+  width: 3px;
+  background-color: hsl(var(--primary));
+  border-radius: 0 3px 3px 0;
+}
+
+/* ── Button icon ────────────────────────────────────────────────────────────── */
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border-radius: 6px;
+  color: hsl(var(--muted-fg));
+  cursor: pointer;
+  transition: background 120ms, color 120ms, transform 60ms;
+}
+.btn-icon:hover { background-color: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.btn-icon:active { transform: translateY(0.5px); }
+.btn-icon:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 1px; }
+.btn-icon:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-icon-danger:hover  { background-color: #fee2e2; color: #dc2626; }
+.btn-icon-primary:hover { background-color: hsl(var(--primary-light)); color: hsl(var(--primary)); }
+
+/* ── Text buttons — one consistent source of hover / active / focus feedback,
+      used by the BaseButton component (and usable directly in templates). ────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 500;
+  border: 1px solid transparent; cursor: pointer; white-space: nowrap;
+  transition: background-color 120ms, border-color 120ms, color 120ms, filter 120ms, transform 60ms;
+  user-select: none;
+}
+.btn:active:not(:disabled) { transform: translateY(0.5px); }
+.btn:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 1px; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary  { background-color: hsl(var(--primary)); color: #fff; }
+.btn-primary:hover:not(:disabled)  { filter: brightness(1.08); }
+.btn-ghost    { color: hsl(var(--muted-fg)); }
+.btn-ghost:hover:not(:disabled)    { background-color: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.btn-outline  { border-color: hsl(var(--border)); color: hsl(var(--foreground)); }
+.btn-outline:hover:not(:disabled)  { border-color: hsl(var(--primary)); color: hsl(var(--primary)); background-color: hsl(var(--primary) / 0.06); }
+.btn-danger   { border-color: hsl(var(--destructive) / 0.5); color: hsl(var(--destructive)); }
+.btn-danger:hover:not(:disabled)   { background-color: hsl(var(--destructive) / 0.1); }
+
+/* ── Nav active (activity bar) ──────────────────────────────────────────────── */
+.nav-active {
+  background-color: hsl(var(--primary) / 0.12) !important;
+  color: hsl(var(--primary)) !important;
+}
+
+/* ── Badge ──────────────────────────────────────────────────────────────────── */
+.count-badge {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background-color: hsl(var(--primary));
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Stat chip ──────────────────────────────────────────────────────────────── */
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: hsl(var(--muted-fg));
+  padding: 1px 6px;
+  border-radius: 6px;
+  background-color: hsl(var(--muted) / 0.6);
+}
+
+/* ── Custom scrollbar ───────────────────────────────────────────────────────── */
+.custom-scrollbar::-webkit-scrollbar       { width: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background-color: #e5e7eb; border-radius: 3px; }
+.dark .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #374151; }
+
+/* ── Splitpanes overrides ───────────────────────────────────────────────────── */
+.splitpanes__splitter {
+  background: transparent !important;
+  border: none !important;
+}
+.splitpanes--vertical > .splitpanes__splitter {
+  width: 4px !important;
+  border-left: 1px solid hsl(var(--border)) !important;
+}
+.splitpanes--vertical > .splitpanes__splitter:hover {
+  border-left-color: hsl(var(--primary)) !important;
+  background-color: hsl(var(--primary) / 0.08) !important;
+}
+.splitpanes--horizontal > .splitpanes__splitter {
+  height: 4px !important;
+  border-top: 1px solid hsl(var(--border)) !important;
+}
+.splitpanes__pane { background: hsl(var(--background)) !important; }
+
+/* ── Drop zone ──────────────────────────────────────────────────────────────── */
+.drop-zone {
+  border: 1.5px dashed hsl(var(--border));
+  border-radius: 10px;
+  transition: border-color 150ms, background-color 150ms;
+  cursor: pointer;
+}
+.drop-zone:hover, .drop-zone.dragging {
+  border-color: hsl(var(--primary) / 0.7);
+  background-color: hsl(var(--primary-light));
+}
+
+/* ── Map hover cursor (elevation profile sync) ──────────────────────────────── */
+.map-hover-cursor {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #ef4444;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.35);
+  pointer-events: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+}
+.map-hover-cursor > svg { display: block; }
+
+/* ── Hollywood / Tinkerbell mode: glowing pulsing cursor + sparkle aura ─────── */
+/* Toggled on the marker DOM element when replayStrategy === 'hollywood'. The
+   marker keeps its base size but gets an animated multi-layer glow plus two
+   counter-rotating sparkle rings (via ::before / ::after) — reads as pixie
+   dust without spawning real particle elements. */
+.map-hover-cursor.hollywood {
+  background: radial-gradient(circle at 30% 30%, #fff7d6 0%, #ffd166 40%, #ff8c42 100%);
+  border-color: #fff8e7;
+  animation: hollywood-pulse 1.6s ease-in-out infinite;
+}
+.map-hover-cursor.hollywood::before,
+.map-hover-cursor.hollywood::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  pointer-events: none;
+  transform-origin: center;
+}
+.map-hover-cursor.hollywood::before {
+  width: 28px;
+  height: 28px;
+  margin-left: -14px;
+  margin-top: -14px;
+  border: 1.5px dashed rgba(255, 209, 102, 0.85);
+  animation: hollywood-orbit 3.6s linear infinite;
+}
+.map-hover-cursor.hollywood::after {
+  width: 44px;
+  height: 44px;
+  margin-left: -22px;
+  margin-top: -22px;
+  border: 1px dotted rgba(255, 247, 214, 0.55);
+  animation: hollywood-orbit 5.4s linear infinite reverse;
+}
+@keyframes hollywood-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 4px rgba(255, 209, 102, 0.45),
+      0 0 18px 4px rgba(255, 140, 66, 0.55),
+      0 0 38px 8px rgba(255, 209, 102, 0.30);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow:
+      0 0 0 6px rgba(255, 209, 102, 0.30),
+      0 0 24px 6px rgba(255, 140, 66, 0.70),
+      0 0 52px 12px rgba(255, 247, 214, 0.45);
+    transform: scale(1.18);
+  }
+}
+@keyframes hollywood-orbit {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ── Track color legend ─────────────────────────────────────────────────────── */
+.track-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: hsl(var(--muted-fg));
+}
+.track-legend-swatch {
+  width: 20px;
+  height: 4px;
+  border-radius: 2px;
+}

@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tourgaze.fullname" . }}
+  labels:
+    {{- include "tourgaze.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  # H2 file DB on a RWO volume: never run two pods on it at once.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "tourgaze.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tourgaze.selectorLabels" . | nindent 8 }}
+    spec:
+      # Makes the mounted volume group-writable by the non-root container user
+      # (k8s adds fsGroup as a supplementary GID), so H2 can create /data/db.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8085
+              protocol: TCP
+          env:
+            {{- range $key, $value := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: data
+        {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "tourgaze.fullname" . }}-data
+        {{- else }}
+          emptyDir: {}
+        {{- end }}

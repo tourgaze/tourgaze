@@ -1,0 +1,43 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+target/
+.flattened-pom.xml
+**/.flattened-pom.xml
+
+# ── Frontend ────────────────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.vite/
+
+# ── Local runtime data (H2 DB, file store, caches, tiles) ───────────────────────
+# TourGaze writes everything under ~/.tourgaze by default; never commit any that
+# lands in-tree, plus stray H2 files.
+.tourgaze/
+*.mv.db
+*.trace.db
+
+# ── IDE / editor / OS ───────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+.DS_Store
+Thumbs.db
+
+# ── Agent / tooling scratch ─────────────────────────────────────────────────────
+.claude/
+
+# ── Cloud folder (local-only, never committed) ──────────────────────────────────
+cloud/
+
+# ── Stray media / personal artifacts (kept out of the repo) ─────────────────────
+*.fit
+*.gpx
+*.tcx
+*.bmp
+bug.jpg
+mtb.png

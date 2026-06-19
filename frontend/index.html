@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en" class="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/goat.svg" />
+    <link rel="apple-touch-icon" href="/goat.svg" />
+    <meta name="theme-color" content="#2563eb" />
+    <title>TourGaze</title>
+    <style>
+      body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f8f9fa; }
+      .app-boot-loader { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; width: 100vw; position: fixed; top: 0; left: 0; z-index: 9999; background-color: #f8f9fa; color: #1f2937; }
+      .app-boot-loader .spinner { width: 44px; height: 44px; border: 4px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.9s linear infinite; margin-bottom: 20px; }
+      .app-boot-loader h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.02em; color: #1f2937; }
+      .app-boot-loader p { margin-top: 6px; font-size: 13px; color: #6b7280; animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    </style>
+  </head>
+  <body>
+    <div class="app-boot-loader" id="boot-loader">
+      <img src="/goat.svg" width="56" height="56" alt="TourGaze" style="margin-bottom: 16px;" />
+      <h1>TourGaze</h1>
+      <p>Loading…</p>
+    </div>
+    <div id="app"></div>
+    <script>
+      // Remove boot loader once Vue mounts
+      document.addEventListener('DOMContentLoaded', () => {
+        const obs = new MutationObserver(() => {
+          const app = document.getElementById('app')
+          if (app && app.children.length > 0) {
+            const loader = document.getElementById('boot-loader')
+            if (loader) loader.remove()
+            obs.disconnect()
+          }
+        })
+        obs.observe(document.getElementById('app'), { childList: true })
+      })
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

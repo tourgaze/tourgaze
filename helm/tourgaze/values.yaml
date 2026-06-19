@@ -1,0 +1,67 @@
+# Default values for tourgaze.
+replicaCount: 1
+
+image:
+  repository: mschwehl/tourgaze
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  port: 8085
+
+persistence:
+  enabled: true
+  size: 5Gi
+  accessMode: ReadWriteOnce
+  # storageClass: ""
+
+ingress:
+  enabled: true
+  className: ""
+  annotations:
+    # Ride uploads (FIT/GPX/KMZ + photos) can be large.
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+  hosts:
+    - host: tourgaze.localhost
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: localhost
+      paths:
+        - path: /
+          pathType: Prefix
+  # tls:
+  #   - secretName: tourgaze-tls
+  #     hosts: [tourgaze.localhost]
+
+# The image's entrypoint already passes --app.start-browser=false and sets
+# -Djava.awt.headless=true; only the data dir needs wiring to the volume.
+env:
+  TOURGAZE_DATA_DIR: "/data"
+
+resources:
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+
+# Generous delays: Spring Boot + H2/Flyway boot takes ~10s.
+livenessProbe:
+  httpGet:
+    path: /actuator/health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 20
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health
+    port: http
+  initialDelaySeconds: 20
+  periodSeconds: 10
+  failureThreshold: 3
