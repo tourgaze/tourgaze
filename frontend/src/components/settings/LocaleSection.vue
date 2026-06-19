@@ -13,11 +13,20 @@ const LANG_KEY = 'app.language'
 const language = ref<string>('de')
 const dirty = ref(false)
 
+// Timezone (IANA name) lives in `app.timezone`; used to render local times.
+const timezone = ref('')
 watch(settings, (list) => {
   if (!list || dirty.value) return
   const s = list.find(s => s.key === LANG_KEY)
   if (s?.value) language.value = s.value
+  timezone.value = list.find(s => s.key === 'app.timezone')?.value ?? ''
 }, { immediate: true })
+
+const saveTimezoneMut = useMutation({
+  mutationFn: () => saveSetting('app.timezone', timezone.value.trim()),
+  onSuccess: () => { qc.invalidateQueries({ queryKey: ['settings'] }); push.success({ title: 'Timezone saved' }) },
+  onError: () => push.error('Could not save timezone'),
+})
 
 const OPTIONS = [
   { code: 'de', label: 'Deutsch',    example: 'Mallorca, Spanien · München, Bayern' },
@@ -87,5 +96,21 @@ function pick(code: string) {
         <Save :size="12" /> {{ saveMut.isPending.value ? 'Saving…' : 'Save' }}
       </button>
     </div>
+
+    <label class="block text-sm border-t border-border pt-4">
+      <span class="text-xs font-medium text-muted-fg">Timezone</span>
+      <p class="text-[10px] text-muted-fg mb-1 mt-0.5">
+        IANA name (e.g. <code>Europe/Berlin</code>, <code>America/New_York</code>). Used to render
+        local times for your rides.
+      </p>
+      <div class="flex gap-2">
+        <input v-model="timezone" type="text" placeholder="Europe/Berlin"
+          class="flex-1 mt-1 rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono focus:border-primary focus:outline-none" />
+        <button class="mt-1 inline-flex items-center gap-1 px-3 py-2 bg-primary text-primary-fg text-xs font-medium rounded hover:bg-primary/90 disabled:opacity-50"
+          :disabled="saveTimezoneMut.isPending.value" @click="saveTimezoneMut.mutate()">
+          <Save :size="12" /> Save
+        </button>
+      </div>
+    </label>
   </div>
 </template>

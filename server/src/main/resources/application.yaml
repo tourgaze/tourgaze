@@ -1,0 +1,136 @@
+spring:
+  application:
+    name: tourgaze
+
+  # ── H2 file-based database ──────────────────────────────────────────────────
+  # MODE=PostgreSQL runs H2 with PostgreSQL-compatible SQL semantics so the
+  # PostgreSQLDialect below applies cleanly (and a real Postgres stays a drop-in
+  # swap later). No DATABASE_TO_LOWER: identifier casing stays as-is, so existing
+  # file DBs keep validating.
+  datasource:
+    url: jdbc:h2:file:${tourgaze.data-dir}/db/tourgaze;AUTO_SERVER=TRUE;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+
+  # ── JPA ─────────────────────────────────────────────────────────────────────
+  # Flyway owns the schema (see below); Hibernate only VALIDATES that the live
+  # schema matches the entities on boot — it never alters it.
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      "[hibernate.jdbc.batch_size]": 200
+      "[hibernate.order_inserts]": true
+      "[hibernate.order_updates]": true
+      "[hibernate.jdbc.batch_versioned_data]": true
+      "[hibernate.default_batch_fetch_size]": 50
+
+  # ── Flyway ──────────────────────────────────────────────────────────────────
+  # V1__baseline.sql builds the schema on a fresh DB; schema changes ship as
+  # forward V2+ migrations. No baseline-on-migrate: there are no legacy
+  # (pre-Flyway) DBs to adopt, so every DB is owned by Flyway from V1.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  # ── Multipart ───────────────────────────────────────────────────────────────
+  servlet:
+    multipart:
+      max-file-size: 200MB
+      max-request-size: 200MB
+
+  # ── Virtual threads (Java 21+) ────────────────────────────────────────────────
+  threads:
+    virtual:
+      enabled: true
+
+  # ── Graceful shutdown ─────────────────────────────────────────────────────────
+  # Let in-flight requests (e.g. a slow track export) finish before the context
+  # closes. Pairs with server.shutdown=graceful below.
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+server:
+  port: 8085
+  shutdown: graceful
+
+  # ── HTTP compression ──────────────────────────────────────────────────────────
+  # Off by default in Spring Boot. Critical for /api/activities/{id}/track which
+  # streams ~900 KB of JSON for a 90-min FIT. gzip cuts it to ~120 KB and the
+  # browser decompresses transparently.
+  compression:
+    enabled: true
+    min-response-size: 1024
+    mime-types:
+      - application/json
+      - application/geo+json
+      - text/css
+      - text/javascript
+      - text/plain
+      - image/svg+xml
+
+# ── Storage ─────────────────────────────────────────────────────────────────────
+# Override with the TOURGAZE_DATA_DIR env variable or tourgaze.data-dir property.
+# Also consumed by AppConfig and the logback-spring.xml file appender.
+tourgaze:
+  data-dir: ${TOURGAZE_DATA_DIR:${user.home}/.tourgaze}
+
+  # Precious, cloud-syncable library: store/ (ride files, photos, metadata
+  # sidecars) + db-backup/ (H2 snapshots) — and nothing else, so this one folder
+  # is all you sync. Point it at a cloud-synced folder (e.g. a Dropbox path) to
+  # back up rides; the DB + caches stay local under data-dir and rebuild from the
+  # sidecars. Defaults to data-dir/repository (kept separate from the workspace).
+  repository-dir: ${TOURGAZE_REPOSITORY_DIR:${tourgaze.data-dir}/repository}
+
+  # ── Inbox folders (deployment default) ──────────────────────────────────────
+  # Folders scanned for new ride files (copy-never-move, SHA-deduped). This is a
+  # DEFAULT only — the `inbox.sources` DB setting (Settings → Inbox) takes
+  # precedence whenever it is set, so a UI change always wins over this. Handy
+  # for baking a folder into a container image. Leave empty for the usual
+  # configure-in-the-UI flow.
+  inbox:
+    sources: []
+    # Example:
+    # sources:
+    #   - label: Garmin
+    #     path: /data/garmin/activity
+    #   - label: OpenTracks
+    #     path: /data/opentracks
+
+# ── App behaviour ─────────────────────────────────────────────────────────────
+app:
+  # Open the default browser at the app URL once started (local-first desktop
+  # convenience). On by default, so `java -jar tourgaze.jar` just works; skipped
+  # automatically in containers and forced off for tests / the OpenAPI spec
+  # build. Set false to disable.
+  start-browser: true
+
+  # Online H2 snapshot (BACKUP TO zip) taken on startup + nightly, rotated and
+  # written under repository-dir/db-backup (so they cloud-sync). Set false to skip.
+  backup:
+    on-startup: true
+
+# ── Actuator ──────────────────────────────────────────────────────────────────
+# Health (with k8s liveness/readiness probes for the Helm deployment) + info
+# (build version via the build-info.properties the maven plugin emits).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+# ── Logging ─────────────────────────────────────────────────────────────────────
+# Console pattern stays Spring's default; file/rolling output is configured in
+# logback-spring.xml (writes under ${tourgaze.data-dir}/logs).
+logging:
+  level:
+    root: INFO
+    io.github.tourgaze: INFO

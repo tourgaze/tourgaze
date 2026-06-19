@@ -17,7 +17,9 @@ public class Setting {
 	@Column(name = "setting_key")
 	private String key;
 
-	@Column(name = "setting_value")
+	// Wide enough for JSON-valued settings (e.g. inbox.sources, a list of
+	// {label,path} inbox folders). Must match the V2 migration's VARCHAR(4000).
+	@Column(name = "setting_value", length = 4000)
 	private String value;
 
 	public Setting() {

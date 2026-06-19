@@ -24,7 +24,7 @@ create table filter_preset (created_at timestamp(6) with time zone not null, gro
 create table gear (created_at timestamp(6) with time zone not null, retired_at timestamp(6) with time zone, id varchar(26) not null, user_id varchar(26), description varchar(255), name varchar(255) not null, type varchar(255), version bigint, updated_at timestamp(6) with time zone, primary key (id));
 create table map_provider (is_dark boolean not null, max_zoom integer, created_at timestamp(6) with time zone not null, type varchar(20) not null, id varchar(26) not null, style_url varchar(1000), url_template varchar(1000), attribution varchar(2000), description varchar(255), name varchar(255) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id));
 create table marker (lat float(53) not null, lon float(53) not null, created_at timestamp(6) with time zone not null, activity_id varchar(26), id varchar(26) not null, category varchar(64) not null, description clob, label varchar(255) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id));
-create table setting (setting_key varchar(255) not null, setting_value varchar(255), primary key (setting_key));
+create table setting (setting_key varchar(255) not null, setting_value varchar(4000), primary key (setting_key));
 create table tag (created_at timestamp(6) with time zone not null, color varchar(20), id varchar(26) not null, parent_id varchar(26), icon varchar(60), name varchar(120) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id), constraint UQ_TAG_PARENT_NAME unique (parent_id, name));
 create index idx_activity_start on activity (start_time desc);
 create index idx_activity_source_hash on activity (source_hash);

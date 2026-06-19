@@ -109,6 +109,15 @@ public class PeakPassService {
 				break;
 			double[] bb = GeoHash.decodeBbox(cell);
 			List<GeoFeature> found = overpass.fetchBbox(bb[0], bb[1], bb[2], bb[3]);
+			if (found == null) {
+				// Transient Overpass failure (offline / rate-limited / timeout): leave
+				// the cell UNcovered so a later view retries it. Caching it as "covered
+				// with 0 features" would hide this region's highlights permanently.
+				log.info(
+						"[Highlights] Overpass unavailable for cell {} — leaving uncovered, will retry on a later view",
+						cell);
+				break; // be polite under rate-limiting: stop this run, resume next view
+			}
 			for (GeoFeature f : found)
 				f.setGeocell(GeoHash.encode(f.getLat(), f.getLon(), REGION_PRECISION));
 			// Keep only features that really fall in this cell (bbox edges round).

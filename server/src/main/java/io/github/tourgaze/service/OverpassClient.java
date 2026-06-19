@@ -28,9 +28,11 @@ import io.github.tourgaze.entity.GeoFeature;
 /**
  * Thin Overpass API client: given a bounding box, returns the mountain
  * passes/saddles and named peaks inside it as {@link GeoFeature}s (geocell +
- * fetchedAt left for the caller to stamp). Best-effort — any failure (offline,
- * rate-limit, timeout) yields an empty list rather than throwing, so highlight
- * detection degrades gracefully.
+ * fetchedAt left for the caller to stamp). Best-effort and never throws — but
+ * it
+ * distinguishes "the region genuinely has none" (empty list) from "the fetch
+ * failed" (offline, rate-limit, timeout → {@code null}) so the caller can avoid
+ * caching a transient failure as permanent coverage.
  */
 @Component
 public class OverpassClient {
@@ -47,14 +49,20 @@ public class OverpassClient {
 		this.endpoint = endpoint;
 	}
 
-	/** Passes + named peaks within the bbox. Empty on any error. */
+	/**
+	 * Passes + named peaks within the bbox. Empty list when the region truly has
+	 * none; {@code null} when the fetch failed (so the caller won't cache it).
+	 */
 	public List<GeoFeature> fetchBbox(double minLat, double minLon, double maxLat, double maxLon) {
 		String bbox = minLat + "," + minLon + "," + maxLat + "," + maxLon;
+		// NB: "out qt" (not "out tags qt") — for nodes we need the lat/lon geometry
+		// AND the tags. "out tags" returns tags only (no coordinates), which would
+		// leave every feature at 0,0 and get it dropped by the per-cell filter.
 		String query = "[out:json][timeout:25];("
 				+ "node[\"mountain_pass\"=\"yes\"](" + bbox + ");"
 				+ "node[\"natural\"=\"saddle\"](" + bbox + ");"
 				+ "node[\"natural\"=\"peak\"][\"name\"](" + bbox + ");"
-				+ ");out tags qt;";
+				+ ");out qt;";
 		try {
 			HttpRequest req = HttpRequest.newBuilder(URI.create(endpoint))
 					.timeout(Duration.ofSeconds(40))
@@ -64,19 +72,29 @@ public class OverpassClient {
 					.build();
 			HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
 			if (resp.statusCode() != 200) {
-				log.warn("[Overpass] {} for bbox {} — skipping region", resp.statusCode(), bbox);
-				return List.of();
+				log.warn("[Overpass] {} for bbox {} — fetch failed, region left uncovered", resp.statusCode(), bbox);
+				return null;
 			}
 			return parse(resp.body());
 		} catch (Exception e) {
 			log.info("[Overpass] fetch failed for bbox {}: {}", bbox, e.toString());
-			return List.of();
+			return null;
 		}
 	}
 
 	private List<GeoFeature> parse(String body) throws Exception {
+		JsonNode root = json.readTree(body);
+		JsonNode elements = root.path("elements");
+		// Overpass signals soft failures (rate-limit, query timeout) as HTTP 200
+		// with a top-level "remark" and no elements. Treat empty + remark as a
+		// failure (null) so the caller doesn't cache the region as genuinely empty.
+		boolean empty = elements.isMissingNode() || !elements.iterator().hasNext();
+		String remark = root.path("remark").asText("");
+		if (empty && !remark.isBlank()) {
+			log.warn("[Overpass] soft-fail remark — region left uncovered: {}", remark);
+			return null;
+		}
 		List<GeoFeature> out = new ArrayList<>();
-		JsonNode elements = json.readTree(body).path("elements");
 		for (JsonNode el : elements) {
 			if (!"node".equals(el.path("type").asText()) || el.path("id").isMissingNode())
 				continue;

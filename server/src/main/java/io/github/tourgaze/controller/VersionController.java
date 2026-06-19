@@ -68,8 +68,10 @@ public class VersionController {
 		return new VersionDto(appVersion(), schemaVersion, schemaDescription, installedOn, database);
 	}
 
-	/** Prefer build-info.properties (Maven ${revision}); fall back to the jar
-	 *  manifest, then "dev" when run unpackaged. */
+	/**
+	 * Prefer build-info.properties (Maven ${revision}); fall back to the jar
+	 * manifest, then "dev" when run unpackaged.
+	 */
 	private String appVersion() {
 		BuildProperties bp = buildProperties.getIfAvailable();
 		if (bp != null && bp.getVersion() != null)

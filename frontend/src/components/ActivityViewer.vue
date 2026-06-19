@@ -20,7 +20,7 @@ import { useHrZones } from '@/composables/useHrZones'
 import { useRaceCompare } from '@/composables/useRaceCompare'
 import { VIEWER_LAYOUT_SLOT, autoLayoutRef } from '@/composables/useLayoutState'
 
-const props = defineProps<{ activityId: string | null; showNearbyTours?: boolean }>()
+const props = defineProps<{ activityId: string | null; showNearbyTours?: boolean; showPhotos?: boolean; showHighlights?: boolean }>()
 
 const qc = useQueryClient()
 const mapRef = ref<any>(null)
@@ -136,12 +136,17 @@ const photoUrl = (m: RideMedia) => activityMediaUrl(activityId.value!, m.name)
 
 // "Find photos" — fetch CC photos along the route from Wikimedia Commons; they
 // land in the ride's media folder → appear as map pins + replay fades.
-// Toggle photo pins + replay fades on/off in the tour (persisted).
-const showPhotos = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showPhotos', true)
+//
+// Overlay toggles (Photos pins/fades, Highlights markers). When embedded in
+// ToursView these live in its top toolbar next to "Tours" and are passed down as
+// props (controlled mode). Standalone (ActivityDetailView) we fall back to our
+// own persisted refs and render the checkboxes in the playback toolbar.
+const overlaysControlled = computed(() => props.showPhotos !== undefined || props.showHighlights !== undefined)
+const showPhotosInternal = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showPhotos', true)
+const showHighlightsInternal = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showHighlights', true)
+const showPhotos = computed(() => props.showPhotos ?? showPhotosInternal.value)
 const hasPhotos = computed(() => (media.value?.length ?? 0) > 0)
-// Auto-detected highlights (passes crossed + named peaks) → map markers, toggled
-// like Photos. Persisted on; only offered when this ride actually has any.
-const showHighlights = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showHighlights', true)
+const showHighlights = computed(() => props.showHighlights ?? showHighlightsInternal.value)
 const hasHighlights = computed(() => ((highlights.value?.passes.length ?? 0) + (highlights.value?.peaks.length ?? 0)) > 0)
 const discovering = ref(false)
 
@@ -773,20 +778,14 @@ const activeColorLabel = computed(() =>
             <component :is="isFollowing ? Crosshair : LockOpen" :size="11" />
             <span>{{ isFollowing ? 'Follow' : 'Free' }}</span>
           </button>
-          <button
-            class="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border border-border text-muted-fg hover:text-primary hover:border-primary hover:bg-primary/10 transition-colors active:scale-95 disabled:opacity-50"
-            title="Find Creative-Commons photos along this route (Wikimedia Commons)"
-            :disabled="discovering"
-            @click="findPhotos">
-            <ImagePlus :size="11" />
-            <span>{{ discovering ? 'Finding…' : 'Find photos' }}</span>
-          </button>
-          <label v-if="hasPhotos" class="inline-flex items-center gap-1 text-[11px] text-muted-fg cursor-pointer select-none" title="Show photo pins + replay fades">
-            <input type="checkbox" v-model="showPhotos" class="accent-primary" />
+          <!-- Uncontrolled (standalone) only — in ToursView these toggles live in
+               the top toolbar next to "Tours". -->
+          <label v-if="!overlaysControlled && hasPhotos" class="inline-flex items-center gap-1 text-[11px] text-muted-fg cursor-pointer select-none" title="Show photo pins + replay fades">
+            <input type="checkbox" v-model="showPhotosInternal" class="accent-primary" />
             <span>Photos</span>
           </label>
-          <label v-if="hasHighlights" class="inline-flex items-center gap-1 text-[11px] text-muted-fg cursor-pointer select-none" title="Show auto-detected passes crossed + named peaks">
-            <input type="checkbox" v-model="showHighlights" class="accent-primary" />
+          <label v-if="!overlaysControlled && hasHighlights" class="inline-flex items-center gap-1 text-[11px] text-muted-fg cursor-pointer select-none" title="Show auto-detected passes crossed + named peaks">
+            <input type="checkbox" v-model="showHighlightsInternal" class="accent-primary" />
             <span>Highlights</span>
           </label>
         </div>
@@ -848,15 +847,25 @@ const activeColorLabel = computed(() =>
 
       <!-- Photos view — responsive gallery that reflows with the window. -->
       <div v-else-if="!chartCollapsed && bottomView === 'photos'" class="flex-1 min-h-0 overflow-y-auto p-2">
-        <!-- Legend: which photos are public-domain (discovered) vs personal (yours). -->
-        <div v-if="hasPhotos" class="flex items-center gap-3 px-1 pb-2 text-[10px] text-muted-fg">
-          <span class="font-medium uppercase tracking-wide opacity-70">Photos</span>
-          <span v-if="hasPublic" class="inline-flex items-center gap-1">
-            <span class="photo-legend-dot photo-legend-dot--public"><Globe :size="9" /></span>Public domain
-          </span>
-          <span v-if="hasPersonal" class="inline-flex items-center gap-1">
-            <span class="photo-legend-dot photo-legend-dot--personal"><UserRound :size="9" /></span>Personal
-          </span>
+        <!-- Header: legend (public vs personal) + the Find-photos action. -->
+        <div class="flex items-center gap-3 px-1 pb-2 text-[10px] text-muted-fg">
+          <template v-if="hasPhotos">
+            <span class="font-medium uppercase tracking-wide opacity-70">Photos</span>
+            <span v-if="hasPublic" class="inline-flex items-center gap-1">
+              <span class="photo-legend-dot photo-legend-dot--public"><Globe :size="9" /></span>Public domain
+            </span>
+            <span v-if="hasPersonal" class="inline-flex items-center gap-1">
+              <span class="photo-legend-dot photo-legend-dot--personal"><UserRound :size="9" /></span>Personal
+            </span>
+          </template>
+          <button
+            class="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border border-border text-muted-fg hover:text-primary hover:border-primary hover:bg-primary/10 transition-colors active:scale-95 disabled:opacity-50"
+            title="Find Creative-Commons photos along this route (Wikimedia Commons)"
+            :disabled="discovering"
+            @click="findPhotos">
+            <ImagePlus :size="11" />
+            <span>{{ discovering ? 'Finding…' : 'Find photos' }}</span>
+          </button>
         </div>
         <div v-if="hasPhotos" class="grid gap-2" style="grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));">
           <figure v-for="m in media" :key="m.name" class="relative m-0 aspect-square rounded-md overflow-hidden border border-border cursor-zoom-in group"

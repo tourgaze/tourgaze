@@ -11,9 +11,14 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.Comparator;
+import java.util.stream.Stream;
 
 import jakarta.annotation.PostConstruct;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import io.github.tourgaze.config.AppConfig;
@@ -21,30 +26,95 @@ import io.github.tourgaze.config.AppConfig;
 /**
  * Single source of truth for all on-disk locations.
  *
- * Layout under dataDir (default: ~/.tourgaze/):
+ * Two roots, so the precious library can sync to the cloud while regenerable
+ * data stays local (matros repository-vs-workspace split):
+ *
+ * repositoryDir/ (cloud-syncable; default = dataDir/repository)
+ * store/ ← processed ride files + photos + metadata sidecars (permanent)
+ * db-backup/ ← H2 snapshot zips (safe to cloud-sync; off-machine DB backup)
+ *
+ * dataDir/ (local; default ~/.tourgaze/)
  * inbox/ ← drop FIT files here; watcher picks them up
- * store/ ← processed FIT files (UUID-named, permanent)
- * cache/ ← per-activity JSON track cache (lazy, deletable)
- * tiles/z/x/y.png ← cached OSM tile images
+ * cache/ ← per-activity JSON track cache (lazy, rebuildable from store)
+ * tiles/z/x/y.png ← cached OSM tile images (re-downloadable)
+ * db/ ← H2 database (local; rebuildable from the store sidecars)
  */
 @Service
 public class StorageService {
 
+	private static final Logger log = LoggerFactory.getLogger(StorageService.class);
+
 	private final Path baseDir;
+	private final Path repoDir;
 
 	public StorageService(AppConfig config) {
 		this.baseDir = Path.of(config.getDataDir());
+		this.repoDir = Path.of(config.getRepositoryDir());
 	}
 
 	@PostConstruct
 	public void init() {
 		try {
+			// matros split: the precious folders (store, db-backup) live under repoDir
+			// so a single folder cloud-syncs cleanly; the regenerable workspace stays
+			// under baseDir. Installs predating the split kept these directly under
+			// baseDir — move them into repoDir once so existing rides/backups aren't
+			// orphaned by the new default location.
+			if (!repoDir.equals(baseDir)) {
+				migrateLegacyRepoFolder("store");
+				migrateLegacyRepoFolder("db-backup");
+			}
 			Files.createDirectories(inboxDir());
 			Files.createDirectories(storeDir());
 			Files.createDirectories(cacheDir());
 			Files.createDirectories(tilesDir());
 		} catch (IOException e) {
 			throw new UncheckedIOException("Failed to create storage directories", e);
+		}
+	}
+
+	/**
+	 * One-time relocation of a precious folder from the pre-split location
+	 * (directly under dataDir) into repositoryDir. No-op when the legacy folder is
+	 * absent or the destination already exists, so it's safe to run every boot.
+	 */
+	private void migrateLegacyRepoFolder(String name) throws IOException {
+		Path legacy = baseDir.resolve(name);
+		Path target = repoDir.resolve(name);
+		if (!Files.isDirectory(legacy) || Files.exists(target))
+			return;
+		Files.createDirectories(target.getParent());
+		try {
+			Files.move(legacy, target);
+		} catch (IOException renameFailed) {
+			// repoDir on a different drive (e.g. a cloud folder): copy then delete.
+			copyTree(legacy, target);
+			deleteTree(legacy);
+		}
+		log.info("[Storage] Migrated legacy {}/ into repository dir {}", name, repoDir);
+	}
+
+	private static void copyTree(Path src, Path dst) throws IOException {
+		try (Stream<Path> walk = Files.walk(src)) {
+			for (Path p : (Iterable<Path>) walk::iterator) {
+				Path out = dst.resolve(src.relativize(p));
+				if (Files.isDirectory(p))
+					Files.createDirectories(out);
+				else
+					Files.copy(p, out, StandardCopyOption.COPY_ATTRIBUTES);
+			}
+		}
+	}
+
+	private static void deleteTree(Path root) throws IOException {
+		try (Stream<Path> walk = Files.walk(root)) {
+			walk.sorted(Comparator.reverseOrder()).forEach(p -> {
+				try {
+					Files.delete(p);
+				} catch (IOException ignored) {
+					// best-effort: a leftover empty dir is harmless
+				}
+			});
 		}
 	}
 
@@ -61,8 +131,9 @@ public class StorageService {
 		return baseDir.resolve("inbox-ignored");
 	}
 
+	/** Precious ride store — under repositoryDir so it can sync to the cloud. */
 	public Path storeDir() {
-		return baseDir.resolve("store");
+		return repoDir.resolve("store");
 	}
 
 	public Path cacheDir() {
@@ -71,6 +142,15 @@ public class StorageService {
 
 	public Path tilesDir() {
 		return baseDir.resolve("tiles");
+	}
+
+	/**
+	 * H2 {@code BACKUP TO} zip snapshots. Under repositoryDir so the backups
+	 * sync to the cloud — a static zip is safe to sync (written atomically),
+	 * unlike the live DB file, so this gives off-machine DB backup.
+	 */
+	public Path dbBackupDir() {
+		return repoDir.resolve("db-backup");
 	}
 
 	/**

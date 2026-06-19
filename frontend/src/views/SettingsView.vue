@@ -4,12 +4,11 @@ import { useRoute } from 'vue-router'
 import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
 import {
-  UserCog, Usb, Tag as TagIcon, Users, HardDrive, Sliders, Globe, Bike, Map as MapIcon,
+  UserCog, Tag as TagIcon, Users, HardDrive, Sliders, Globe, Bike, Map as MapIcon,
   Inbox as InboxIcon, PanelLeftClose, PanelLeftOpen,
 } from 'lucide-vue-next'
 
 import ProfileSection from '@/components/settings/ProfileSection.vue'
-import DeviceSection from '@/components/settings/DeviceSection.vue'
 import InboxSection from '@/components/settings/InboxSection.vue'
 import TagTree from '@/components/TagTree.vue'
 import UsersSection from '@/components/settings/UsersSection.vue'
@@ -21,18 +20,17 @@ import AdvancedSection from '@/components/settings/AdvancedSection.vue'
 
 import { SETTINGS_LAYOUT_SLOT, layoutRef, autoLayoutRef, registerLayoutSaver } from '@/composables/useLayoutState'
 
-type CategoryId = 'profile' | 'device' | 'inbox' | 'tags' | 'users' | 'gear' | 'maps' | 'locale' | 'storage' | 'advanced'
+type CategoryId = 'profile' | 'inbox' | 'tags' | 'users' | 'gear' | 'maps' | 'locale' | 'storage' | 'advanced'
 type Category = { id: CategoryId; label: string; icon: any; component: any; description: string }
 
 const CATEGORIES: Category[] = [
   { id: 'profile',  label: 'Profile',        icon: UserCog,   component: markRaw(ProfileSection),  description: 'Your rider profile, used for HR zones and per-activity stats.' },
-  { id: 'device',   label: 'Device & app',   icon: Usb,       component: markRaw(DeviceSection),   description: 'Garmin path, timezone, other app-level settings.' },
-  { id: 'inbox',    label: 'Inbox folders',  icon: InboxIcon, component: markRaw(InboxSection),    description: 'Extra folders (e.g. a Google Drive OpenTracks sync) scanned for ride files.' },
+  { id: 'inbox',    label: 'Inbox folders',  icon: InboxIcon, component: markRaw(InboxSection),    description: 'Folders (Garmin mount, Google Drive OpenTracks sync, …) scanned for ride files.' },
   { id: 'tags',     label: 'Tags',           icon: TagIcon,   component: markRaw(TagTree),         description: 'Hierarchical labels you can apply to tours.' },
   { id: 'users',    label: 'Users',          icon: Users,     component: markRaw(UsersSection),    description: 'Riders sharing this install. Activities link to one.' },
   { id: 'gear',     label: 'Gear',           icon: Bike,      component: markRaw(GearSection),     description: 'Bikes, shoes and other gear you can attach to a tour.' },
   { id: 'maps',     label: 'Map providers',  icon: MapIcon,   component: markRaw(MapProvidersSection), description: 'Custom basemaps (raster XYZ or vector style) shown in the map picker.' },
-  { id: 'locale',   label: 'Language',       icon: Globe,     component: markRaw(LocaleSection),   description: 'Reverse-geocoding language — controls place names in tour suggestions.' },
+  { id: 'locale',   label: 'Language',       icon: Globe,     component: markRaw(LocaleSection),   description: 'Reverse-geocoding language for place names, plus your timezone.' },
   { id: 'storage',  label: 'Storage',        icon: HardDrive, component: markRaw(StorageSection),  description: 'Disk usage breakdown + cache maintenance.' },
   { id: 'advanced', label: 'Advanced',       icon: Sliders,   component: markRaw(AdvancedSection), description: 'Raw key/value settings as stored in the DB.' },
 ]

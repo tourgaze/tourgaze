@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, watch, ref, onBeforeUnmount } from 'vue'
+import { computed, watch, ref, nextTick, onBeforeUnmount } from 'vue'
 import type { TrackPoint } from '@/api/client'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
 import {
   GridComponent, TooltipComponent, DataZoomComponent,
-  LegendComponent, AxisPointerComponent, MarkAreaComponent,
+  LegendComponent, AxisPointerComponent, MarkAreaComponent, MarkLineComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { X } from 'lucide-vue-next'
@@ -23,7 +23,7 @@ export type ChartSection = {
 }
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent,
-     DataZoomComponent, LegendComponent, AxisPointerComponent, MarkAreaComponent])
+     DataZoomComponent, LegendComponent, AxisPointerComponent, MarkAreaComponent, MarkLineComponent])
 
 const props = defineProps<{
   // RDP-filtered points (already have distKm and _rawIdx back-reference into
@@ -47,10 +47,6 @@ const emit = defineEmits<{
 }>()
 
 const chartRef = ref<any>(null)
-// The tooltip popup should only appear when the pointer is actually over the
-// graph — NOT when it's pushed in from map-hover / replay (that was making the
-// popup pop up while the mouse was elsewhere).
-const mouseInGraph = ref(false)
 
 // ── Drag-to-measure ─────────────────────────────────────────────────────────
 // Press + drag across the chart to select a segment; we report its distance and
@@ -239,6 +235,15 @@ const option = computed(() => {
     }
   })
 
+  // Replay-cursor placeholder: declared empty (per series, so it spans every
+  // sub-grid) so the markLine component exists from init — renderPlayCursor only
+  // updates its `data`. ECharts won't render a markLine first introduced by a
+  // later merge, hence declaring it here.
+  const cursorLineStyle = { color: '#6366f1', width: 1.5, type: 'solid' as const, opacity: 0.9 }
+  series.forEach(s => {
+    s.markLine = { silent: true, symbol: 'none', animation: false, label: { show: false }, lineStyle: cursorLineStyle, data: [] }
+  })
+
   return {
     backgroundColor: 'transparent',
     grid: grids,
@@ -256,6 +261,10 @@ const option = computed(() => {
       itemHeight: 8,
     },
     tooltip: {
+      // Only while NOT replaying. During playback the position is shown by the
+      // markLine cursor below; the value popup (elevation/speed/HR) would
+      // reposition every frame and flicker, so we suppress it entirely.
+      show: !props.isPlaying,
       trigger: 'axis',
       axisPointer: { type: 'line', lineStyle: { color: '#6366f1', width: 1, type: 'dashed' } },
       formatter(params: any[]) {
@@ -286,17 +295,65 @@ const option = computed(() => {
   }
 })
 
-// Drive the chart cursor from map hover / replay. Only surface the tooltip
-// popup when the mouse is actually in the graph; otherwise we'd pop a tooltip
-// over the chart while the user is panning the map or watching the replay.
-watch(() => props.activeChartIndex, (idx) => {
-  if (!chartRef.value?.chart) return
-  if (idx == null || !mouseInGraph.value) {
-    chartRef.value.chart.dispatchAction({ type: 'hideTip' })
-  } else {
-    chartRef.value.chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: idx })
-  }
+// How many series the option renders (elevation + optional HR/speed). Cached so
+// the per-frame cursor update below doesn't have to read the whole chart option.
+const seriesCount = computed(() => {
+  const pts = props.points
+  if (!pts.length) return 0
+  let n = 1
+  if (pts.some(p => p.hr != null && p.hr > 0)) n++
+  if (pts.some(p => p.speedMs != null && p.speedMs > 0)) n++
+  return n
 })
+
+// Map the (full-resolution) shared activeIndex to the NEAREST chart point. The
+// chart is RDP-filtered, so the exact activeChartIndex prop is null on almost
+// every replay frame (activeIndex advances by 1, chart points are sparse) —
+// nearest gives a smooth cursor that tracks playback.
+const cursorIdx = computed<number | null>(() => {
+  const pts = props.points
+  const t = activeIndex.value
+  if (t == null || !pts.length) return null
+  if (t <= pts[0]._rawIdx) return 0
+  const last = pts.length - 1
+  if (t >= pts[last]._rawIdx) return last
+  let lo = 0, hi = last
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1
+    const r = pts[mid]._rawIdx
+    if (r === t) return mid
+    if (r < t) lo = mid + 1
+    else hi = mid - 1
+  }
+  // lo = first point past t, hi = last before it → whichever is closer.
+  return (pts[lo]._rawIdx - t) < (t - pts[hi]._rawIdx) ? lo : hi
+})
+
+// Replay cursor — a vertical line at the current position, drawn as a markLine
+// (part of the chart option) instead of a dispatched tooltip. Two reasons:
+//  • no value popup → it can't flicker as the position advances each frame;
+//  • it lives in the chart's option state, so an autoresize (user dragging the
+//    graph pane taller/shorter) re-renders it — a showTip cursor would vanish.
+// Only while playing; when paused/scrubbing the normal hover tooltip takes over.
+function renderPlayCursor() {
+  const chart = chartRef.value?.chart
+  const count = seriesCount.value
+  if (!chart || !count) return
+  const idx = cursorIdx.value
+  const pts = props.points
+  const show = props.isPlaying && idx != null && idx >= 0 && idx < pts.length
+  const data = show ? [{ xAxis: pts[idx].distKm.toFixed(2) }] : []
+  // Update only the cursor markLine's DATA — its style is declared up front in
+  // `option` (a markLine component merged in after init won't render). One entry
+  // per series so the line spans every stacked sub-grid.
+  chart.setOption({ series: Array.from({ length: count }, () => ({ markLine: { data } })) })
+}
+// Defer to nextTick so we re-assert the markLine AFTER vue-echarts applies a
+// rebuilt `option` (which would otherwise drop our merged-in cursor).
+const scheduleCursor = () => nextTick(renderPlayCursor)
+watch(cursorIdx, scheduleCursor)
+watch(() => props.isPlaying, scheduleCursor)
+watch(option, scheduleCursor)
 
 // Click on chart → jump to that position and signal parent to stop playback
 function onChartClick(params: any) {
@@ -361,8 +418,7 @@ const fmtSigned = (n: number, digits = 0) => (n >= 0 ? '+' : '') + n.toFixed(dig
 
 <template>
   <div class="relative w-full h-full"
-    @mouseenter="mouseInGraph = true"
-    @mouseleave="mouseInGraph = false; onChartMouseout()">
+    @mouseleave="onChartMouseout()">
     <VChart
       ref="chartRef"
       class="w-full h-full"

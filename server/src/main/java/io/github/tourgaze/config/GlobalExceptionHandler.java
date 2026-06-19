@@ -9,6 +9,7 @@ package io.github.tourgaze.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -19,6 +20,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -92,6 +94,19 @@ public class GlobalExceptionHandler {
 		HttpStatus status = HttpStatus.valueOf(ex.getStatusCode().value());
 		return build(status, status.name(),
 				ex.getReason() != null ? ex.getReason() : status.getReasonPhrase(), req);
+	}
+
+	/**
+	 * Client closed the connection mid-response — e.g. the browser cancels
+	 * in-flight tile downloads when the map pans away. The socket is gone, so
+	 * there's nothing to send: return void (no body) rather than letting it reach
+	 * {@link #handleGeneral}, which would log a stack trace and then fail again
+	 * trying to serialize a JSON error into the already-committed (image/png)
+	 * response. Logged at debug — it's normal, not a server fault.
+	 */
+	@ExceptionHandler({ ClientAbortException.class, AsyncRequestNotUsableException.class })
+	public void handleClientAbort(Exception ex) {
+		log.debug("Client aborted request: {}", ex.getMessage());
 	}
 
 	/**

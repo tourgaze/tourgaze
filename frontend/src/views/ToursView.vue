@@ -16,10 +16,10 @@ import {
   Bike, PersonStanding, Waves, Footprints, Mountain, Activity as ActivityIcon,
   Filter, ChevronDown, ChevronRight, Ruler, Timer, Tag as TagIcon,
   PanelLeftClose, PanelLeftOpen, X, Pencil, Map as MapIcon, MapPin,
-  Bookmark, Save, Trash2, RotateCcw,
+  Bookmark, Save, Trash2, RotateCcw, ImagePlus,
 } from 'lucide-vue-next'
 import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
-import { TOURS_LAYOUT_SLOT, autoLayoutRef, registerLayoutSaver, LayoutSlot } from '@/composables/useLayoutState'
+import { TOURS_LAYOUT_SLOT, VIEWER_LAYOUT_SLOT, autoLayoutRef, registerLayoutSaver, LayoutSlot } from '@/composables/useLayoutState'
 import { useTourSearch } from '@/composables/useTourSearch'
 import ActivityViewer from '@/components/ActivityViewer.vue'
 import EditTourPanel from '@/components/EditTourPanel.vue'
@@ -82,6 +82,11 @@ const rightMode = ref<'view' | 'edit'>('view')
 // "Tours" overlay — when on, pin every OTHER tour whose start falls in the
 // current map view, so you can spot & jump to nearby rides. Default off.
 const showNearbyTours = ref(false)
+// Viewer map-overlay toggles, hosted here next to "Tours" so all three live in
+// one place. Persisted in the shared viewer layout slot under the same keys the
+// viewer used before, so a prior on/off choice carries over.
+const showPhotos = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showPhotos', true)
+const showHighlights = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showHighlights', true)
 function startEdit() { if (selectedId.value) rightMode.value = 'edit' }
 function endEdit() { rightMode.value = 'view' }
 
@@ -782,6 +787,7 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
                     </span>
                   </button>
                   <div v-if="expanded.has(sg.key)">
+                    <!-- eslint-disable vue/valid-v-memo -- v-memo is correctly on the v-for element; the rule false-positives because this list is nested inside the outer "grouped" v-for. -->
                     <button v-for="a in sg.activities" :key="a.id!" type="button"
                       v-memo="[a, selectedId === a.id, dropHoverId === a.id]"
                       class="tour-card w-full text-left flex items-center gap-2 pl-9 pr-2 py-1 cursor-pointer
@@ -816,10 +822,12 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
                         </div>
                       </div>
                     </button>
+                    <!-- eslint-enable vue/valid-v-memo -->
                   </div>
                 </div>
               </template>
               <template v-else>
+                <!-- eslint-disable vue/valid-v-memo -- v-memo is correctly on the v-for element; the rule false-positives because this list is nested inside the outer "grouped" v-for. -->
                 <button v-for="a in g.activities" :key="a.id!" type="button"
                   v-memo="[a, selectedId === a.id, dropHoverId === a.id]"
                   class="tour-card w-full text-left flex items-center gap-2 pl-5 pr-2 py-1 cursor-pointer
@@ -853,6 +861,7 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
                     </div>
                   </div>
                 </button>
+                <!-- eslint-enable vue/valid-v-memo -->
               </template>
             </div>
           </div>
@@ -883,6 +892,18 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
             <input type="checkbox" v-model="showNearbyTours" class="accent-primary" />
             <MapPin :size="11" /> Tours
           </label>
+          <label v-if="rightMode === 'view'"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded cursor-pointer select-none text-muted-fg hover:text-foreground"
+            title="Show geo-matched photos as map pins + replay fades">
+            <input type="checkbox" v-model="showPhotos" class="accent-primary" />
+            <ImagePlus :size="11" /> Photos
+          </label>
+          <label v-if="rightMode === 'view'"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded cursor-pointer select-none text-muted-fg hover:text-foreground"
+            title="Show auto-detected passes crossed + named peaks">
+            <input type="checkbox" v-model="showHighlights" class="accent-primary" />
+            <Mountain :size="11" /> Highlights
+          </label>
         </div>
         <!-- Tour title, centred next to the map; click to edit it in the details. -->
         <button class="flex-1 min-w-0 text-center text-[12px] font-semibold text-foreground truncate px-2 hover:text-primary transition-colors"
@@ -891,7 +912,7 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
       </div>
 
       <div class="flex-1 min-h-0">
-        <ActivityViewer v-if="rightMode === 'view'" :activity-id="selectedId" :show-nearby-tours="showNearbyTours" />
+        <ActivityViewer v-if="rightMode === 'view'" :activity-id="selectedId" :show-nearby-tours="showNearbyTours" :show-photos="showPhotos" :show-highlights="showHighlights" />
         <EditTourPanel v-else-if="selectedId" :activity-id="selectedId" @done="endEdit" @cancel="endEdit" />
       </div>
     </Pane>

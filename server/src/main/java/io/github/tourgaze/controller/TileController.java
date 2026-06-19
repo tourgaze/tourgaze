@@ -8,13 +8,9 @@
 package io.github.tourgaze.controller;
 
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 import io.github.tourgaze.dto.TileProviderDto;
 import io.github.tourgaze.entity.Setting;
 import io.github.tourgaze.repository.SettingRepository;
+import io.github.tourgaze.service.TileFetcher;
 import io.github.tourgaze.service.TileProviderRegistry;
 import io.github.tourgaze.store.StorageService;
 
@@ -72,19 +69,17 @@ public class TileController {
 	private final SettingRepository settingRepo;
 	private final TileProviderRegistry providerRegistry;
 	private final io.github.tourgaze.repository.MapProviderRepository mapProviderRepo;
-	private final HttpClient httpClient;
+	private final TileFetcher tileFetcher;
 
 	public TileController(StorageService storage, SettingRepository settingRepo,
 			TileProviderRegistry providerRegistry,
-			io.github.tourgaze.repository.MapProviderRepository mapProviderRepo) {
+			io.github.tourgaze.repository.MapProviderRepository mapProviderRepo,
+			TileFetcher tileFetcher) {
 		this.storage = storage;
 		this.settingRepo = settingRepo;
 		this.providerRegistry = providerRegistry;
 		this.mapProviderRepo = mapProviderRepo;
-		this.httpClient = HttpClient.newBuilder()
-				.connectTimeout(Duration.ofSeconds(10))
-				.followRedirects(HttpClient.Redirect.NORMAL)
-				.build();
+		this.tileFetcher = tileFetcher;
 	}
 
 	/** Catalog of available basemap providers, surfaced to the frontend picker. */
@@ -144,13 +139,8 @@ public class TileController {
 				.replace("{y}", String.valueOf(y));
 
 		try {
-			HttpRequest req = HttpRequest.newBuilder()
-					.uri(URI.create(url))
-					.header("User-Agent", "TourGaze/1.0 (tile cache)")
-					.timeout(Duration.ofSeconds(15))
-					.build();
-
-			HttpResponse<byte[]> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofByteArray());
+			// Retried on transient network failures inside TileFetcher.
+			HttpResponse<byte[]> resp = tileFetcher.fetch(url);
 			if (resp.statusCode() != 200) {
 				return ResponseEntity.status(resp.statusCode()).build();
 			}

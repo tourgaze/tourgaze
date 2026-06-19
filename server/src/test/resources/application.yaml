@@ -1,0 +1,24 @@
+# Test overrides — boot the full context against a throwaway in-memory H2 so
+# Flyway runs the V1+ baseline and Hibernate ddl-auto=validate checks the schema
+# against the entities (see SchemaValidationTest).
+spring:
+  datasource:
+    url: jdbc:h2:mem:tourgaze-test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate
+
+tourgaze:
+  data-dir: ${java.io.tmpdir}/tourgaze-test
+  # Keep startup side effects out of the test: no metadata sidecar export sweep.
+  export:
+    metadata:
+      enabled: false
+
+app:
+  # Never pop a browser during tests (ApplicationReadyEvent fires here too).
+  start-browser: false
+  # No DB snapshot during tests (in-mem DB, throwaway).
+  backup:
+    on-startup: false
