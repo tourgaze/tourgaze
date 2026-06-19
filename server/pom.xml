@@ -131,6 +131,15 @@
                             <goal>repackage</goal>
                         </goals>
                     </execution>
+                    <!-- Emit META-INF/build-info.properties → a BuildProperties bean,
+                         so /api/version reports the real ${revision} (fat-jar manifests
+                         don't expose Implementation-Version to getPackage()). -->
+                    <execution>
+                        <id>build-info</id>
+                        <goals>
+                            <goal>build-info</goal>
+                        </goals>
+                    </execution>
                 </executions>
             </plugin>
             <!-- Bundle the built SPA into the fat JAR so a single container serves

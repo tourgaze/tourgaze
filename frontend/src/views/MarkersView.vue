@@ -72,7 +72,10 @@ function fitAll() {
     new maplibregl.LngLatBounds([list[0].lon, list[0].lat], [list[0].lon, list[0].lat]))
   map.fitBounds(b, { padding: 60, maxZoom: 14, duration: 500 })
 }
-function flyTo(m: Marker) { map?.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 14), duration: 600 }) }
+// Focus in to street level on click so the jump is always visible — even when
+// the marker was already roughly centred (e.g. you only have one). Only zooms
+// IN; keeps a deeper zoom if you're already closer.
+function flyTo(m: Marker) { map?.flyTo({ center: [m.lon, m.lat], zoom: Math.max(map.getZoom(), 16), duration: 700 }) }
 // Click a list row → select it (fly + highlight its pin).
 const selectedId = ref<string | null>(null)
 function select(m: Marker) { selectedId.value = m.id; flyTo(m) }
@@ -160,8 +163,12 @@ onUnmounted(() => { pins.forEach(p => p.remove()); map?.remove(); map = null })
     </div>
 
     <!-- Map -->
+    <!-- NOTE: the map div must be h-full/w-full, NOT absolute inset-0 —
+         maplibre-gl.css forces `.maplibregl-map { position: relative }`, which
+         overrides Tailwind's `absolute`, so `inset-0` is ignored and the element
+         collapses to height 0 (blank map). Sizing it explicitly avoids that. -->
     <div class="relative flex-1 min-h-0">
-      <div ref="mapEl" class="absolute inset-0" />
+      <div ref="mapEl" class="h-full w-full" />
 
       <!-- Editor -->
       <div v-if="editing"

@@ -1,8 +1,12 @@
 <script setup lang="ts">
 import { Github, HeartHandshake, Lock, Map as MapIcon, CloudSun, Database, Code2 } from 'lucide-vue-next'
+import { useQuery } from '@tanstack/vue-query'
 import GoatLogo from '@/components/GoatLogo.vue'
+import { getVersion } from '@/api/client'
 
-const APP_VERSION = '1.0.0'
+// Build + DB-schema version, fetched from the backend so bug reports can quote
+// the exact app version, Flyway schema version and database.
+const { data: version } = useQuery({ queryKey: ['version'], queryFn: getVersion, staleTime: Infinity })
 
 // Open-source building blocks we lean on — credited here, and their licenses
 // ship with their packages.
@@ -41,7 +45,11 @@ const data: { name: string; what: string; href: string }[] = [
         <div>
           <h1 class="text-2xl font-bold leading-tight">TourGaze</h1>
           <p class="text-sm text-muted-fg">Local-first ride viewer — import, browse, tag &amp; replay your tours.</p>
-          <span class="inline-block mt-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border text-muted-fg">v{{ APP_VERSION }}</span>
+          <span class="inline-block mt-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-muted/40 border border-border text-muted-fg">v{{ version?.app ?? '1.0.0' }}</span>
+          <!-- Diagnostics for bug reports: Flyway schema version + database. -->
+          <span v-if="version" class="block mt-1 text-[10px] font-mono text-muted-fg">
+            DB schema v{{ version.schemaVersion }}<template v-if="version.schemaDescription"> ({{ version.schemaDescription }})</template> · {{ version.database }}
+          </span>
         </div>
       </header>
 

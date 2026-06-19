@@ -60,6 +60,38 @@ Open <http://localhost:5173>, complete the first-run setup to create your rider
 profile, then drop a `.fit` / `.gpx` / `.tcx` / `.kmz` into `~/.tourgaze/inbox/`
 (or upload from the Inbox view) and click **Import**.
 
+## Run with Docker
+
+TourGaze ships as a **single container** — the API and the web UI are served
+together on port `8085`. State (H2 DB, media, cache, tiles) lives under a
+`/data` volume.
+
+```bash
+# from the project root: build the SPA + jar, then the image
+cd frontend && npm ci && npm run build && cd ..
+mvn -f server/pom.xml clean package -DskipTests
+docker compose -f infra/docker-compose.yml up --build   # → http://localhost:8085
+```
+
+The published image is **`mschwehl/tourgaze`**. The compose file mounts a named
+`tourgaze-data` volume (swap for a bind mount `../data:/data` to keep the DB
+host-visible).
+
+## Deploy with Helm
+
+A production chart lives in `helm/tourgaze/` (Deployment + Service + Ingress +
+persistent volume):
+
+```bash
+helm install tourgaze ./helm/tourgaze \
+  --set ingress.hosts[0].host=tourgaze.example.com \
+  --set persistence.storageClass=<your-storage-class>
+```
+
+Single replica only — the H2 file DB isn't horizontally scalable. The default
+ingress allows 100 MB uploads (FIT/GPX/KMZ + photos). See
+[README-dev.md](README-dev.md#docker--helm) for the full knobs.
+
 ## Data & privacy
 
 Everything lives under `~/.tourgaze/` (override with `TOURGAZE_DATA_DIR`):

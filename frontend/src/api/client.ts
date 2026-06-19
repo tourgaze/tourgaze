@@ -324,6 +324,20 @@ export async function getActivityHighlights(activityId: string): Promise<Highlig
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   return r.json()
 }
+
+// ── Build + DB-schema version (About page / bug reports) ────────────────────
+export type VersionInfo = {
+  app: string
+  schemaVersion: string
+  schemaDescription: string | null
+  schemaInstalledOn: string | null
+  database: string
+}
+export async function getVersion(): Promise<VersionInfo> {
+  const r = await fetch('/api/version')
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
 /** General markers only (not tied to any ride). */
 export async function getGeneralMarkers(): Promise<Marker[]> {
   const r = await fetch('/api/markers/general')
