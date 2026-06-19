@@ -41,3 +41,5 @@ cloud/
 *.bmp
 bug.jpg
 mtb.png
+
+/frontend/dev-frontend.log
