@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.config;
@@ -18,9 +16,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -85,6 +85,22 @@ public class GlobalExceptionHandler {
 	public ResponseEntity<ApiErrorResponse> handleMalformed(HttpMessageNotReadableException ex,
 			HttpServletRequest req) {
 		return build(HttpStatus.BAD_REQUEST, "MALFORMED_REQUEST", "Invalid request body.", req);
+	}
+
+	/**
+	 * Missing or unparseable query/path parameter → 400. Without this these
+	 * Spring MVC client errors fall through to {@link #handleGeneral} and surface
+	 * as a 500 with a logged stack trace, which is wrong (it's the caller's fault)
+	 * and noisy.
+	 */
+	@ExceptionHandler({ MissingServletRequestParameterException.class, MethodArgumentTypeMismatchException.class })
+	public ResponseEntity<ApiErrorResponse> handleBadParameter(Exception ex, HttpServletRequest req) {
+		String detail = ex instanceof MissingServletRequestParameterException mp
+				? "Missing required parameter '" + mp.getParameterName() + "'."
+				: ex instanceof MethodArgumentTypeMismatchException tm
+						? "Invalid value for parameter '" + tm.getName() + "'."
+						: "Invalid request parameters.";
+		return build(HttpStatus.BAD_REQUEST, "BAD_REQUEST", detail, req);
 	}
 
 	/** Controllers that throw ResponseStatusException keep their chosen status. */
