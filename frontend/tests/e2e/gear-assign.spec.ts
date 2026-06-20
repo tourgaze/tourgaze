@@ -17,8 +17,11 @@ test('EditTour gear picker assigns and clears gear on an existing ride', async (
     await page.getByRole('button', { name: 'Edit', exact: true }).click()
     await expect(page.getByText('Edit tour')).toBeVisible()
 
-    // Assign the gear via the picker, save.
+    // Assign the gear via the picker, save. Wait for the just-created gear to
+    // appear as an option first — the EditTour gear list is a separate query, so
+    // selecting before it has refetched is the source of the old flakiness.
     await expect(gearSelect()).toBeVisible()
+    await expect(gearSelect().locator(`option[value="${gear.id}"]`)).toBeAttached()
     await gearSelect().selectOption(gear.id)
     await page.getByRole("button", { name: /^Save/ }).last().click()
     await expect.poll(() => gearOf(request, act.id)).toBe(gear.id)
