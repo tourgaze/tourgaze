@@ -104,7 +104,7 @@ public class WatchFolderScanService {
 				for (Path file : (Iterable<Path>) stream.filter(Files::isRegularFile)
 						.filter(WatchFolderScanService::isSupported)
 						.filter(WatchFolderScanService::isFullyWritten)::iterator) {
-					if (copyIfNew(file, parked, src.keep()))
+					if (copyIfNew(file, parked, src.keep(), src.label()))
 						copied++;
 				}
 			} catch (IOException e) {
@@ -159,7 +159,7 @@ public class WatchFolderScanService {
 		}
 	}
 
-	private boolean copyIfNew(Path source, Set<String> parkedHashes, boolean keepOriginal) {
+	private boolean copyIfNew(Path source, Set<String> parkedHashes, boolean keepOriginal, String label) {
 		try {
 			byte[] data = Files.readAllBytes(source);
 			String sha = inboxService.hashOf(data);
@@ -169,6 +169,8 @@ public class WatchFolderScanService {
 			// not mutate.
 			Path target = storage.inboxDir().resolve(source.getFileName().toString());
 			Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+			// Remember which watch-folder this came from so the inbox card can show it.
+			inboxService.recordOrigin(target.getFileName().toString(), label);
 			if (!keepOriginal) {
 				// User opted out of keeping the device copy → remove the original after
 				// a successful copy (move semantics). Non-fatal if it can't be deleted.

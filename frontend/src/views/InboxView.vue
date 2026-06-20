@@ -4,7 +4,7 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
-import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Ban, Archive, Clock, Loader2 } from 'lucide-vue-next'
+import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Ban, Archive, Clock, Loader2, FolderInput } from 'lucide-vue-next'
 import { getInbox, uploadFit, discardInbox, moveInboxToProcessed, SOURCE_FORMATS, type InboxItem } from '@/api/client'
 import { InboxStreamEvent } from '@/enums/generated'
 import AddTourPanel from '@/components/AddTourPanel.vue'
@@ -181,6 +181,9 @@ async function moveProcessed(filename: string) {
             <span v-if="it.distanceKm" class="flex items-center gap-0.5"><Ruler :size="9" />{{ fmtKm(it.distanceKm) }}</span>
             <span v-if="it.durationS" class="flex items-center gap-0.5"><Timer :size="9" />{{ fmtDuration(it.durationS) }}</span>
             <span v-if="it.activityType">{{ it.activityType }}</span>
+            <span v-if="it.sourceLabel" class="flex items-center gap-0.5" :title="`Found in watch-folder: ${it.sourceLabel}`">
+              <FolderInput :size="9" />{{ it.sourceLabel }}
+            </span>
           </div>
           <div v-if="it.startTime" class="text-[10px] text-muted-fg mt-0.5 flex items-center gap-0.5">
             <Clock :size="9" />{{ fmtDateTime(it.startTime) }}

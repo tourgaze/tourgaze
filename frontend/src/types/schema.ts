@@ -1101,6 +1101,7 @@ export interface components {
             suggestedTagNames?: string[];
             proposalPending?: boolean;
             parsing?: boolean;
+            sourceLabel?: string;
         };
         PreviewPoint: {
             /** Format: double */

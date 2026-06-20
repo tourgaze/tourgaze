@@ -20,10 +20,15 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import jakarta.annotation.PostConstruct;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.github.tourgaze.dto.InboxImportRequest;
 import io.github.tourgaze.dto.InboxItemDto;
@@ -82,6 +87,14 @@ public class InboxService {
 			String dupId, String dupName) {
 	}
 
+	/**
+	 * Filename → originating watch-folder label, for files copied in by the scanner
+	 * (Settings → Inbox source). Persisted next to the staged files in
+	 * inbox/.origins.json so the card can show where a ride came from even after a
+	 * restart. Files dropped/uploaded by hand simply have no entry.
+	 */
+	private final ConcurrentHashMap<String, String> origins = new ConcurrentHashMap<>();
+
 	/** When the warm job last completed a sweep (diagnostics). */
 	private volatile Instant lastWarmRun;
 
@@ -101,6 +114,7 @@ public class InboxService {
 	private final RideProposalService proposalService;
 	private final PeakPassService peakPass;
 	private final InboxStreamService inboxStream;
+	private final ObjectMapper objectMapper;
 
 	public InboxService(StorageService storage,
 			io.github.tourgaze.parser.TrackParser trackParser,
@@ -117,7 +131,8 @@ public class InboxService {
 			MediaProcessor mediaProcessor,
 			RideProposalService proposalService,
 			PeakPassService peakPass,
-			InboxStreamService inboxStream) {
+			InboxStreamService inboxStream,
+			ObjectMapper objectMapper) {
 		this.storage = storage;
 		this.trackParser = trackParser;
 		this.activityRepo = activityRepo;
@@ -134,6 +149,44 @@ public class InboxService {
 		this.proposalService = proposalService;
 		this.peakPass = peakPass;
 		this.inboxStream = inboxStream;
+		this.objectMapper = objectMapper;
+	}
+
+	private Path originsFile() {
+		return storage.inboxDir().resolve(".origins.json");
+	}
+
+	/** Load the filename → watch-folder-label map once at startup (best-effort). */
+	@PostConstruct
+	void loadOrigins() {
+		Path f = originsFile();
+		if (!Files.isRegularFile(f))
+			return;
+		try {
+			origins.putAll(objectMapper.readValue(Files.readAllBytes(f),
+					new TypeReference<Map<String, String>>() {
+					}));
+		} catch (Exception e) {
+			log.debug("[Inbox] origins load skipped: {}", e.getMessage());
+		}
+	}
+
+	private synchronized void saveOrigins() {
+		Path f = originsFile();
+		try {
+			Files.createDirectories(f.getParent());
+			Files.write(f, objectMapper.writeValueAsBytes(origins));
+		} catch (IOException e) {
+			log.debug("[Inbox] origins save failed: {}", e.getMessage());
+		}
+	}
+
+	/** Record which watch-folder a freshly-copied inbox file came from. */
+	public void recordOrigin(String filename, String label) {
+		if (filename == null || label == null || label.isBlank())
+			return;
+		origins.put(filename, label);
+		saveOrigins();
 	}
 
 	/**
@@ -205,9 +258,12 @@ public class InboxService {
 				}
 			}
 			// Drop cache entries for files that have left the inbox (imported/ignored).
-			parseCache.keySet().retainAll(files.stream()
+			Set<String> present = files.stream()
 					.map(f -> f.getFileName().toString())
-					.collect(java.util.stream.Collectors.toSet()));
+					.collect(java.util.stream.Collectors.toSet());
+			parseCache.keySet().retainAll(present);
+			if (origins.keySet().retainAll(present))
+				saveOrigins();
 			if (warmed > 0)
 				log.info("[Inbox] warmed {} proposal(s)", warmed);
 			if (warmed > 0)
@@ -328,7 +384,7 @@ public class InboxService {
 				pred != null ? pred.region() : null,
 				pred != null ? pred.country() : null,
 				pred != null ? proposedTagNames(pred) : List.of(),
-				proposalPending, false);
+				proposalPending, false, origins.get(filename));
 	}
 
 	/** A not-yet-parsed card: name/size/format only, {@code parsing: true}. */
@@ -343,7 +399,7 @@ public class InboxService {
 		return new InboxItemDto(
 				filename, null, size, io.github.tourgaze.parser.SourceFormat.from(extensionOf(filename)),
 				suggestedName, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, List.of(), false, true);
+				null, null, null, List.of(), false, true, origins.get(filename));
 	}
 
 	/**

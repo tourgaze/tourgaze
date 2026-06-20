@@ -72,5 +72,9 @@ public record InboxItemDto(
         // not yet parsed by the warm job, so distance/type/duplicate are still null.
         // GET /inbox returns these instantly (just a directory listing); an SSE push
         // flips them to fully-parsed cards. Lets the inbox paint immediately.
-        boolean parsing
+        boolean parsing,
+        // Label of the watch-folder this file was copied in from (Settings → Inbox
+        // source), e.g. "Garmin" or "Dropbox". Null for files dropped/uploaded by
+        // hand, which have no originating folder.
+        String sourceLabel
 ) {}
