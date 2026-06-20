@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.service;
@@ -94,7 +92,15 @@ public class RideProposalService {
 			if (typeWire != null && !typeWire.equalsIgnoreCase(a.getActivityType()))
 				continue;
 			String gid = a.getGear().getId();
-			names.put(gid, a.getGear().getName());
+			String gname;
+			try {
+				gname = a.getGear().getName(); // lazy load — may be a dangling ref
+			} catch (Exception e) {
+				// Gear was deleted without nulling this activity's FK — skip it rather
+				// than fail the whole proposal (and the inbox parse that calls it).
+				continue;
+			}
+			names.put(gid, gname);
 			double[] cur = agg.computeIfAbsent(gid, k -> new double[3]);
 			cur[0] += a.getAvgSpeedKmh();
 			cur[1] += (a.getElevationGainM() != null ? a.getElevationGainM() : 0) / a.getDistanceKm();

@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.dto;
@@ -29,6 +27,10 @@ import io.github.tourgaze.parser.SourceFormat;
  * @param startLat       first GPS point latitude
  * @param startLon       first GPS point longitude
  * @param existingActivityId  if this hash is already in the DB, the existing activity's ID
+ * @param duplicateOfId    if this track strongly overlaps an already-imported ride
+ *                         (same route, not byte-identical), that ride's ID — so the
+ *                         inbox can warn before importing a duplicate. Null otherwise.
+ * @param duplicateOfName  name of the {@code duplicateOfId} ride, for display.
  */
 public record InboxItemDto(
         String filename,
@@ -51,5 +53,24 @@ public record InboxItemDto(
         // Proposed gear (heuristic from past rides of similar pace + hilliness) —
         // pre-fills the AddTour gear picker. Null if no usable history.
         String suggestedGearId,
-        String suggestedGearName
+        String suggestedGearName,
+        // Same-route (not byte-identical) duplicate of an already-imported ride.
+        String duplicateOfId,
+        String duplicateOfName,
+        // Proposal preview baked onto the card (matros-style): reverse-geocoded
+        // start place, region, ISO country, and suggested tag names (existing
+        // nearby-ride tags + region/country) the user can accept on import.
+        String suggestedLocation,
+        String region,
+        String country,
+        java.util.List<String> suggestedTagNames,
+        // True while the proposal is still being computed in the background (the
+        // file has GPS but the reverse-geocode/tag-vote hasn't run yet). The card
+        // shows a "processing" state; an SSE push flips it to ready once warmed.
+        boolean proposalPending,
+        // True for a skeleton card: the file is listed (name/size/format known) but
+        // not yet parsed by the warm job, so distance/type/duplicate are still null.
+        // GET /inbox returns these instantly (just a directory listing); an SSE push
+        // flips them to fully-parsed cards. Lets the inbox paint immediately.
+        boolean parsing
 ) {}

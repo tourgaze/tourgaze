@@ -1,24 +1,32 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.service;
 
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
@@ -26,6 +34,7 @@ import io.github.tourgaze.dto.PredictionDto;
 import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.repository.ActivityRepository;
 import io.github.tourgaze.repository.SettingRepository;
+import io.github.tourgaze.store.StorageService;
 import io.github.tourgaze.util.Geo;
 
 /**
@@ -42,9 +51,8 @@ import io.github.tourgaze.util.Geo;
  * Nominatim usage policy compliance:
  * - One request at a time (no parallel fetches).
  * - User-Agent header set to identify the app per OSM policy.
- * - Results cached for a long time (Caffeine, 7-day TTL via cache config)
- * keyed on rounded coords + language, so we make at most one round-trip
- * per ~100m square per ride.
+ * - Results cached on disk (cache/geocode.json) keyed on a ~200m grid +
+ * language, reloaded on startup — so a place is fetched once, ever.
  */
 @Service
 public class PredictionService {
@@ -57,18 +65,99 @@ public class PredictionService {
 	private final SettingRepository settingRepo;
 	private final ActivityRepository activityRepo;
 	private final ObjectMapper objectMapper;
+	private final StorageService storage;
 	private final HttpClient httpClient;
+
+	/**
+	 * Reverse-geocode results, cached on disk (cache/geocode.json) just like map
+	 * tiles — so a place is looked up once, ever. Most rides start at the same
+	 * home/trailhead, and at ~200m grid resolution they all share one entry, so
+	 * after the first run Nominatim is barely touched (and never on restart).
+	 */
+	private final ConcurrentHashMap<String, ReverseGeoResult> geoCache = new ConcurrentHashMap<>();
+	private final AtomicBoolean geoDirty = new AtomicBoolean(false);
+
+	/**
+	 * Min spacing between actual Nominatim calls (cache misses only) — OSM policy
+	 * is
+	 * ~1 req/s, one at a time. Cache hits never reach the network, so re-warming an
+	 * all-cached inbox is instant; only genuinely-new places are throttled here.
+	 */
+	private static final long NOMINATIM_GAP_MS = 1100;
+	private final Object nominatimGate = new Object();
+	private long lastNominatimCallMs = 0;
 
 	public PredictionService(SettingRepository settingRepo,
 			ActivityRepository activityRepo,
-			ObjectMapper objectMapper) {
+			ObjectMapper objectMapper,
+			StorageService storage) {
 		this.settingRepo = settingRepo;
 		this.activityRepo = activityRepo;
 		this.objectMapper = objectMapper;
+		this.storage = storage;
 		this.httpClient = HttpClient.newBuilder()
 				.connectTimeout(Duration.ofSeconds(8))
 				.followRedirects(HttpClient.Redirect.NORMAL)
 				.build();
+	}
+
+	private Path geoCacheFile() {
+		return storage.cacheDir().resolve("geocode.json");
+	}
+
+	/** Load the on-disk geocode cache once at startup (best-effort). */
+	@PostConstruct
+	void loadGeoCache() {
+		Path f = geoCacheFile();
+		if (!Files.isRegularFile(f))
+			return;
+		try {
+			Map<String, ReverseGeoResult> saved = objectMapper.readValue(Files.readAllBytes(f),
+					new TypeReference<Map<String, ReverseGeoResult>>() {
+					});
+			geoCache.putAll(saved);
+			log.info("[Geocode] loaded {} cached places from {}", geoCache.size(), f);
+		} catch (Exception e) {
+			log.debug("[Geocode] cache load skipped: {}", e.getMessage());
+		}
+	}
+
+	/** Persist new geocode entries to disk periodically (and on shutdown). */
+	@Scheduled(fixedDelay = 30_000)
+	public void flushGeoCache() {
+		if (!geoDirty.getAndSet(false))
+			return;
+		Path f = geoCacheFile();
+		try {
+			Files.createDirectories(f.getParent());
+			Files.write(f, objectMapper.writeValueAsBytes(geoCache));
+		} catch (IOException e) {
+			geoDirty.set(true); // retry next tick
+			log.debug("[Geocode] cache flush failed: {}", e.getMessage());
+		}
+	}
+
+	@PreDestroy
+	void flushGeoCacheOnShutdown() {
+		geoDirty.set(true);
+		flushGeoCache();
+	}
+
+	/**
+	 * Block until ≥{@link #NOMINATIM_GAP_MS} since the last real Nominatim call.
+	 */
+	private void throttleNominatim() {
+		synchronized (nominatimGate) {
+			long wait = NOMINATIM_GAP_MS - (System.currentTimeMillis() - lastNominatimCallMs);
+			if (wait > 0) {
+				try {
+					Thread.sleep(wait);
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+				}
+			}
+			lastNominatimCallMs = System.currentTimeMillis();
+		}
 	}
 
 	/** Resolved language for outbound geocoding requests. Default DE. */
@@ -125,9 +214,33 @@ public class PredictionService {
 
 	// ── Nominatim reverse geocode ───────────────────────────────────────────
 
-	/** Cached by 3-decimal-place coords + lang. ~100m grid → ample. */
-	@Cacheable(value = "geocode", key = "T(java.lang.String).format('%.3f|%.3f|%s', #lat, #lon, #lang)")
+	/**
+	 * Reverse-geocode, served from the on-disk cache ({@link #geoCache}) snapped to
+	 * a ~200m grid + lang. Reverse-geocoding doesn't need GPS precision — every
+	 * ride
+	 * from the same home / trailhead wants the same place name — so a coarse grid
+	 * collapses a whole cluster of starts into ONE Nominatim call, looked up once
+	 * ever (the cache persists across restarts, like map tiles). Failures (null —
+	 * timeout / rate-limit) are NOT cached so each lookup retries independently.
+	 */
 	public ReverseGeoResult reverseGeocode(double lat, double lon, String lang) {
+		// ~200m grid key → every ride from the same home/trailhead shares one entry.
+		String key = Math.round(lat / 0.002) + "|" + Math.round(lon / 0.002) + "|" + lang;
+		ReverseGeoResult hit = geoCache.get(key);
+		if (hit != null)
+			return hit;
+		ReverseGeoResult result = fetchReverseGeocode(lat, lon, lang);
+		if (result != null) { // never cache failures — they retry independently
+			geoCache.put(key, result);
+			geoDirty.set(true);
+		}
+		return result;
+	}
+
+	/**
+	 * One Nominatim round-trip. Returns null on any failure (kept out of cache).
+	 */
+	private ReverseGeoResult fetchReverseGeocode(double lat, double lon, String lang) {
 		try {
 			String url = NOMINATIM_BASE
 					+ "?lat=" + lat
@@ -141,6 +254,7 @@ public class PredictionService {
 					.header("User-Agent", "TourGaze/1.0 (https://github.com/tourgaze)")
 					.timeout(Duration.ofSeconds(8))
 					.build();
+			throttleNominatim(); // serialize + space real calls; cache hits never get here
 			HttpResponse<String> resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
 			if (resp.statusCode() != 200) {
 				log.debug("Nominatim {} for ({}, {}): {}", resp.statusCode(), lat, lon, resp.body());

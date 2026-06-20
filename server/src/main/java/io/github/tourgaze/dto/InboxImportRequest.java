@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.dto;
@@ -16,6 +14,9 @@ public record InboxImportRequest(
         String gearId,
         String userId,
         List<String> tagIds,
+        // Tag NAMES to find-or-create at import (e.g. accepted region/country
+        // proposals that don't exist as tags yet). Applied alongside tagIds.
+        List<String> tagNames,
         Double weatherTempC,
         Integer weatherHumidityPct,
         Double weatherWindKph,

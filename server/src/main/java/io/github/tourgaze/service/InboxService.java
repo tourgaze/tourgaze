@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.service;
@@ -19,6 +17,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import io.github.tourgaze.dto.InboxImportRequest;
 import io.github.tourgaze.dto.InboxItemDto;
+import io.github.tourgaze.dto.PredictionDto;
+import io.github.tourgaze.dto.RouteCandidate;
 import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.entity.Tag;
 import io.github.tourgaze.entity.User;
@@ -48,6 +50,41 @@ public class InboxService {
 
 	private static final Logger log = LoggerFactory.getLogger(InboxService.class);
 
+	/**
+	 * Cell-overlap (Jaccard) at/above which an import is treated as the same track.
+	 */
+	private static final double SAME_TRACK_OVERLAP = 0.80;
+
+	/**
+	 * Proposal cache keyed by file content hash — so the inbox list doesn't
+	 * re-reverse-geocode / re-vote tags for the same staged file on every request.
+	 * Rebuilt cheaply on boot: reverse-geocoding is disk-cached, so the warm job
+	 * mostly replays cache hits.
+	 */
+	private final ConcurrentHashMap<String, PredictionDto> predictionCache = new ConcurrentHashMap<>();
+
+	/**
+	 * Parsed-metadata cache keyed by filename → the file's decoded card (distance,
+	 * type, duplicate, …) plus its mtime. The warm job fills this;
+	 * {@code GET /inbox}
+	 * reads it instead of re-parsing every file on every request — so the list is a
+	 * fast directory listing, and uncached files come back as skeletons until
+	 * warmed.
+	 */
+	private final ConcurrentHashMap<String, ParsedCard> parseCache = new ConcurrentHashMap<>();
+
+	/** Decoded inbox-file metadata (everything except the geocode proposal). */
+	private record ParsedCard(long mtime, String sha, long size,
+			io.github.tourgaze.parser.SourceFormat format, String suggestedName,
+			io.github.tourgaze.enums.ActivityType type, Instant startTime, Double distanceKm, Integer durationS,
+			Double lat, Double lon, Double endLat, Double endLon,
+			String existingActivityId, String gearId, String gearName,
+			String dupId, String dupName) {
+	}
+
+	/** When the warm job last completed a sweep (diagnostics). */
+	private volatile Instant lastWarmRun;
+
 	private final StorageService storage;
 	private final io.github.tourgaze.parser.TrackParser trackParser;
 	private final ActivityRepository activityRepo;
@@ -63,6 +100,7 @@ public class InboxService {
 	private final MediaProcessor mediaProcessor;
 	private final RideProposalService proposalService;
 	private final PeakPassService peakPass;
+	private final InboxStreamService inboxStream;
 
 	public InboxService(StorageService storage,
 			io.github.tourgaze.parser.TrackParser trackParser,
@@ -78,7 +116,8 @@ public class InboxService {
 			MediaManifestService mediaManifest,
 			MediaProcessor mediaProcessor,
 			RideProposalService proposalService,
-			PeakPassService peakPass) {
+			PeakPassService peakPass,
+			InboxStreamService inboxStream) {
 		this.storage = storage;
 		this.trackParser = trackParser;
 		this.activityRepo = activityRepo;
@@ -94,41 +133,217 @@ public class InboxService {
 		this.mediaProcessor = mediaProcessor;
 		this.proposalService = proposalService;
 		this.peakPass = peakPass;
+		this.inboxStream = inboxStream;
 	}
 
-	public List<InboxItemDto> listPending() throws IOException {
-		try (var stream = Files.list(storage.inboxDir())) {
-			return stream
-					.filter(Files::isRegularFile)
-					.filter(this::isSupported)
-					.map(this::stageOrSweepDuplicate)
-					.filter(java.util.Objects::nonNull)
-					.toList();
+	/**
+	 * The one and only inbox warm — a single scheduled job with two phases per run:
+	 * first PARSE any new/changed files (fast — fills distance/type/duplicate on
+	 * the
+	 * cards), then GEOCODE the parsed-but-unwarmed ones (rate-limited — fills place
+	 * +
+	 * tags). An SSE event is pushed after each batch so the cards enrich
+	 * progressively. Items are independent: a geocode failure just leaves one for
+	 * the
+	 * next run (failsafe, built in).
+	 *
+	 * No triggers, no single-flight flag: {@code fixedDelay} guarantees runs never
+	 * overlap, and parses/geocodes are cached, so a run with nothing new is free.
+	 * {@code GET /inbox} reads the parse cache, so it never blocks on parsing.
+	 */
+	@org.springframework.scheduling.annotation.Scheduled(fixedDelayString = "${tourgaze.inbox.warm-ms:10000}", initialDelayString = "${tourgaze.inbox.warm-initial-ms:5000}")
+	public void warmPending() {
+		int parsed = 0;
+		int warmed = 0;
+		try {
+			List<Path> files;
+			try (var stream = Files.list(storage.inboxDir())) {
+				files = stream.filter(Files::isRegularFile).filter(this::isSupported).toList();
+			}
+			// Phase 1 — parse new/changed files (turns skeleton cards into full cards).
+			List<RouteCandidate> candidates = null;
+			for (Path file : files) {
+				String name = file.getFileName().toString();
+				long mtime = mtimeOf(file);
+				ParsedCard cached = parseCache.get(name);
+				if (cached != null && cached.mtime() == mtime)
+					continue; // already parsed, unchanged
+				if (candidates == null)
+					candidates = activityRepo.findRouteCandidates("");
+				ParsedCard pc = parseOne(file, mtime, candidates);
+				if (pc == null)
+					continue; // unreadable
+				if (pc.existingActivityId() != null) {
+					// Byte-identical to an imported ride → sweep the redundant inbox copy.
+					try {
+						Files.deleteIfExists(file);
+					} catch (IOException e) {
+						log.debug("Could not sweep duplicate {}: {}", file, e.getMessage());
+					}
+					parseCache.remove(name);
+					continue;
+				}
+				parseCache.put(name, pc);
+				if (++parsed % 10 == 0)
+					inboxStream.changed(); // progressive push
+			}
+			if (parsed > 0)
+				inboxStream.changed();
+			// Phase 2 — geocode parsed files that aren't warmed yet (rate-limited).
+			for (Path file : files) {
+				ParsedCard pc = parseCache.get(file.getFileName().toString());
+				if (pc == null || pc.sha() == null || pc.lat() == null)
+					continue;
+				if (predictionCache.containsKey(pc.sha()))
+					continue;
+				PredictionDto pred = safePredict(pc.lat(), pc.lon(), pc.endLat(), pc.endLon(), pc.distanceKm());
+				// Only cache a real result — leave failures uncached so a later run retries.
+				if (pred != null && pred.startLocation() != null && !pred.startLocation().isBlank()) {
+					predictionCache.put(pc.sha(), pred);
+					if (++warmed % 5 == 0)
+						inboxStream.changed();
+				}
+			}
+			// Drop cache entries for files that have left the inbox (imported/ignored).
+			parseCache.keySet().retainAll(files.stream()
+					.map(f -> f.getFileName().toString())
+					.collect(java.util.stream.Collectors.toSet()));
+			if (warmed > 0)
+				log.info("[Inbox] warmed {} proposal(s)", warmed);
+			if (warmed > 0)
+				inboxStream.changed();
+		} catch (IOException e) {
+			log.debug("[Inbox] warm sweep failed: {}", e.getMessage());
+		} finally {
+			lastWarmRun = Instant.now();
+		}
+	}
+
+	/** When the warm job last completed a sweep (null until the first run). */
+	public Instant lastWarmRun() {
+		return lastWarmRun;
+	}
+
+	private long mtimeOf(Path f) {
+		try {
+			return Files.getLastModifiedTime(f).toMillis();
+		} catch (IOException e) {
+			return 0L;
 		}
 	}
 
 	/**
-	 * Stages a file as a pending inbox item — except when its hash already
-	 * matches an imported activity, in which case it silently cleans up the
-	 * duplicate so it never resurfaces. Caller filters out {@code null}.
+	 * Decode one inbox file into its {@link ParsedCard} (distance, type, gear,
+	 * duplicate detection, …) — everything the card shows except the geocode
+	 * proposal, which Phase 2 fills in. Returns null if the file can't be read; a
+	 * non-track file (TCX/unknown) still returns a stub card so it appears in the
+	 * UI.
 	 */
-	private InboxItemDto stageOrSweepDuplicate(Path file) {
-		InboxItemDto item = stage(file);
-		if (item == null)
-			return null;
-		if (item.existingActivityId() != null) {
-			// Sweep the duplicate: the same hash is already imported, so the
-			// bytes in inbox/ are redundant. If the delete fails (locked,
-			// permissions), the next list call sees the same hit and tries
-			// again — non-fatal.
-			try {
-				Files.deleteIfExists(file);
-			} catch (IOException e) {
-				log.debug("Could not sweep duplicate {}: {}", file, e.getMessage());
+	private ParsedCard parseOne(Path file, long mtime, List<RouteCandidate> candidates) {
+		try {
+			String filename = file.getFileName().toString();
+			String ext = extensionOf(filename);
+			long size = Files.size(file);
+			byte[] data = Files.readAllBytes(file);
+			String sha = sha256Hex(data);
+			var format = io.github.tourgaze.parser.SourceFormat.from(ext);
+			String suggestedName = filename.replaceAll("(?i)\\.(fit|gpx|tcx|kmz|kml)$", "");
+			// If the same content is already imported, flag it so the warm sweeps it.
+			String existingId = activityRepo.findBySourceHash(sha).map(Activity::getId).orElse(null);
+
+			if (existingId == null && trackParser.canParse(ext)) {
+				ParseResult r = trackParser.parse(data, ext);
+				Double lat = r.points().isEmpty() ? null : r.points().get(0).lat();
+				Double lon = r.points().isEmpty() ? null : r.points().get(0).lon();
+				int last = r.points().size() - 1;
+				Double endLat = last <= 0 ? null : r.points().get(last).lat();
+				Double endLon = last <= 0 ? null : r.points().get(last).lon();
+				Double distanceKm = r.distanceM() != null ? r.distanceM() / 1000.0 : null;
+				Double avgKmh = (r.durationS() != null && r.durationS() > 0 && distanceKm != null)
+						? distanceKm / (r.durationS() / 3600.0)
+						: (r.avgSpeedMs() != null ? r.avgSpeedMs() * 3.6 : null);
+				var type = proposalService.proposeType(r.sport(), avgKmh);
+				var gear = proposalService.proposeGear(avgKmh, distanceKm, r.ascentM(), type);
+				RouteCandidate dup = findSameTrack(r.points(), candidates);
+				return new ParsedCard(mtime, sha, size, format, suggestedName, type, r.startTime(), distanceKm,
+						r.durationS(), lat, lon, endLat, endLon, existingId,
+						gear != null ? gear.gearId() : null, gear != null ? gear.gearName() : null,
+						dup != null ? dup.id() : null, dup != null ? dup.name() : null);
 			}
+			// Already-imported or unparseable format → stub card (no track metadata).
+			return new ParsedCard(mtime, sha, size, format, suggestedName, null, null, null, null,
+					null, null, null, null, existingId, null, null, null, null);
+		} catch (Exception e) {
+			log.warn("Could not parse inbox file {}: {}", file, e.getMessage());
 			return null;
 		}
-		return item;
+	}
+
+	/** Push an inbox-changed event now (no warm) — for new files / removals. */
+	public void notifyChanged() {
+		inboxStream.changed();
+	}
+
+	/**
+	 * Instant inbox listing — just a directory scan (names + size + mtime, no file
+	 * reads, no parsing). Files already decoded by the warm job come back as full
+	 * cards (assembled from the parse + geocode caches); the rest come back as
+	 * skeletons ({@code parsing: true}) and fill in via SSE as the warm processes
+	 * them. So the list paints immediately even for a huge inbox.
+	 */
+	public List<InboxItemDto> listPending() throws IOException {
+		List<Path> files;
+		try (var stream = Files.list(storage.inboxDir())) {
+			files = stream.filter(Files::isRegularFile).filter(this::isSupported).sorted().toList();
+		}
+		List<InboxItemDto> out = new java.util.ArrayList<>(files.size());
+		for (Path file : files) {
+			String name = file.getFileName().toString();
+			ParsedCard pc = parseCache.get(name);
+			if (pc != null && pc.mtime() == mtimeOf(file)) {
+				out.add(assemble(name, pc));
+			} else {
+				out.add(skeleton(file, name));
+			}
+		}
+		return out;
+	}
+
+	/**
+	 * Assemble a full card from a cached parse + (if ready) its geocode proposal.
+	 */
+	private InboxItemDto assemble(String filename, ParsedCard pc) {
+		PredictionDto pred = pc.sha() != null ? predictionCache.get(pc.sha()) : null;
+		// Smart name (location-based) wins over the bare filename stem.
+		String displayName = (pred != null && pred.suggestedName() != null && !pred.suggestedName().isBlank())
+				? pred.suggestedName()
+				: pc.suggestedName();
+		// "Processing" once parsed: has GPS but the geocode/tag-vote hasn't run yet.
+		boolean proposalPending = pred == null && pc.lat() != null;
+		return new InboxItemDto(
+				filename, pc.sha(), pc.size(), pc.format(), displayName, pc.type(),
+				pc.startTime(), pc.distanceKm(), pc.durationS(), pc.lat(), pc.lon(), pc.endLat(), pc.endLon(),
+				pc.existingActivityId(), pc.gearId(), pc.gearName(), pc.dupId(), pc.dupName(),
+				pred != null ? pred.startLocation() : null,
+				pred != null ? pred.region() : null,
+				pred != null ? pred.country() : null,
+				pred != null ? proposedTagNames(pred) : List.of(),
+				proposalPending, false);
+	}
+
+	/** A not-yet-parsed card: name/size/format only, {@code parsing: true}. */
+	private InboxItemDto skeleton(Path file, String filename) {
+		long size;
+		try {
+			size = Files.size(file);
+		} catch (IOException e) {
+			size = 0;
+		}
+		String suggestedName = filename.replaceAll("(?i)\\.(fit|gpx|tcx|kmz|kml)$", "");
+		return new InboxItemDto(
+				filename, null, size, io.github.tourgaze.parser.SourceFormat.from(extensionOf(filename)),
+				suggestedName, null, null, null, null, null, null, null, null, null, null, null, null, null,
+				null, null, null, List.of(), false, true);
 	}
 
 	/**
@@ -153,6 +368,32 @@ public class InboxService {
 						}
 					});
 		}
+	}
+
+	/**
+	 * SHA-256 hashes of every file parked in inbox-ignored/ and inbox-processed/.
+	 * The watch-folder scanner consults this so a duplicate the user ignored (or
+	 * moved to processed) isn't re-copied from the still-present source device on
+	 * the next scan — "stays on the Garmin, stays ignored here".
+	 */
+	public Set<String> parkedHashes() {
+		Set<String> out = new HashSet<>();
+		for (Path dir : List.of(storage.inboxIgnoredDir(), storage.inboxProcessedDir())) {
+			if (!Files.isDirectory(dir))
+				continue;
+			try (var s = Files.list(dir)) {
+				s.filter(Files::isRegularFile).forEach(p -> {
+					try {
+						out.add(sha256Hex(Files.readAllBytes(p)));
+					} catch (IOException e) {
+						log.debug("Could not hash parked file {}: {}", p, e.getMessage());
+					}
+				});
+			} catch (IOException e) {
+				log.debug("Could not list parked dir {}: {}", dir, e.getMessage());
+			}
+		}
+		return out;
 	}
 
 	public StorageService getStorage() {
@@ -323,59 +564,6 @@ public class InboxService {
 		return sha256Hex(bytes);
 	}
 
-	private InboxItemDto stage(Path file) {
-		try {
-			String filename = file.getFileName().toString();
-			String ext = extensionOf(filename);
-			long size = Files.size(file);
-			byte[] data = Files.readAllBytes(file);
-			String sha = sha256Hex(data);
-
-			// If the same content is already imported, surface that to the UI so it
-			// can offer a "discard" button instead of re-importing.
-			String existingId = activityRepo.findBySourceHash(sha).map(Activity::getId).orElse(null);
-
-			String suggestedName = filename.replaceAll("(?i)\\.(fit|gpx|tcx|kmz|kml)$", "");
-
-			if (trackParser.canParse(ext)) {
-				try {
-					ParseResult r = trackParser.parse(data, ext);
-					Double lat = r.points().isEmpty() ? null : r.points().get(0).lat();
-					Double lon = r.points().isEmpty() ? null : r.points().get(0).lon();
-					int last = r.points().size() - 1;
-					Double endLat = last <= 0 ? null : r.points().get(last).lat();
-					Double endLon = last <= 0 ? null : r.points().get(last).lon();
-					Double distanceKm = r.distanceM() != null ? r.distanceM() / 1000.0 : null;
-					Double avgKmh = (r.durationS() != null && r.durationS() > 0 && distanceKm != null)
-							? distanceKm / (r.durationS() / 3600.0)
-							: (r.avgSpeedMs() != null ? r.avgSpeedMs() * 3.6 : null);
-					// Reasonable defaults: obvious activity type + a gear guess from history.
-					var type = proposalService.proposeType(r.sport(), avgKmh);
-					var gear = proposalService.proposeGear(avgKmh, distanceKm, r.ascentM(), type);
-					return new InboxItemDto(
-							filename, sha, size,
-							io.github.tourgaze.parser.SourceFormat.from(ext), suggestedName,
-							type,
-							r.startTime(), distanceKm,
-							r.durationS(), lat, lon, endLat, endLon, existingId,
-							gear != null ? gear.gearId() : null, gear != null ? gear.gearName() : null);
-				} catch (Exception e) {
-					log.warn("Could not parse {}: {}", filename, e.getMessage());
-				}
-			}
-
-			// TCX / unknown formats not yet parsed — surface a bare-bones stub so the
-			// user still sees the file in the inbox UI and can discard it.
-			return new InboxItemDto(
-					filename, sha, size,
-					io.github.tourgaze.parser.SourceFormat.from(ext), suggestedName,
-					null, null, null, null, null, null, null, null, existingId, null, null);
-		} catch (IOException e) {
-			log.warn("Cannot read inbox file {}: {}", file, e.getMessage());
-			return null;
-		}
-	}
-
 	/**
 	 * Confirm an inbox item → move into store/, create the Activity, apply the
 	 * user-supplied form overrides, fire-and-forget weather lookup.
@@ -476,6 +664,15 @@ public class InboxService {
 			if (req.tagIds() != null && !req.tagIds().isEmpty()) {
 				List<Tag> tags = tagRepo.findAllById(req.tagIds());
 				a.setTags(new HashSet<>(tags));
+			}
+			// Accepted region/country (etc.) proposals arrive as names → find-or-create
+			// the root tag and apply it, on top of any id-based tags above.
+			if (req.tagNames() != null && !req.tagNames().isEmpty()) {
+				for (String tn : req.tagNames()) {
+					Tag t = findOrCreateRootTag(tn);
+					if (t != null)
+						a.getTags().add(t);
+				}
 			}
 			if (req.weatherTempC() != null)
 				a.getWeather().setTempC(req.weatherTempC());
@@ -584,20 +781,118 @@ public class InboxService {
 	}
 
 	/**
+	 * Find an already-imported ride whose route overlaps the given staged track by
+	 * at least {@link #SAME_TRACK_OVERLAP} (Jaccard on the geohash-cell
+	 * fingerprint) — i.e. this file is effectively the same track recorded again
+	 * (not byte-identical, which the SHA dedup already sweeps). {@code candidates}
+	 * is the cached scalar projection of existing rides, passed in so a whole
+	 * inbox listing runs one query, not one per file. Returns the strongest match,
+	 * or null when none reaches the threshold.
+	 */
+	private RouteCandidate findSameTrack(List<io.github.tourgaze.parser.TrackPoint> points,
+			List<RouteCandidate> candidates) {
+		if (points.isEmpty())
+			return null;
+		Set<String> cells = toCells(RouteSimilarityService.fingerprint(points));
+		if (cells.size() < 8)
+			return null; // too short to confidently call it the "same track"
+		RouteCandidate best = null;
+		double bestJac = 0;
+		for (RouteCandidate c : candidates) {
+			Set<String> other = toCells(c.routeGeocells());
+			if (other.isEmpty())
+				continue;
+			Set<String> inter = new HashSet<>(cells);
+			inter.retainAll(other);
+			int union = cells.size() + other.size() - inter.size();
+			double jaccard = union == 0 ? 0 : (double) inter.size() / union;
+			if (jaccard >= SAME_TRACK_OVERLAP && jaccard > bestJac) {
+				bestJac = jaccard;
+				best = c;
+			}
+		}
+		return best;
+	}
+
+	private static Set<String> toCells(String fingerprint) {
+		if (fingerprint == null || fingerprint.isBlank())
+			return Set.of();
+		return new HashSet<>(List.of(fingerprint.trim().split("\\s+")));
+	}
+
+	/** Best-effort reverse-geocode + tag-vote proposal; null on any failure. */
+	private PredictionDto safePredict(Double lat, Double lon, Double endLat, Double endLon, Double distanceKm) {
+		try {
+			return predictionService.predict(lat, lon, endLat, endLon, distanceKm);
+		} catch (Exception e) {
+			log.debug("[Inbox] prediction failed: {}", e.getMessage());
+			return null;
+		}
+	}
+
+	/**
+	 * Display names for the card's suggested-tag chips: existing nearby-ride tags
+	 * plus the proposed region + country (deduped, order preserved).
+	 */
+	private List<String> proposedTagNames(PredictionDto pred) {
+		java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+		if (pred.suggestedTagIds() != null && !pred.suggestedTagIds().isEmpty())
+			tagRepo.findAllById(pred.suggestedTagIds()).forEach(t -> out.add(t.getName()));
+		if (pred.region() != null && !pred.region().isBlank())
+			out.add(pred.region());
+		if (pred.country() != null && !pred.country().isBlank())
+			out.add(pred.country());
+		return new java.util.ArrayList<>(out);
+	}
+
+	/**
+	 * Find an existing root-level tag by name (case-insensitive) or create one —
+	 * used to materialise accepted region/country proposals at import. Colour is
+	 * deterministic from the name so the same place always gets the same swatch.
+	 */
+	private Tag findOrCreateRootTag(String name) {
+		String n = name == null ? "" : name.trim();
+		if (n.isEmpty())
+			return null;
+		List<Tag> existing = tagRepo.findByParentIsNullAndNameIgnoreCase(n);
+		if (!existing.isEmpty())
+			return existing.get(0);
+		Tag t = new Tag();
+		t.setName(n);
+		t.setColor(String.format("#%06x", n.toLowerCase(Locale.ROOT).hashCode() & 0xFFFFFF));
+		return tagRepo.save(t);
+	}
+
+	/**
 	 * "Ignore" — move the file out of inbox/ into inbox-ignored/ instead of
 	 * deleting it. The user can drag it back into inbox/ to re-stage. We
 	 * never destroy the bytes; the only real deletion path is via the
 	 * activity-delete endpoint after a successful import.
 	 */
 	public void discard(String filename) throws IOException {
+		moveOutOfInbox(filename, storage.inboxIgnoredDir(), "Ignored");
+	}
+
+	/**
+	 * "Move to processed" — archive an inbox file into inbox-processed/ instead of
+	 * importing it (e.g. a recognised same-track duplicate). Bytes are kept, never
+	 * deleted; drag it back into inbox/ to re-stage. (matros "processed" folder.)
+	 */
+	public void moveToProcessed(String filename) throws IOException {
+		moveOutOfInbox(filename, storage.inboxProcessedDir(), "Processed");
+	}
+
+	/**
+	 * Move a file out of inbox/ into {@code destDir}, never destroying bytes.
+	 * Collisions get a -1, -2, … suffix so a previously-parked same-named file is
+	 * never overwritten.
+	 */
+	private void moveOutOfInbox(String filename, Path destDir, String verb) throws IOException {
 		Path file = storage.inboxDir().resolve(filename);
 		if (!Files.isRegularFile(file))
 			return;
-		Path destDir = storage.inboxIgnoredDir();
 		Files.createDirectories(destDir);
 		Path dest = destDir.resolve(filename);
-		// Collision: a same-named file was already ignored once. Suffix with
-		// -1, -2, … so we never silently overwrite previously-ignored bytes.
 		int n = 1;
 		while (Files.exists(dest) && n < 100) {
 			int dot = filename.lastIndexOf('.');
@@ -607,7 +902,7 @@ public class InboxService {
 			n++;
 		}
 		Files.move(file, dest, StandardCopyOption.REPLACE_EXISTING);
-		log.info("Ignored inbox file '{}' → {}", filename, dest.getFileName());
+		log.info("{} inbox file '{}' → {}", verb, filename, dest.getFileName());
 	}
 
 	private boolean isSupported(Path p) {

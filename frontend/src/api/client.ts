@@ -467,6 +467,12 @@ export async function discardInbox(filename: string): Promise<void> {
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
 
+/** Archive a staged inbox file to ~/.tourgaze/inbox-processed/ without importing it. */
+export async function moveInboxToProcessed(filename: string): Promise<void> {
+  const r = await fetch(`/api/inbox/${encodeURIComponent(filename)}/processed`, { method: 'POST' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+}
+
 // ── Weather ───────────────────────────────────────────────────────────────────
 
 export type WeatherResult = {
@@ -683,6 +689,15 @@ export async function purgeCache(): Promise<{ deleted: number; errors: number }>
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   adminEndpointAvailable = true
   return r.json()
+}
+
+/** Open the repository folder (store/ + db-backup/) in the OS file manager.
+ *  Returns the resolved path; throws with the server message when headless. */
+export async function openRepositoryFolder(): Promise<{ path: string }> {
+  const r = await fetch('/api/admin/open-folder', { method: 'POST' })
+  const body = await r.json().catch(() => ({}))
+  if (!r.ok) throw new Error(body?.error ?? `HTTP ${r.status}`)
+  return body as { path: string }
 }
 
 export async function getDiskUsage(): Promise<{ storeBytes: number; cacheBytes: number; tilesBytes: number; totalBytes: number }> {

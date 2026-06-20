@@ -2,3 +2,4 @@
 
 export * from './ActivityType';
 export * from './SourceFormat';
+export * from './InboxStreamEvent';

@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.controller;
@@ -47,13 +45,30 @@ public class InboxController {
 	private final InboxService inboxService;
 	private final PredictionService predictionService;
 	private final io.github.tourgaze.service.WatchFolderScanService watchFolders;
+	private final io.github.tourgaze.service.InboxStreamService inboxStream;
 
 	public InboxController(StorageService storage, InboxService inboxService, PredictionService predictionService,
-			io.github.tourgaze.service.WatchFolderScanService watchFolders) {
+			io.github.tourgaze.service.WatchFolderScanService watchFolders,
+			io.github.tourgaze.service.InboxStreamService inboxStream) {
 		this.storage = storage;
 		this.inboxService = inboxService;
 		this.predictionService = predictionService;
 		this.watchFolders = watchFolders;
+		this.inboxStream = inboxStream;
+	}
+
+	/**
+	 * Live inbox stream (Server-Sent Events). The UI subscribes once and refetches
+	 * on each {@code inbox-changed} event instead of polling. Replaces the old 5s
+	 * poll (matros push pattern). The event contract is published in OpenAPI via
+	 * {@link io.github.tourgaze.enums.InboxStreamEvent} so the client derives the
+	 * event names from the generated type (api-first).
+	 */
+	@io.swagger.v3.oas.annotations.Operation(summary = "Inbox event stream (SSE)", description = "Server-Sent Events stream. Emits a `connected` handshake, then an `inbox-changed` event whenever the inbox changes (file staged, proposal warmed, imported, ignored). The client refetches GET /api/inbox on `inbox-changed`. Event names are the InboxStreamEvent enum values.")
+	@io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "text/event-stream of inbox events", content = @io.swagger.v3.oas.annotations.media.Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = @io.swagger.v3.oas.annotations.media.Schema(implementation = io.github.tourgaze.enums.InboxStreamEvent.class)))
+	@GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+	public org.springframework.web.servlet.mvc.method.annotation.SseEmitter stream() {
+		return inboxStream.subscribe();
 	}
 
 	/**
@@ -135,6 +150,9 @@ public class InboxController {
 			log.error("Could not write {}: {}", safeName, e.getMessage());
 			return ResponseEntity.internalServerError().body(Map.of("error", "Could not write to inbox"));
 		}
+		// Push an inbox-changed event so the new card shows immediately; the warm job
+		// fills in its proposal (reverse-geocode + tag vote) on its next tick.
+		inboxService.notifyChanged();
 		return ResponseEntity.accepted().body(Map.of("status", "staged", "inboxName", safeName));
 	}
 
@@ -152,6 +170,7 @@ public class InboxController {
 			@RequestBody(required = false) InboxImportRequest req) {
 		try {
 			Activity a = inboxService.importItem(filename, req);
+			inboxService.notifyChanged(); // item left the inbox → refresh subscribers
 			return ResponseEntity.status(HttpStatus.CREATED).body(Map.of("activityId", a.getId()));
 		} catch (IOException e) {
 			return ResponseEntity.internalServerError().body(Map.of("error", e.getMessage()));
@@ -226,6 +245,19 @@ public class InboxController {
 	public ResponseEntity<Void> discard(@PathVariable("filename") String filename) {
 		try {
 			inboxService.discard(filename);
+			inboxService.notifyChanged();
+			return ResponseEntity.noContent().build();
+		} catch (IOException e) {
+			return ResponseEntity.internalServerError().build();
+		}
+	}
+
+	/** Archive a staged file to inbox-processed/ without importing it. */
+	@PostMapping("/{filename}/processed")
+	public ResponseEntity<Void> moveToProcessed(@PathVariable("filename") String filename) {
+		try {
+			inboxService.moveToProcessed(filename);
+			inboxService.notifyChanged();
 			return ResponseEntity.noContent().build();
 		} catch (IOException e) {
 			return ResponseEntity.internalServerError().build();

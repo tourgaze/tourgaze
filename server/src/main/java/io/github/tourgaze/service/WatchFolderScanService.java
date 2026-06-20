@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.service;
@@ -60,8 +58,13 @@ public class WatchFolderScanService {
 
 	public static final String SETTING = "inbox.sources";
 
-	/** One configured inbox folder: a display label and an absolute path. */
-	public record InboxSource(String label, String path) {
+	/** One configured inbox folder: a display label, an absolute path, and whether
+	 *  to keep the original on the device (copy) vs move it out (delete after copy). */
+	public record InboxSource(String label, String path, Boolean keepOriginal) {
+		/** Default true: never move/delete the user's device files unless opted out. */
+		boolean keep() {
+			return keepOriginal == null || keepOriginal;
+		}
 	}
 
 	private final StorageService storage;
@@ -90,6 +93,9 @@ public class WatchFolderScanService {
 	/** Scan all configured inbox folders; returns how many files were copied in. */
 	public int scanNow() {
 		int copied = 0;
+		// Computed once per scan: hashes of files the user already ignored / moved
+		// to processed, so we don't re-copy them from the (untouched) source.
+		Set<String> parked = inboxService.parkedHashes();
 		for (InboxSource src : configuredSources()) {
 			Path dir = toPath(src.path());
 			if (dir == null || !Files.isDirectory(dir))
@@ -98,15 +104,18 @@ public class WatchFolderScanService {
 				for (Path file : (Iterable<Path>) stream.filter(Files::isRegularFile)
 						.filter(WatchFolderScanService::isSupported)
 						.filter(WatchFolderScanService::isFullyWritten)::iterator) {
-					if (copyIfNew(file))
+					if (copyIfNew(file, parked, src.keep()))
 						copied++;
 				}
 			} catch (IOException e) {
 				log.warn("Inbox-folder scan failed at {}: {}", dir, e.getMessage());
 			}
 		}
-		if (copied > 0)
+		if (copied > 0) {
 			log.info("Inbox-folder scan: copied {} new file(s) into the inbox", copied);
+			// Push an inbox-changed event; the warm job fills in proposals next tick.
+			inboxService.notifyChanged();
+		}
 		return copied;
 	}
 
@@ -138,7 +147,7 @@ public class WatchFolderScanService {
 	private List<InboxSource> yamlDefaults() {
 		return appConfig.getInbox().getSources().stream()
 				.filter(s -> s != null && s.getPath() != null && !s.getPath().isBlank())
-				.map(s -> new InboxSource(s.getLabel(), s.getPath()))
+				.map(s -> new InboxSource(s.getLabel(), s.getPath(), s.isKeepOriginal()))
 				.toList();
 	}
 
@@ -150,16 +159,26 @@ public class WatchFolderScanService {
 		}
 	}
 
-	private boolean copyIfNew(Path source) {
+	private boolean copyIfNew(Path source, Set<String> parkedHashes, boolean keepOriginal) {
 		try {
 			byte[] data = Files.readAllBytes(source);
 			String sha = inboxService.hashOf(data);
-			if (inboxService.isAlreadyImported(sha) || inboxService.isAlreadyStaged(sha))
+			if (inboxService.isAlreadyImported(sha) || inboxService.isAlreadyStaged(sha) || parkedHashes.contains(sha))
 				return false;
-			// Copy (not move) — the inbox folder is a device / cloud-synced source we
-			// must not mutate.
+			// Copy by default — the source is usually a device / cloud folder we must
+			// not mutate.
 			Path target = storage.inboxDir().resolve(source.getFileName().toString());
 			Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+			if (!keepOriginal) {
+				// User opted out of keeping the device copy → remove the original after
+				// a successful copy (move semantics). Non-fatal if it can't be deleted.
+				try {
+					Files.delete(source);
+				} catch (IOException e) {
+					log.warn("Copied {} but couldn't remove the source (keep-on-device off): {}",
+							source, e.getMessage());
+				}
+			}
 			return true;
 		} catch (IOException e) {
 			log.warn("Inbox-folder scan: could not copy {}: {}", source, e.getMessage());

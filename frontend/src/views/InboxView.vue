@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { fmtDuration, fmtDateTime } from '@/lib/format'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
-import { Inbox, Bike, MapPin, Timer, Ruler, Upload } from 'lucide-vue-next'
-import { getInbox, uploadFit, SOURCE_FORMATS, type InboxItem } from '@/api/client'
+import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Ban, Archive, Clock, Loader2 } from 'lucide-vue-next'
+import { getInbox, uploadFit, discardInbox, moveInboxToProcessed, SOURCE_FORMATS, type InboxItem } from '@/api/client'
+import { InboxStreamEvent } from '@/enums/generated'
 import AddTourPanel from '@/components/AddTourPanel.vue'
 
 const qc = useQueryClient()
@@ -19,8 +20,22 @@ const formatLabel = SOURCE_FORMATS.map(f => '.' + f).join(' / ')
 const { data: items, isPending } = useQuery({
   queryKey: ['inbox'],
   queryFn: getInbox,
-  refetchInterval: 5000,
+  // Updates arrive via the SSE stream below (push). The interval is just a
+  // backstop in case the stream is unavailable (e.g. behind a proxy that buffers).
+  refetchInterval: 60000,
 })
+
+// Live push: subscribe to the inbox event stream and refetch on change, instead
+// of tight polling. EventSource reconnects automatically if the stream drops.
+let inboxStream: EventSource | null = null
+onMounted(() => {
+  try {
+    inboxStream = new EventSource('/api/inbox/stream')
+    // Event name derived from the OpenAPI-published enum (api-first), not a magic string.
+    inboxStream.addEventListener(InboxStreamEvent.INBOX_CHANGED, () => qc.invalidateQueries({ queryKey: ['inbox'] }))
+  } catch { /* SSE unavailable — the backstop interval still refreshes */ }
+})
+onBeforeUnmount(() => { inboxStream?.close(); inboxStream = null })
 
 const selected = ref<string | null>(null)
 const selectedItem = computed<InboxItem | null>(() =>
@@ -74,6 +89,23 @@ function onFileSelect(e: Event) {
 }
 
 function fmtKm(km: number | null | undefined) { return km != null ? km.toFixed(1) + ' km' : '—' }
+
+// Per-item inbox actions (matros-style inline icons). Both keep the bytes — the
+// file moves to inbox-ignored/ or inbox-processed/, never deleted.
+async function ignore(filename: string) {
+  try {
+    await discardInbox(filename)
+    qc.invalidateQueries({ queryKey: ['inbox'] })
+    push.info({ title: 'Ignored', message: 'Moved to ~/.tourgaze/inbox-ignored/' })
+  } catch { push.error('Could not ignore') }
+}
+async function moveProcessed(filename: string) {
+  try {
+    await moveInboxToProcessed(filename)
+    qc.invalidateQueries({ queryKey: ['inbox'] })
+    push.info({ title: 'Moved to processed', message: "Archived; won't re-stage." })
+  } catch { push.error('Could not move to processed') }
+}
 </script>
 
 <template>
@@ -112,19 +144,37 @@ function fmtKm(km: number | null | undefined) { return km != null ? km.toFixed(1
       </div>
 
       <div v-else class="flex-1 overflow-y-auto p-2 space-y-1">
-        <button
+        <div
           v-for="it in items"
           :key="it.filename!"
-          class="w-full text-left rounded border px-2.5 py-2 transition-colors"
+          class="group w-full text-left rounded border px-2.5 py-2 transition-colors cursor-pointer"
           :class="selected === it.filename
             ? 'border-primary bg-primary/5'
             : 'border-border hover:bg-muted/40'"
+          role="button" tabindex="0"
           @click="selected = it.filename ?? null"
+          @keydown.enter="selected = it.filename ?? null"
         >
           <div class="flex items-center gap-1.5 mb-0.5">
-            <Bike :size="12" class="text-muted-fg" />
+            <Bike :size="12" class="text-muted-fg shrink-0" />
             <span class="text-xs font-medium truncate flex-1">{{ it.suggestedName }}</span>
-            <span v-if="it.existingActivityId" class="text-[9px] text-amber-600">dup</span>
+            <span v-if="it.existingActivityId" class="text-[9px] text-amber-600 shrink-0">dup</span>
+            <span v-else-if="it.duplicateOfName"
+              class="text-[9px] px-1 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/40 shrink-0"
+              :title="`Same route as an already-imported ride: ${it.duplicateOfName}`">duplicate</span>
+            <!-- Inline actions (matros-style), revealed on hover. -->
+            <span class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
+              <button type="button" class="p-1 rounded text-muted-fg hover:text-amber-600 hover:bg-amber-500/10"
+                title="Move to processed — archive without importing (won't re-stage from your device)"
+                @click.stop="moveProcessed(it.filename!)">
+                <Archive :size="13" />
+              </button>
+              <button type="button" class="p-1 rounded text-muted-fg hover:text-red-600 hover:bg-red-500/10"
+                title="Ignore — move to inbox-ignored/ (bytes kept)"
+                @click.stop="ignore(it.filename!)">
+                <Ban :size="13" />
+              </button>
+            </span>
           </div>
           <div class="text-[10px] text-muted-fg flex flex-wrap gap-2">
             <span>{{ it.format?.toUpperCase() }}</span>
@@ -133,9 +183,32 @@ function fmtKm(km: number | null | undefined) { return km != null ? km.toFixed(1
             <span v-if="it.activityType">{{ it.activityType }}</span>
           </div>
           <div v-if="it.startTime" class="text-[10px] text-muted-fg mt-0.5 flex items-center gap-0.5">
-            <MapPin :size="9" />{{ fmtDateTime(it.startTime) }}
+            <Clock :size="9" />{{ fmtDateTime(it.startTime) }}
           </div>
-        </button>
+          <!-- Skeleton: file listed instantly, not yet parsed by the warm job (pushed → fills in). -->
+          <div v-if="it.parsing" class="text-[10px] text-muted-fg/70 mt-0.5 flex items-center gap-1">
+            <Loader2 :size="9" class="animate-spin" /> parsing…
+          </div>
+          <!-- Proposal still being computed in the background (pushed → flips to ready). -->
+          <div v-else-if="it.proposalPending" class="text-[10px] text-muted-fg/70 mt-0.5 flex items-center gap-1">
+            <Loader2 :size="9" class="animate-spin" /> finding place &amp; tags…
+          </div>
+          <!-- Proposal preview (matros-style): reverse-geocoded place + region/country. -->
+          <div v-if="it.suggestedLocation" class="text-[10px] text-muted-fg mt-0.5 flex items-center gap-0.5">
+            <MapPin :size="9" /><span class="truncate">{{ it.suggestedLocation }}</span>
+            <span v-if="it.country" class="opacity-70 shrink-0">· {{ it.country }}</span>
+          </div>
+          <!-- Suggested gear + tag chips (region/country + nearby-ride tags). -->
+          <div v-if="it.suggestedGearName || (it.suggestedTagNames && it.suggestedTagNames.length)"
+            class="flex flex-wrap items-center gap-1 mt-1">
+            <span v-if="it.suggestedGearName"
+              class="text-[9px] px-1 rounded border border-border text-muted-fg inline-flex items-center gap-0.5">
+              <Bike :size="8" />{{ it.suggestedGearName }}
+            </span>
+            <span v-for="t in (it.suggestedTagNames ?? [])" :key="t"
+              class="text-[9px] px-1 rounded-full border border-primary/40 text-primary/80">{{ t }}</span>
+          </div>
+        </div>
       </div>
     </Pane>
 

@@ -180,6 +180,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inbox/{filename}/processed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["moveToProcessed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inbox/{filename}/media": {
         parameters: {
             query?: never;
@@ -212,6 +228,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inbox/scan-watch-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["scanWatchFolders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/gear": {
         parameters: {
             query?: never;
@@ -238,6 +270,22 @@ export interface paths {
         get: operations["list_2"];
         put?: never;
         post: operations["create_5"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/open-folder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["openFolder"];
         delete?: never;
         options?: never;
         head?: never;
@@ -388,6 +436,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/version": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users/status": {
         parameters: {
             query?: never;
@@ -527,6 +591,26 @@ export interface paths {
         put?: never;
         post?: never;
         delete: operations["deleteMedia"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inbox/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inbox event stream (SSE)
+         * @description Server-Sent Events stream. Emits a `connected` handshake, then an `inbox-changed` event whenever the inbox changes (file staged, proposal warmed, imported, ignored). The client refetches GET /api/inbox on `inbox-changed`. Event names are the InboxStreamEvent enum values.
+         */
+        get: operations["stream"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -692,6 +776,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activities/{id}/highlights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_2"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inbox/{filename}": {
         parameters: {
             query?: never;
@@ -811,6 +911,7 @@ export interface components {
             gearId?: string;
             userId?: string;
             tagIds?: string[];
+            tagNames?: string[];
             /** Format: double */
             weatherTempC?: number;
             /** Format: int32 */
@@ -934,6 +1035,14 @@ export interface components {
             /** Format: int32 */
             wmoCode?: number;
         };
+        VersionDto: {
+            app?: string;
+            schemaVersion?: string;
+            schemaDescription?: string;
+            /** Format: date-time */
+            schemaInstalledOn?: string;
+            database?: string;
+        };
         TileProviderDto: {
             id?: string;
             label?: string;
@@ -984,6 +1093,14 @@ export interface components {
             existingActivityId?: string;
             suggestedGearId?: string;
             suggestedGearName?: string;
+            duplicateOfId?: string;
+            duplicateOfName?: string;
+            suggestedLocation?: string;
+            region?: string;
+            country?: string;
+            suggestedTagNames?: string[];
+            proposalPending?: boolean;
+            parsing?: boolean;
         };
         PreviewPoint: {
             /** Format: double */
@@ -991,6 +1108,11 @@ export interface components {
             /** Format: double */
             lon?: number;
         };
+        /**
+         * @description Event name on the inbox SSE stream (GET /api/inbox/stream).
+         * @enum {string}
+         */
+        InboxStreamEvent: "connected" | "inbox-changed";
         PlaceProposal: {
             name?: string;
             country?: string;
@@ -1000,6 +1122,14 @@ export interface components {
             lat?: number;
             /** Format: double */
             lon?: number;
+            /** Format: double */
+            south?: number;
+            /** Format: double */
+            north?: number;
+            /** Format: double */
+            west?: number;
+            /** Format: double */
+            east?: number;
         };
         PredictionDto: {
             startLocation?: string;
@@ -1122,6 +1252,28 @@ export interface components {
         RideTagRef: {
             id?: string;
             name?: string;
+        };
+        HighlightDto: {
+            /** Format: int64 */
+            osmId?: number;
+            type?: string;
+            name?: string;
+            /** Format: double */
+            eleM?: number;
+            /** Format: double */
+            lat?: number;
+            /** Format: double */
+            lon?: number;
+            /** Format: double */
+            distM?: number;
+            /** Format: double */
+            trackDistKm?: number;
+            summited?: boolean;
+            wikidata?: string;
+        };
+        HighlightsDto: {
+            passes?: components["schemas"]["HighlightDto"][];
+            peaks?: components["schemas"]["HighlightDto"][];
         };
     };
     responses: never;
@@ -1613,6 +1765,26 @@ export interface operations {
             };
         };
     };
+    moveToProcessed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     listMedia: {
         parameters: {
             query?: never;
@@ -1681,6 +1853,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": Record<string, never>;
+                };
+            };
+        };
+    };
+    scanWatchFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: number;
+                    };
                 };
             };
         };
@@ -1771,6 +1965,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["FilterPresetDto"];
+                };
+            };
+        };
+    };
+    openFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: Record<string, never>;
+                    };
                 };
             };
         };
@@ -2072,6 +2288,26 @@ export interface operations {
             };
         };
     };
+    get_1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["VersionDto"];
+                };
+            };
+        };
+    };
     status: {
         parameters: {
             query?: never;
@@ -2287,6 +2523,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    stream: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description text/event-stream of inbox events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": components["schemas"]["InboxStreamEvent"];
+                };
             };
         };
     };
@@ -2529,6 +2785,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["HighlightsDto"];
+                };
             };
         };
     };

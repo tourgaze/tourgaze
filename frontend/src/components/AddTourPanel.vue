@@ -4,9 +4,9 @@ import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon } from 'lucide-vue-next'
+import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Archive, Check } from 'lucide-vue-next'
 import {
-  importInbox, discardInbox, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
+  importInbox, discardInbox, moveInboxToProcessed, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
   getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile,
   type InboxItem, type WeatherResult, type Prediction,
 } from '@/api/client'
@@ -99,6 +99,15 @@ const weightKg = ref<number | null>(null)
 // coming from nowhere.
 const prediction = ref<Prediction | null>(null)
 const predictionLoading = ref(false)
+// Region/country proposed as NEW tags (don't exist yet) — pre-accepted; created
+// on import. Existing nearby-ride tags are handled separately via selectedTags.
+const proposedNameTags = ref<string[]>([])
+const acceptedNames = ref<Set<string>>(new Set())
+function toggleProposed(n: string) {
+  const s = new Set(acceptedNames.value)
+  if (s.has(n)) s.delete(n); else s.add(n)
+  acceptedNames.value = s
+}
 
 watch(() => props.item, async (it) => {
   name.value = it.suggestedName ?? ''
@@ -116,6 +125,8 @@ watch(() => props.item, async (it) => {
   weatherCondition.value = ''
   weatherAutofilled.value = false
   prediction.value = null
+  proposedNameTags.value = []
+  acceptedNames.value = new Set()
   startLocation.value = ''
   startCountry.value = ''
   endLocation.value = ''
@@ -143,6 +154,9 @@ watch(() => props.item, async (it) => {
     predictionLoading.value = false
     if (pred) {
       prediction.value = pred
+      // Region + country offered as new tag chips, pre-accepted (created on import).
+      proposedNameTags.value = [pred.region, pred.country].filter((x): x is string => !!x && !!x.trim())
+      acceptedNames.value = new Set(proposedNameTags.value)
       if (!name.value.trim() && pred.suggestedName) name.value = pred.suggestedName
       if (pred.suggestedTagIds && pred.suggestedTagIds.length) {
         selectedTags.value = new Set(pred.suggestedTagIds)
@@ -171,6 +185,7 @@ const importMut = useMutation({
     gearId: gearId.value || undefined,
     userId: userId.value || undefined,
     tagIds: Array.from(selectedTags.value),
+    tagNames: Array.from(acceptedNames.value),
     weatherTempC: weather.value.tempC,
     weatherHumidityPct: weather.value.humidityPct,
     weatherWindKph: weather.value.windKph,
@@ -202,7 +217,18 @@ const discardMut = useMutation({
   onError: () => push.error('Could not ignore'),
 })
 
-
+// "Move to processed": archive the file to ~/.tourgaze/inbox-processed/ without
+// importing. Used for recognised same-track duplicates — the bytes are kept and
+// the watch-folder scan won't re-stage it from the (untouched) source device.
+const processedMut = useMutation({
+  mutationFn: () => moveInboxToProcessed(props.item.filename!),
+  onSuccess: () => {
+    qc.invalidateQueries({ queryKey: ['inbox'] })
+    push.info({ title: 'Moved to processed', message: 'Archived to ~/.tourgaze/inbox-processed/ — won\'t re-stage.' })
+    emit('done')
+  },
+  onError: () => push.error('Could not move to processed'),
+})
 </script>
 
 <template>
@@ -268,6 +294,13 @@ const discardMut = useMutation({
 
       <div v-if="item.existingActivityId" class="text-[11px] p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">
         This file is already imported. Ignore to remove it from the inbox (the file moves to inbox-ignored/, not deleted).
+      </div>
+
+      <div v-else-if="item.duplicateOfName" class="text-[11px] p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">
+        Looks like the <strong>same route</strong> as your already-imported ride
+        “{{ item.duplicateOfName }}”. If it's a duplicate recording, use
+        <strong>Move to processed</strong> below — it's archived (not deleted) and
+        won't re-stage from your device. Import anyway if you want to keep both.
       </div>
 
       <!-- Name, dense grid for related single-line fields. -->
@@ -377,6 +410,18 @@ const discardMut = useMutation({
       <div>
         <span class="text-xs font-medium text-muted-fg flex items-center gap-1 mb-1"><TagIcon :size="11" /> Tags</span>
         <TagCombobox v-model="selectedTags" />
+        <!-- Region / country proposed from the location — accepted ones are created
+             as tags on import. Click to toggle. -->
+        <div v-if="proposedNameTags.length" class="flex flex-wrap items-center gap-1 mt-1.5">
+          <span class="text-[10px] text-muted-fg mr-0.5">Suggested:</span>
+          <button v-for="n in proposedNameTags" :key="n" type="button"
+            class="text-[10px] px-1.5 py-0.5 rounded-full border inline-flex items-center gap-1 transition-colors"
+            :class="acceptedNames.has(n) ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-fg hover:text-foreground'"
+            :title="acceptedNames.has(n) ? 'Will be added as a tag on import' : 'Click to add this tag on import'"
+            @click="toggleProposed(n)">
+            <component :is="acceptedNames.has(n) ? Check : Plus" :size="10" /> {{ n }}
+          </button>
+        </div>
       </div>
 
       <!-- Photos — dropped here now, moved to the ride's media folder on import -->
@@ -413,11 +458,18 @@ const discardMut = useMutation({
 
     <!-- Footer -->
     <div class="flex items-center justify-between gap-2 px-4 py-3 border-t border-border bg-muted/10">
-      <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-amber-300 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50"
-        title="Move this file to ~/.tourgaze/inbox-ignored/ — bytes preserved, drag back to inbox/ to undo."
-        :disabled="discardMut.isPending.value" @click="discardMut.mutate()">
-        <EyeOff :size="12" /> Ignore
-      </button>
+      <div class="flex gap-2">
+        <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-amber-300 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50"
+          title="Move this file to ~/.tourgaze/inbox-ignored/ — bytes preserved, drag back to inbox/ to undo."
+          :disabled="discardMut.isPending.value" @click="discardMut.mutate()">
+          <EyeOff :size="12" /> Ignore
+        </button>
+        <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-border text-muted-fg hover:text-foreground disabled:opacity-50"
+          title="Archive to ~/.tourgaze/inbox-processed/ without importing — for known duplicates. Bytes kept; won't re-stage from your device."
+          :disabled="processedMut.isPending.value" @click="processedMut.mutate()">
+          <Archive :size="12" /> Move to processed
+        </button>
+      </div>
       <div class="flex gap-2">
         <button class="px-3 py-1.5 text-xs font-medium rounded border border-border text-muted-fg hover:text-foreground" @click="emit('cancel')">Cancel</button>
         <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-primary text-primary-fg hover:bg-primary/90 disabled:opacity-50"
