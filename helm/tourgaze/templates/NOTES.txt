@@ -1,0 +1,29 @@
+TourGaze is installed.
+
+{{- if .Values.ingress.enabled }}
+
+Reach it at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}/
+{{- end }}
+
+⚠️  SECURITY: TourGaze has NO built-in authentication — it is a single-user,
+    local-first app. You have an Ingress enabled, so anyone who can reach the
+    host(s) above has full access to your ride library.
+
+    For anything beyond a trusted private network:
+      • terminate TLS (set ingress.tls), and
+      • add authentication at the ingress (nginx auth-url / basic-auth,
+        Traefik forward-auth, or a proxy like oauth2-proxy / Authelia).
+{{- else }}
+
+Ingress is disabled. Port-forward to reach it locally:
+  kubectl port-forward svc/{{ include "tourgaze.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  # then open http://localhost:{{ .Values.service.port }}
+
+Note: TourGaze has no built-in authentication. If you later expose it via an
+Ingress or LoadBalancer, put it behind an authenticating reverse proxy.
+{{- end }}
+
+State (H2 DB, ride library, cache, tiles) lives under /data
+{{- if .Values.persistence.enabled }} on a {{ .Values.persistence.size }} PersistentVolume{{ else }} in the pod (ephemeral — enable persistence to keep it){{ end }}.

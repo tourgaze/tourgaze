@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-TourGaze itself is dual-licensed (AGPL v3 / commercial — see [LICENSE](LICENSE)).
+TourGaze itself is licensed under the GNU AGPL v3 (see [LICENSE](LICENSE)).
 It is built on, and at runtime fetches data from, the third-party software and
 open-data services below. Each remains under its own copyright and license; the
 list is provided for attribution and to help downstream packagers comply. Where a

@@ -98,13 +98,25 @@ Everything lives under `~/.tourgaze/` (override with `TOURGAZE_DATA_DIR`):
 
 ```
 ~/.tourgaze/
-  db/      H2 database (ride metadata, gear, tags, markers)
-  store/   original ride files + <name>_media/ photos + <name>.metadata.json sidecars
-  cache/   derived track / chart JSON
-  tiles/   cached map tiles
+  repository/   the precious, cloud-syncable library — the only folder worth backing up
+    store/      original ride files + <name>_media/ photos + <name>.metadata.json sidecars
+    db-backup/  rotating H2 snapshot zips (newest 5 kept)
+  db/      H2 database (ride metadata, gear, tags, markers — rebuildable from the sidecars)
+  cache/   derived track / chart JSON (regenerable)
+  tiles/   cached map tiles (re-downloadable)
 ```
 
+Point `repository/` at a cloud-synced folder to back it up off-machine — set
+`TOURGAZE_REPOSITORY_DIR` (e.g. a Dropbox / Google Drive path); everything else
+stays local and rebuilds from the sidecars.
+
 No accounts, no cloud, no telemetry. Map tiles are fetched once and cached locally.
+
+> **⚠️ No authentication.** TourGaze is a single-user, local-first app — it has
+> no login. Run it on `localhost` or a trusted LAN. **Do not expose it directly
+> to the internet**; if you must, put it behind a reverse proxy that adds
+> authentication (and TLS). Encryption of the library at rest is on the roadmap,
+> not yet shipped.
 
 ## Tech stack
 

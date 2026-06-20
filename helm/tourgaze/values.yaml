@@ -16,6 +16,11 @@ persistence:
   accessMode: ReadWriteOnce
   # storageClass: ""
 
+# ⚠️ TourGaze has NO built-in authentication (single-user, local-first app).
+# An enabled Ingress with no auth exposes your whole library to anyone who can
+# reach the host. For anything beyond a trusted private network, terminate TLS
+# and add authentication at the ingress (e.g. nginx auth-url / basic-auth,
+# Traefik forward-auth, or an auth proxy like oauth2-proxy / Authelia).
 ingress:
   enabled: true
   className: ""
