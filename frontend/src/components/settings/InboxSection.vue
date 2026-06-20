@@ -5,7 +5,7 @@ import { push } from 'notivue'
 import { getSettings, saveSetting } from '@/api/client'
 import { FolderInput, Save, RefreshCw, Plus, Trash2 } from 'lucide-vue-next'
 
-type InboxSource = { label: string; path: string }
+type InboxSource = { label: string; path: string; keepOriginal: boolean }
 
 const qc = useQueryClient()
 const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: getSettings })
@@ -22,7 +22,12 @@ function parseSources(list: { key?: string; value?: string }[] | undefined): Inb
       if (Array.isArray(parsed)) {
         return parsed
           .filter(e => e && typeof e.path === 'string')
-          .map(e => ({ label: typeof e.label === 'string' ? e.label : '', path: e.path }))
+          .map(e => ({
+            label: typeof e.label === 'string' ? e.label : '',
+            path: e.path,
+            // Default true when absent — never move/delete device files unless opted out.
+            keepOriginal: e.keepOriginal !== false,
+          }))
       }
     } catch { /* malformed — start empty */ }
   }
@@ -34,7 +39,7 @@ watch(settings, (list) => {
 }, { immediate: true })
 
 function addSource() {
-  sources.value.push({ label: '', path: '' })
+  sources.value.push({ label: '', path: '', keepOriginal: true })
 }
 function removeSource(i: number) {
   sources.value.splice(i, 1)
@@ -43,7 +48,7 @@ function removeSource(i: number) {
 const saveMut = useMutation({
   mutationFn: () => {
     const cleaned = sources.value
-      .map(s => ({ label: s.label.trim(), path: s.path.trim() }))
+      .map(s => ({ label: s.label.trim(), path: s.path.trim(), keepOriginal: s.keepOriginal }))
       .filter(s => s.path !== '')
     return saveSetting('inbox.sources', JSON.stringify(cleaned))
   },
@@ -85,6 +90,10 @@ async function scanNow() {
           class="w-36 rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none" />
         <input v-model="src.path" type="text" placeholder="X:\garmin\activity"
           class="flex-1 rounded-md border border-border bg-transparent px-3 py-2 text-sm font-mono focus:border-primary focus:outline-none" />
+        <label class="flex items-center gap-1 text-[10px] text-muted-fg whitespace-nowrap cursor-pointer select-none shrink-0"
+          title="On = copy, leaving the file on your device. Off = move it out of the source after copying (deletes the original).">
+          <input type="checkbox" v-model="src.keepOriginal" class="accent-primary" /> keep on device
+        </label>
         <button class="btn-icon text-muted-fg hover:text-red-500" title="Remove folder" @click="removeSource(i)">
           <Trash2 :size="14" />
         </button>

@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.store;
@@ -129,6 +127,20 @@ public class StorageService {
 	 */
 	public Path inboxIgnoredDir() {
 		return baseDir.resolve("inbox-ignored");
+	}
+
+	/**
+	 * Archive folder for inbox files the user has dealt with but doesn't want to
+	 * import (e.g. a same-track duplicate) — moved here rather than deleted, so
+	 * the bytes are never lost. Sibling of inbox/ (matros "processed" convention).
+	 */
+	public Path inboxProcessedDir() {
+		return baseDir.resolve("inbox-processed");
+	}
+
+	/** Root of the precious, cloud-syncable library (holds store/ + db-backup/). */
+	public Path repositoryDir() {
+		return repoDir;
 	}
 
 	/** Precious ride store — under repositoryDir so it can sync to the cloud. */

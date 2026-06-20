@@ -14,12 +14,21 @@ const language = ref<string>('de')
 const dirty = ref(false)
 
 // Timezone (IANA name) lives in `app.timezone`; used to render local times.
+// When unset (e.g. an install predating the setup default), pre-fill the
+// browser's zone so the field is never blank — "depending where we are".
+function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'
+  } catch {
+    return 'Europe/Berlin'
+  }
+}
 const timezone = ref('')
 watch(settings, (list) => {
   if (!list || dirty.value) return
   const s = list.find(s => s.key === LANG_KEY)
   if (s?.value) language.value = s.value
-  timezone.value = list.find(s => s.key === 'app.timezone')?.value ?? ''
+  timezone.value = list.find(s => s.key === 'app.timezone')?.value || detectTimezone()
 }, { immediate: true })
 
 const saveTimezoneMut = useMutation({

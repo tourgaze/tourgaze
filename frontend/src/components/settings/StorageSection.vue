@@ -2,7 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { getDiskUsage, purgeCache, getSettings, saveSetting } from '@/api/client'
+import { getDiskUsage, purgeCache, getSettings, saveSetting, openRepositoryFolder } from '@/api/client'
+import { FolderOpen } from 'lucide-vue-next'
 
 const qc = useQueryClient()
 const { data: disk, refetch } = useQuery({ queryKey: ['disk'], queryFn: getDiskUsage })
@@ -49,6 +50,14 @@ function exportRides() {
   window.location.href = '/api/admin/export'
 }
 
+// Open the repository folder in the OS file manager (server-side; only works when
+// the app runs on your own machine, not a remote/container backend).
+const openFolderMut = useMutation({
+  mutationFn: openRepositoryFolder,
+  onSuccess: (r) => push.success({ title: 'Opening folder', message: r.path }),
+  onError: (e: any) => push.warning({ title: "Couldn't open folder", message: String(e?.message ?? '') }),
+})
+
 function fmtBytes(b: number | undefined): string {
   if (b == null) return '—'
   if (b < 1024) return `${b} B`
@@ -60,6 +69,20 @@ function fmtBytes(b: number | undefined): string {
 
 <template>
   <div class="w-full space-y-4">
+    <div class="flex items-start justify-between gap-3 p-4 rounded border border-border bg-muted/10">
+      <div>
+        <p class="text-sm font-medium">Repository folder</p>
+        <p class="text-[11px] text-muted-fg mt-0.5">
+          Your precious, cloud-syncable library (<code>store/</code> + <code>db-backup/</code>).
+          Opens in your file manager — only works when the app runs on this machine.
+        </p>
+      </div>
+      <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-border hover:border-primary hover:text-primary transition-colors shrink-0 disabled:opacity-50"
+        :disabled="openFolderMut.isPending.value" @click="openFolderMut.mutate()">
+        <FolderOpen :size="14" /> Open folder
+      </button>
+    </div>
+
     <div class="grid grid-cols-2 gap-2 text-sm p-4 rounded border border-border bg-muted/10">
       <div class="text-muted-fg">FIT files (store)</div>
       <div class="font-mono text-right">{{ fmtBytes(disk?.storeBytes) }}</div>

@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.config;
@@ -80,6 +78,12 @@ public class AppConfig {
 		public static class Source {
 			private String label;
 			private String path;
+			/**
+			 * Keep the original in the source folder (copy). When false the scanner
+			 * moves it out (deletes from the device after a successful copy). Default
+			 * true — never touch the user's device files unless they opt in.
+			 */
+			private boolean keepOriginal = true;
 
 			public String getLabel() {
 				return label;
@@ -95,6 +99,14 @@ public class AppConfig {
 
 			public void setPath(String path) {
 				this.path = path;
+			}
+
+			public boolean isKeepOriginal() {
+				return keepOriginal;
+			}
+
+			public void setKeepOriginal(boolean keepOriginal) {
+				this.keepOriginal = keepOriginal;
 			}
 		}
 	}

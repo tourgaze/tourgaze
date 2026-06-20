@@ -2,7 +2,17 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { UserPlus, AlertCircle } from 'lucide-vue-next'
-import { createUser, getUsers } from '@/api/client'
+import { createUser, getUsers, saveSetting } from '@/api/client'
+
+/** Browser's IANA timezone (e.g. "Europe/Berlin", "America/New_York"), used as a
+ *  sensible first-run default. Falls back to Europe/Berlin if unavailable. */
+function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'
+  } catch {
+    return 'Europe/Berlin'
+  }
+}
 
 const router = useRouter()
 const submitting = ref(false)
@@ -38,6 +48,9 @@ async function submit() {
       weightKg: weightKg.value,
       gender: gender.value || null,
     } as any)
+    // Seed a sensible default timezone from the browser so local times render
+    // right out of the box (changeable in Settings → Language). Non-fatal.
+    try { await saveSetting('app.timezone', detectTimezone()) } catch { /* ignore */ }
     router.replace('/')
   } catch (e: any) {
     errorMsg.value = e?.message ?? 'Could not create profile'

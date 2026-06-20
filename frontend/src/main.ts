@@ -36,6 +36,10 @@ const router = createRouter({
         { path: 'about', component: AboutView },
       ],
     },
+    // Catch-all: any unknown URL (typo, stale deep link) → the start page,
+    // instead of a blank screen + "No match" warning. The first-run gate still
+    // applies, so an uninitialised install lands on /setup.
+    { path: '/:pathMatch(.*)*', redirect: '/tours' },
   ],
 })
 

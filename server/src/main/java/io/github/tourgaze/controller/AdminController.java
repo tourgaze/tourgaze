@@ -1,8 +1,6 @@
 /*
  * Copyright (c) 2026 Tourgaze
- * This program is dual-licensed under:
- * GNU Affero General Public License (AGPL v3) - Open Source, Copyleft.
- * Commercial License - Proprietary, Closed Source.
+ * Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
  * See the LICENSE file for full details.
  */
 package io.github.tourgaze.controller;
@@ -155,6 +153,51 @@ public class AdminController {
 
 		log.info("Cache purged: {} files deleted, {} errors", deleted.get(), errors.get());
 		return ResponseEntity.ok(Map.of("deleted", deleted.get(), "errors", errors.get()));
+	}
+
+	/**
+	 * Open the repository folder (store/ + db-backup/) in the OS file manager —
+	 * a local-desktop convenience. Cross-platform: Explorer on Windows, {@code
+	 * open} on macOS, {@code xdg-open} on Linux. The path is resolved server-side
+	 * (never from the client), and it's a no-op with a clear message when running
+	 * headless / in a container where there's no desktop.
+	 */
+	@PostMapping("/open-folder")
+	public ResponseEntity<Map<String, Object>> openFolder() {
+		java.nio.file.Path dir = storage.repositoryDir();
+		try {
+			Files.createDirectories(dir);
+		} catch (IOException e) {
+			/* fall through — open will report if it truly doesn't exist */ }
+		if (isHeadless()) {
+			return ResponseEntity.status(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE)
+					.body(Map.of("error", "No desktop available (running headless or in a container).",
+							"path", dir.toString()));
+		}
+		try {
+			String os = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT);
+			ProcessBuilder pb = os.contains("win") ? new ProcessBuilder("explorer.exe", dir.toString())
+					: os.contains("mac") ? new ProcessBuilder("open", dir.toString())
+							: new ProcessBuilder("xdg-open", dir.toString());
+			// Fire and forget — don't check the exit code: Windows Explorer returns 1
+			// even when it opens fine.
+			pb.start();
+			log.info("Opened repository folder {}", dir);
+			return ResponseEntity.ok(Map.of("opened", true, "path", dir.toString()));
+		} catch (Exception e) {
+			log.warn("Could not open repository folder {}: {}", dir, e.getMessage());
+			return ResponseEntity.internalServerError()
+					.body(Map.of("error", String.valueOf(e.getMessage()), "path", dir.toString()));
+		}
+	}
+
+	/**
+	 * Docker/Kubernetes (and other headless hosts) have no file manager to open.
+	 */
+	private boolean isHeadless() {
+		return Files.exists(java.nio.file.Path.of("/.dockerenv"))
+				|| System.getenv("KUBERNETES_SERVICE_HOST") != null
+				|| System.getenv("CONTAINER") != null;
 	}
 
 	/** Disk usage summary for the data directory. 30s TTL via Caffeine. */
