@@ -43,3 +43,8 @@ bug.jpg
 mtb.png
 
 /frontend/dev-frontend.log
+
+# ── Local run logs & scratch (dev backend/frontend/jar output, screenshots) ─────
+*.log
+.shot-*.png
+/frontend/tmp-*.mjs
