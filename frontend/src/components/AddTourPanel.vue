@@ -242,9 +242,9 @@ const processedMut = useMutation({
     </div>
 
     <!-- Scrollable body -->
-    <div class="flex-1 overflow-y-auto px-6 py-4 space-y-3 w-full">
+    <div class="flex-1 overflow-y-auto px-4 py-3 space-y-2.5 w-full">
       <!-- Detected metadata -->
-      <div class="text-[11px] grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 rounded bg-muted/20 border border-border">
+      <div class="text-[11px] grid grid-cols-3 sm:grid-cols-5 gap-2 p-2 rounded bg-muted/20 border border-border">
         <div><div class="text-muted-fg">Format</div><div>{{ item.format?.toUpperCase() }}</div></div>
         <div><div class="text-muted-fg">Detected sport</div><div>{{ item.activityType ?? '—' }}</div></div>
         <div><div class="text-muted-fg flex items-center gap-1"><Timer :size="10" />Duration</div><div>{{ fmtDuration(item.durationS) }}</div></div>
@@ -287,7 +287,7 @@ const processedMut = useMutation({
             :lat="item.startLat ?? null"
             :lon="item.startLon ?? null"
             :points="mapExpanded ? (previewTrack ?? null) : null"
-            :height-class="mapExpanded ? 'h-72' : 'h-40'"
+            :height-class="mapExpanded ? 'h-72' : 'h-32'"
           />
         </div>
       </div>
@@ -335,37 +335,40 @@ const processedMut = useMutation({
         </label>
       </div>
 
-      <label class="block text-sm">
-        <span class="text-xs font-medium text-muted-fg flex items-center gap-1">
-          <Scale :size="11" /> Weight (kg)
-          <span v-if="currentUser?.weightKg != null && weightKg === currentUser.weightKg" class="text-[10px] font-normal opacity-60">from profile</span>
-        </span>
-        <input v-model.number="weightKg" type="number" step="0.1" min="30" max="200"
-          :placeholder="currentUser?.weightKg != null ? String(currentUser.weightKg) : 'optional'"
-          class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none" />
-      </label>
+      <!-- Weight + Gear share a row; Rider (multi-user only) spans below. -->
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-sm">
+          <span class="text-xs font-medium text-muted-fg flex items-center gap-1">
+            <Scale :size="11" /> Weight (kg)
+            <span v-if="currentUser?.weightKg != null && weightKg === currentUser.weightKg" class="text-[10px] font-normal opacity-60">profile</span>
+          </span>
+          <input v-model.number="weightKg" type="number" step="0.1" min="30" max="200"
+            :placeholder="currentUser?.weightKg != null ? String(currentUser.weightKg) : 'optional'"
+            class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+        </label>
 
-      <label v-if="users && users.length > 1" class="block text-sm">
-        <span class="text-xs font-medium text-muted-fg">Rider</span>
-        <select v-model="userId" class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none">
-          <option v-for="u in users" :key="u.id!" :value="u.id">{{ u.displayName || u.username }}</option>
-        </select>
-      </label>
+        <!-- Gear. When none exists yet (masterdata empty) we can't offer a picker,
+             so point the user straight at Settings → Gear to create some. -->
+        <div class="block text-sm">
+          <span class="text-xs font-medium text-muted-fg flex items-center gap-1"><Bike :size="11" /> Gear</span>
+          <select v-if="gear && gear.length" v-model="gearId"
+            class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none">
+            <option :value="null">— none —</option>
+            <option v-for="g in gear" :key="g.id!" :value="g.id">{{ g.name }}<template v-if="g.type"> ({{ g.type }})</template></option>
+          </select>
+          <button v-else type="button"
+            class="mt-1 w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-fg hover:text-primary hover:border-primary transition-colors"
+            @click="router.push('/settings?cat=gear')">
+            <Plus :size="13" /> Add gear in Settings
+          </button>
+        </div>
 
-      <!-- Gear. When none exists yet (masterdata empty) we can't offer a picker,
-           so point the user straight at Settings → Gear to create some. -->
-      <div class="block text-sm">
-        <span class="text-xs font-medium text-muted-fg flex items-center gap-1"><Bike :size="11" /> Gear</span>
-        <select v-if="gear && gear.length" v-model="gearId"
-          class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none">
-          <option :value="null">— none —</option>
-          <option v-for="g in gear" :key="g.id!" :value="g.id">{{ g.name }}<template v-if="g.type"> ({{ g.type }})</template></option>
-        </select>
-        <button v-else type="button"
-          class="mt-1 w-full inline-flex items-center justify-center gap-1.5 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-fg hover:text-primary hover:border-primary transition-colors"
-          @click="router.push('/settings?cat=gear')">
-          <Plus :size="13" /> No gear yet — add gear in Settings
-        </button>
+        <label v-if="users && users.length > 1" class="block text-sm col-span-2">
+          <span class="text-xs font-medium text-muted-fg">Rider</span>
+          <select v-model="userId" class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none">
+            <option v-for="u in users" :key="u.id!" :value="u.id">{{ u.displayName || u.username }}</option>
+          </select>
+        </label>
       </div>
 
       <!-- Weather -->
