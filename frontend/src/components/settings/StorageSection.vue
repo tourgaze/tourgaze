@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { getDiskUsage, purgeCache, getSettings, saveSetting, openRepositoryFolder } from '@/api/client'
-import { FolderOpen } from 'lucide-vue-next'
+import { getDiskUsage, purgeCache, getSettings, saveSetting, openRepositoryFolder, checkIntegrity, type IntegrityReport } from '@/api/client'
+import { FolderOpen, ShieldCheck } from 'lucide-vue-next'
 
 const qc = useQueryClient()
 const { data: disk, refetch } = useQuery({ queryKey: ['disk'], queryFn: getDiskUsage })
@@ -49,6 +49,26 @@ const purgeMut = useMutation({
 function exportRides() {
   window.location.href = '/api/admin/export'
 }
+
+// DB ↔ filesystem integrity check (missing files, bit-rot, orphan folders).
+const integrity = ref<IntegrityReport | null>(null)
+// Generated arrays are optional → normalise for the template.
+const rep = computed(() => integrity.value ? {
+  total: integrity.value.totalActivities ?? 0,
+  missing: integrity.value.missing ?? [],
+  corrupt: integrity.value.corrupt ?? [],
+  orphans: integrity.value.orphanFolders ?? [],
+} : null)
+const integrityMut = useMutation({
+  mutationFn: checkIntegrity,
+  onSuccess: (r) => {
+    integrity.value = r
+    const issues = (r.missing?.length ?? 0) + (r.corrupt?.length ?? 0) + (r.orphanFolders?.length ?? 0)
+    if (issues === 0) push.success({ title: 'All good', message: `${r.totalActivities ?? 0} rides, no problems` })
+    else push.warning({ title: `${issues} issue${issues !== 1 ? 's' : ''} found`, message: 'See the report below' })
+  },
+  onError: () => push.error('Integrity check failed'),
+})
 
 // Open the repository folder in the OS file manager (server-side; only works when
 // the app runs on your own machine, not a remote/container backend).
@@ -139,6 +159,39 @@ function fmtBytes(b: number | undefined): string {
         @click="exportRides">
         Download
       </button>
+    </div>
+
+    <!-- DB ↔ filesystem integrity check -->
+    <div class="p-4 rounded border border-border bg-muted/10 space-y-2">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-sm font-medium flex items-center gap-1.5"><ShieldCheck :size="14" /> Check integrity</p>
+          <p class="text-[11px] text-muted-fg mt-0.5">
+            Verifies every ride's file is present and its content still matches the
+            recorded hash (catches bit-rot / cloud-sync damage), and finds orphaned
+            <code>store/&lt;id&gt;/</code> folders. Read-only — nothing is changed.
+          </p>
+        </div>
+        <button class="px-3 py-1.5 text-sm font-medium rounded border border-border hover:border-primary hover:text-primary transition-colors shrink-0 disabled:opacity-50"
+          :disabled="integrityMut.isPending.value" @click="integrityMut.mutate()">
+          {{ integrityMut.isPending.value ? 'Checking…' : 'Run check' }}
+        </button>
+      </div>
+      <div v-if="rep" class="text-[11px]">
+        <div class="flex flex-wrap gap-x-4 gap-y-1 font-mono">
+          <span>{{ rep.total }} rides</span>
+          <span :class="rep.missing.length ? 'text-red-600' : 'text-muted-fg'">{{ rep.missing.length }} missing</span>
+          <span :class="rep.corrupt.length ? 'text-red-600' : 'text-muted-fg'">{{ rep.corrupt.length }} corrupt</span>
+          <span :class="rep.orphans.length ? 'text-amber-600' : 'text-muted-fg'">{{ rep.orphans.length }} orphan folders</span>
+        </div>
+        <ul v-if="rep.missing.length || rep.corrupt.length || rep.orphans.length"
+          class="mt-1.5 space-y-0.5 text-muted-fg max-h-40 overflow-y-auto">
+          <li v-for="m in rep.missing" :key="'m' + m.id" class="text-red-600">⚠ missing file — {{ m.name || m.id }}</li>
+          <li v-for="c in rep.corrupt" :key="'c' + c.id" class="text-red-600">⚠ content changed — {{ c.name || c.id }}</li>
+          <li v-for="o in rep.orphans" :key="'o' + o" class="text-amber-600">⌁ orphan folder — {{ o }}</li>
+        </ul>
+        <p v-else class="mt-1 text-emerald-600">✓ everything in sync</p>
+      </div>
     </div>
   </div>
 </template>

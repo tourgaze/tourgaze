@@ -648,6 +648,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/integrity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["integrity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/export": {
         parameters: {
             query?: never;
@@ -1111,6 +1127,9 @@ export interface components {
             proposalPending?: boolean;
             parsing?: boolean;
             sourceLabel?: string;
+            hasHeartRate?: boolean;
+            hasCadence?: boolean;
+            hasPower?: boolean;
         };
         PreviewPoint: {
             /** Format: double */
@@ -1149,6 +1168,17 @@ export interface components {
             country?: string;
             region?: string;
             language?: string;
+        };
+        IntegrityReportDto: {
+            /** Format: int32 */
+            totalActivities?: number;
+            missing?: components["schemas"]["Ref"][];
+            corrupt?: components["schemas"]["Ref"][];
+            orphanFolders?: string[];
+        };
+        Ref: {
+            id?: string;
+            name?: string;
         };
         StreamingResponseBody: Record<string, never>;
         SimilarRideDto: {
@@ -2600,6 +2630,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["PredictionDto"];
+                };
+            };
+        };
+    };
+    integrity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["IntegrityReportDto"];
                 };
             };
         };

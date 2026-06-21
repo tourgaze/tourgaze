@@ -84,7 +84,8 @@ public class InboxService {
 			io.github.tourgaze.enums.ActivityType type, Instant startTime, Double distanceKm, Integer durationS,
 			Double lat, Double lon, Double endLat, Double endLon,
 			String existingActivityId, String gearId, String gearName,
-			String dupId, String dupName) {
+			String dupId, String dupName,
+			boolean hasHr, boolean hasCadence, boolean hasPower) {
 	}
 
 	/**
@@ -340,11 +341,12 @@ public class InboxService {
 				return new ParsedCard(mtime, sha, size, format, suggestedName, type, r.startTime(), distanceKm,
 						r.durationS(), lat, lon, endLat, endLon, existingId,
 						gear != null ? gear.gearId() : null, gear != null ? gear.gearName() : null,
-						dup != null ? dup.id() : null, dup != null ? dup.name() : null);
+						dup != null ? dup.id() : null, dup != null ? dup.name() : null,
+						r.avgHr() != null, r.avgCadence() != null, r.avgPowerW() != null);
 			}
 			// Already-imported or unparseable format → stub card (no track metadata).
 			return new ParsedCard(mtime, sha, size, format, suggestedName, null, null, null, null,
-					null, null, null, null, existingId, null, null, null, null);
+					null, null, null, null, existingId, null, null, null, null, false, false, false);
 		} catch (Exception e) {
 			log.warn("Could not parse inbox file {}: {}", file, e.getMessage());
 			return null;
@@ -400,7 +402,8 @@ public class InboxService {
 				pred != null ? pred.region() : null,
 				pred != null ? pred.country() : null,
 				pred != null ? proposedTagNames(pred) : List.of(),
-				proposalPending, false, origins.get(filename));
+				proposalPending, false, origins.get(filename),
+				pc.hasHr(), pc.hasCadence(), pc.hasPower());
 	}
 
 	/** A not-yet-parsed card: name/size/format only, {@code parsing: true}. */
@@ -415,7 +418,7 @@ public class InboxService {
 		return new InboxItemDto(
 				filename, null, size, io.github.tourgaze.parser.SourceFormat.from(extensionOf(filename)),
 				suggestedName, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, List.of(), false, true, origins.get(filename));
+				null, null, null, List.of(), false, true, origins.get(filename), false, false, false);
 	}
 
 	/**
@@ -909,16 +912,15 @@ public class InboxService {
 
 	/**
 	 * Display names for the card's suggested-tag chips: existing nearby-ride tags
-	 * plus the proposed region + country (deduped, order preserved).
+	 * only. Region/country are NOT proposed as tags — they're saved as first-class
+	 * activity fields ({@code startLocation}/{@code startCountry}/{@code endLocation}
+	 * /{@code endCountry}), so turning them into tags too would just be redundant
+	 * noise mixed into the user's hand-made tag space.
 	 */
 	private List<String> proposedTagNames(PredictionDto pred) {
 		java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
 		if (pred.suggestedTagIds() != null && !pred.suggestedTagIds().isEmpty())
 			tagRepo.findAllById(pred.suggestedTagIds()).forEach(t -> out.add(t.getName()));
-		if (pred.region() != null && !pred.region().isBlank())
-			out.add(pred.region());
-		if (pred.country() != null && !pred.country().isBlank())
-			out.add(pred.country());
 		return new java.util.ArrayList<>(out);
 	}
 

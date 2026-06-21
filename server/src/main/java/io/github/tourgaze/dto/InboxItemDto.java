@@ -76,5 +76,11 @@ public record InboxItemDto(
         // Label of the watch-folder this file was copied in from (Settings → Inbox
         // source), e.g. "Garmin" or "Dropbox". Null for files dropped/uploaded by
         // hand, which have no originating folder.
-        String sourceLabel
+        String sourceLabel,
+        // Which optional sensor channels the file actually carries (a HR strap /
+        // cadence sensor / power meter recorded data). Surfaced on the import card
+        // so the user sees at a glance what extra data the ride brings.
+        boolean hasHeartRate,
+        boolean hasCadence,
+        boolean hasPower
 ) {}

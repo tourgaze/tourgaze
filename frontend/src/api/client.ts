@@ -703,6 +703,13 @@ export async function openRepositoryFolder(): Promise<{ path: string }> {
   return body as { path: string }
 }
 
+export type IntegrityReport = components['schemas']['IntegrityReportDto']
+export async function checkIntegrity(): Promise<IntegrityReport> {
+  const r = await fetch('/api/admin/integrity')
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json() as Promise<IntegrityReport>
+}
+
 export async function getDiskUsage(): Promise<{ storeBytes: number; cacheBytes: number; tilesBytes: number; totalBytes: number }> {
   if (adminEndpointAvailable === false) {
     return { storeBytes: 0, cacheBytes: 0, tilesBytes: 0, totalBytes: 0 }

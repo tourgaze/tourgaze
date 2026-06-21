@@ -7,7 +7,12 @@ package io.github.tourgaze.controller;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.slf4j.Logger;
@@ -15,11 +20,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import io.github.tourgaze.dto.IntegrityReportDto;
+import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.service.RideExportService;
 import io.github.tourgaze.store.StorageService;
 
@@ -47,6 +56,69 @@ public class AdminController {
 		this.activityRepo = activityRepo;
 		this.metadataMapper = metadataMapper;
 		this.objectMapper = objectMapper;
+	}
+
+	/**
+	 * DB ↔ store integrity check (matros-style, read-only): finds activities whose
+	 * ride file is missing, whose content no longer matches its recorded
+	 * {@code sourceHash} (bit-rot / cloud-sync damage — decrypted first when
+	 * encryption is on), and {@code store/<id>/} folders with no activity.
+	 */
+	@GetMapping("/integrity")
+	@Transactional(readOnly = true)
+	public IntegrityReportDto integrity() {
+		List<Activity> all = activityRepo.findAll();
+		List<IntegrityReportDto.Ref> missing = new ArrayList<>();
+		List<IntegrityReportDto.Ref> corrupt = new ArrayList<>();
+		Set<String> dbIds = new HashSet<>();
+
+		for (Activity a : all) {
+			dbIds.add(a.getId());
+			String sf = a.getSourceFilename();
+			if (sf == null || !Files.exists(storage.storeFileOnDisk(sf))) {
+				missing.add(new IntegrityReportDto.Ref(a.getId(), a.getName()));
+				continue;
+			}
+			if (a.getSourceHash() != null) {
+				try {
+					if (!a.getSourceHash().equalsIgnoreCase(sha256Hex(storage.readStoreBytes(sf))))
+						corrupt.add(new IntegrityReportDto.Ref(a.getId(), a.getName()));
+				} catch (Exception e) {
+					log.warn("[Integrity] unreadable file for {} ({}): {}", a.getId(), sf, e.getMessage());
+					corrupt.add(new IntegrityReportDto.Ref(a.getId(), a.getName()));
+				}
+			}
+		}
+
+		List<String> orphans = new ArrayList<>();
+		try (var dirs = Files.list(storage.storeDir())) {
+			dirs.filter(Files::isDirectory)
+					.map(p -> p.getFileName().toString())
+					.filter(id -> !dbIds.contains(id))
+					.sorted()
+					.forEach(orphans::add);
+		} catch (IOException e) {
+			log.warn("[Integrity] store scan failed: {}", e.getMessage());
+		}
+		log.info("[Integrity] {} activities · {} missing · {} corrupt · {} orphan folders",
+				all.size(), missing.size(), corrupt.size(), orphans.size());
+		return new IntegrityReportDto(all.size(), missing, corrupt, orphans);
+	}
+
+	private static String sha256Hex(byte[] data) {
+		try {
+			byte[] hash = MessageDigest.getInstance("SHA-256").digest(data);
+			StringBuilder hex = new StringBuilder(2 * hash.length);
+			for (byte b : hash) {
+				String h = Integer.toHexString(0xff & b);
+				if (h.length() == 1)
+					hex.append('0');
+				hex.append(h);
+			}
+			return hex.toString();
+		} catch (Exception e) {
+			throw new RuntimeException("SHA-256 not available", e);
+		}
 	}
 
 	/**

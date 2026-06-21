@@ -4,7 +4,7 @@ import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Archive, Check } from 'lucide-vue-next'
+import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Archive, Check, Heart, Zap, Gauge } from 'lucide-vue-next'
 import {
   importInbox, discardInbox, moveInboxToProcessed, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
   getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile,
@@ -250,6 +250,21 @@ const processedMut = useMutation({
         <div><div class="text-muted-fg flex items-center gap-1"><Timer :size="10" />Duration</div><div>{{ fmtDuration(item.durationS) }}</div></div>
         <div><div class="text-muted-fg flex items-center gap-1"><Ruler :size="10" />Distance</div><div>{{ item.distanceKm != null ? item.distanceKm.toFixed(1) + ' km' : '—' }}</div></div>
         <div class="col-span-2 sm:col-span-1"><div class="text-muted-fg flex items-center gap-1"><MapPin :size="10" />Start</div><div>{{ fmtDateTime(item.startTime) }}</div></div>
+      </div>
+
+      <!-- Available sensor channels — what extra data this file carries beyond GPS -->
+      <div v-if="item.hasHeartRate || item.hasCadence || item.hasPower"
+        class="flex flex-wrap items-center gap-1.5 text-[11px]">
+        <span class="text-muted-fg">Sensors</span>
+        <span v-if="item.hasHeartRate" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted/20" style="color:#ef4444">
+          <Heart :size="11" /> Heart rate
+        </span>
+        <span v-if="item.hasCadence" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted/20" style="color:#06b6d4">
+          <Gauge :size="11" /> Cadence
+        </span>
+        <span v-if="item.hasPower" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-border bg-muted/20" style="color:#a855f7">
+          <Zap :size="11" /> Power
+        </span>
       </div>
 
       <!-- Predicted location label — surfaces the pre-fill source so the user

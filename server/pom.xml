@@ -143,6 +143,14 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <version>${spring-boot.version}</version>
+                <!-- Dev-run startup tuning (only read by the run/start goals; the
+                     repackage'd fat JAR is unaffected). -XX:TieredStopAtLevel=1
+                     skips the C2 JIT — we never run long enough in dev for peak
+                     throughput to matter, and stopping at C1 shaves a few seconds
+                     off every `mvn spring-boot:run`. -->
+                <configuration>
+                    <jvmArguments>-XX:TieredStopAtLevel=1 -XX:+UseParallelGC -Dspring.jmx.enabled=false</jvmArguments>
+                </configuration>
                 <executions>
                     <execution>
                         <goals>
