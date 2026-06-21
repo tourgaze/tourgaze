@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getTrack, getActivityMedia, activityMediaUrl, isVideoFile,
   getMarkersForActivity, createMarker, updateMarker, deleteMarker, type Marker, type Highlight } from '@/api/client'
 import { MARKER_CATEGORIES, markerCategory, markerIconSvg } from '@/markerCategories'
+import { gearIconSvg } from '@/gearIcons'
 import { onKeyStroke } from '@vueuse/core'
 import { tileUrl } from '@/lib/mapStyle'
 import type { HrZone } from '@/composables/useHrZones'
@@ -69,6 +70,8 @@ const props = defineProps<{
   highlights?: { passes: Highlight[]; peaks: Highlight[] } | null
   /** "Tours" overlay: other rides' start points; pin those in the viewport. */
   nearbyTours?: { id: string; name: string; lat: number; lon: number }[]
+  /** Gear glyph key for this ride's gear — used as the replay cursor when set. */
+  cursorIcon?: string | null
 }>()
 
 /**
@@ -1424,8 +1427,11 @@ function placeCursor(lngLat: maplibregl.LngLatLike) {
   if (!cursorMarker) {
     const el = document.createElement('div')
     el.className = 'map-hover-cursor'
-    // A little rider/user icon marks the replay position.
-    el.innerHTML = riderGlyph('currentColor', 2.4)
+    // A little rider/user icon marks the replay position — or the ride's gear
+    // glyph (bike/run/…) when its gear has one assigned.
+    el.innerHTML = props.cursorIcon
+      ? gearIconSvg(props.cursorIcon, 15, 'currentColor', 2.2)
+      : riderGlyph('currentColor', 2.4)
     cursorMarker = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat(lngLat).addTo(map)
   } else {
     cursorMarker.setLngLat(lngLat)

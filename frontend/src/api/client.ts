@@ -553,6 +553,7 @@ export type Gear = {
   name: string
   type?: string | null
   description?: string | null
+  icon?: string | null
   createdAt?: string | null
   retiredAt?: string | null
 }

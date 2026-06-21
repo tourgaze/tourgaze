@@ -33,6 +33,10 @@ public class Gear extends BaseEntity {
 
 	private String description;
 
+	/** Optional glyph key (see frontend gearIcons) — used as the replay marker. */
+	@Column(length = 32)
+	private String icon;
+
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
@@ -85,6 +89,14 @@ public class Gear extends BaseEntity {
 
 	public void setDescription(String description) {
 		this.description = description;
+	}
+
+	public String getIcon() {
+		return icon;
+	}
+
+	public void setIcon(String icon) {
+		this.icon = icon;
 	}
 
 	public Instant getCreatedAt() {

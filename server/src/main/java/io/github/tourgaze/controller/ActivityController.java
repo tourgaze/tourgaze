@@ -256,7 +256,13 @@ public class ActivityController {
 		if (opt.isEmpty())
 			return ResponseEntity.notFound().build();
 		java.nio.file.Path p = storage.activityMediaDir(opt.get().getSourceFilename()).resolve(name);
-		return Files.isRegularFile(p) ? InboxController.serveImage(p) : ResponseEntity.notFound().build();
+		if (!storage.encryptedExists(p))
+			return ResponseEntity.notFound().build();
+		try {
+			return InboxController.serveImageBytes(storage.readEncrypted(p), name);
+		} catch (IOException e) {
+			return ResponseEntity.internalServerError().build();
+		}
 	}
 
 	/**
@@ -315,14 +321,13 @@ public class ActivityController {
 			return ResponseEntity.notFound().build();
 		Activity a = opt.get();
 
-		// Delete the source FIT/GPX from store/. Non-fatal if it's gone or
-		// locked — the DB row will be deleted below either way; orphan
-		// bytes can be cleaned up by the storage-purge admin action.
+		// Delete the ride's entire store/<id>/ folder (track + media + sidecar).
+		// Non-fatal if it's gone or locked — the DB row is deleted below either way;
+		// orphan bytes can be cleaned up by the storage-purge admin action.
 		try {
-			Files.deleteIfExists(storage.storeFile(a.getSourceFilename()));
+			storage.deleteRide(a.getId());
 		} catch (IOException e) {
-			log.warn("Failed to delete source file {} for activity {}: {}",
-					a.getSourceFilename(), id, e.getMessage());
+			log.warn("Failed to delete ride folder for activity {}: {}", id, e.getMessage());
 		}
 
 		trackCache.evict(id);

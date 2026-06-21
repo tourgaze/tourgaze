@@ -112,6 +112,24 @@ const data: { name: string; what: string; href: string }[] = [
         </p>
       </section>
 
+      <!-- Support OpenStreetMap -->
+      <section class="rounded-lg border border-border bg-muted/10 p-3 space-y-2">
+        <div class="flex items-center gap-2 text-foreground">
+          <HeartHandshake :size="15" class="text-rose-500" />
+          <h2 class="text-xs font-semibold uppercase tracking-wide">Support OpenStreetMap</h2>
+        </div>
+        <p class="text-[12px] text-muted-fg leading-relaxed">
+          TourGaze runs on OpenStreetMap's free map tiles and Nominatim geocoding —
+          kept online by the non-profit OpenStreetMap Foundation, funded entirely by
+          donations. TourGaze takes no money for this; if it's useful to you, please
+          chip in to keep those services running for everyone.
+        </p>
+        <a href="https://donate.openstreetmap.org/" target="_blank" rel="noopener"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium rounded bg-primary text-primary-fg hover:bg-primary/90">
+          <HeartHandshake :size="14" /> Donate to OpenStreetMap
+        </a>
+      </section>
+
       <!-- Footer -->
       <footer class="pt-4 border-t border-border text-[11px] text-muted-fg flex items-center gap-2">
         <Database :size="13" />

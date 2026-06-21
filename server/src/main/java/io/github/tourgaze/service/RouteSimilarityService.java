@@ -5,7 +5,6 @@
  */
 package io.github.tourgaze.service;
 
-import java.nio.file.Files;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -63,7 +62,7 @@ public class RouteSimilarityService {
 		if (fp == null || fp.isBlank()) {
 			try {
 				var pts = trackParser.parseByFilename(
-						Files.readAllBytes(storage.storeFile(a.getSourceFilename())), a.getSourceFilename()).points();
+						storage.readStoreBytes(a.getSourceFilename()), a.getSourceFilename()).points();
 				fp = fingerprint(pts);
 				a.setRouteGeocells(fp);
 				activityRepo.save(a);

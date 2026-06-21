@@ -55,8 +55,9 @@ public class RideMediaService {
 				if (!mediaProcessor.isAccepted(e))
 					continue; // images + videos
 				String name = unique(dir, sanitize(orig));
-				// Downscale oversized images (videos pass through untouched).
-				Files.write(dir.resolve(name), mediaProcessor.process(f.getBytes(), e));
+				// Downscale oversized images (videos pass through untouched); encrypted
+				// to <name>.enc when store encryption is on.
+				storage.writeEncrypted(dir.resolve(name), mediaProcessor.process(f.getBytes(), e));
 				saved.add(name);
 			}
 		}
@@ -75,7 +76,7 @@ public class RideMediaService {
 	public void delete(String sourceFilename, String name) throws IOException {
 		if (name.contains("/") || name.contains("\\") || name.contains(".."))
 			return;
-		Files.deleteIfExists(storage.activityMediaDir(sourceFilename).resolve(name));
+		storage.deleteEncrypted(storage.activityMediaDir(sourceFilename).resolve(name));
 		rebuild(sourceFilename);
 	}
 
@@ -90,13 +91,13 @@ public class RideMediaService {
 		Path dir = storage.activityMediaDir(sourceFilename);
 		if (name.contains("/") || name.contains("\\") || name.contains(".."))
 			return manifest.read(dir);
-		if (!MediaManifestService.isPublic(name) || !Files.isRegularFile(dir.resolve(name)))
+		if (!MediaManifestService.isPublic(name) || !storage.encryptedExists(dir.resolve(name)))
 			return manifest.read(dir);
 		String stripped = name
 				.replaceFirst("^" + MediaManifestService.PUBLIC_PREFIX, "")
 				.replaceFirst("^wiki_", "");
 		String newName = unique(dir, MediaManifestService.PERSONAL_PREFIX + stripped);
-		Files.move(dir.resolve(name), dir.resolve(newName));
+		storage.renameEncrypted(dir, name, newName);
 		manifest.renameInManifest(dir, name, newName);
 		return manifest.read(dir);
 	}
@@ -105,7 +106,7 @@ public class RideMediaService {
 	public void rebuild(String sourceFilename) {
 		try {
 			var points = trackParser.parseByFilename(
-					Files.readAllBytes(storage.storeFile(sourceFilename)), sourceFilename).points();
+					storage.readStoreBytes(sourceFilename), sourceFilename).points();
 			manifest.build(storage.activityMediaDir(sourceFilename), points);
 		} catch (Exception e) {
 			// Manifest is best-effort; the photos themselves are already saved.
@@ -128,15 +129,15 @@ public class RideMediaService {
 		return n.length() > 120 ? n.substring(n.length() - 120) : n;
 	}
 
-	private static String unique(Path dir, String name) {
-		if (!Files.exists(dir.resolve(name)))
+	private String unique(Path dir, String name) {
+		if (!storage.encryptedExists(dir.resolve(name)))
 			return name;
 		int dot = name.lastIndexOf('.');
 		String base = dot > 0 ? name.substring(0, dot) : name;
 		String ext = dot > 0 ? name.substring(dot) : "";
 		for (int i = 2;; i++) {
 			String c = base + "_" + i + ext;
-			if (!Files.exists(dir.resolve(c)))
+			if (!storage.encryptedExists(dir.resolve(c)))
 				return c;
 		}
 	}

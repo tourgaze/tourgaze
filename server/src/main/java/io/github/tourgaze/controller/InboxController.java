@@ -241,6 +241,38 @@ public class InboxController {
 		}
 	}
 
+	/**
+	 * Serve already-read bytes, deriving the content type from {@code name} (the
+	 * logical filename) — used for encrypted media where the on-disk file is a
+	 * {@code .enc} blob, so the extension must come from the logical name.
+	 */
+	static ResponseEntity<byte[]> serveImageBytes(byte[] bytes, String name) {
+		return ResponseEntity.ok()
+				.contentType(MediaType.parseMediaType(contentTypeForName(name)))
+				.header("Cache-Control", "public, max-age=86400")
+				.body(bytes);
+	}
+
+	private static String contentTypeForName(String name) {
+		String n = name.toLowerCase();
+		if (n.endsWith(".jpg") || n.endsWith(".jpeg"))
+			return "image/jpeg";
+		if (n.endsWith(".png"))
+			return "image/png";
+		if (n.endsWith(".gif"))
+			return "image/gif";
+		if (n.endsWith(".webp"))
+			return "image/webp";
+		if (n.endsWith(".mp4"))
+			return "video/mp4";
+		if (n.endsWith(".mov"))
+			return "video/quicktime";
+		if (n.endsWith(".webm"))
+			return "video/webm";
+		String guess = java.net.URLConnection.guessContentTypeFromName(name);
+		return guess != null ? guess : "application/octet-stream";
+	}
+
 	@DeleteMapping("/{filename}")
 	public ResponseEntity<Void> discard(@PathVariable("filename") String filename) {
 		try {

@@ -9,7 +9,7 @@ import {
   LegendComponent, AxisPointerComponent, MarkAreaComponent, MarkLineComponent,
 } from 'echarts/components'
 import VChart from 'vue-echarts'
-import { X } from 'lucide-vue-next'
+import { X, Layers } from 'lucide-vue-next'
 import { activeIndex } from '@/composables/useTrackData'
 import { distanceM } from '@/lib/geo'
 
@@ -47,6 +47,33 @@ const emit = defineEmits<{
 }>()
 
 const chartRef = ref<any>(null)
+
+// Custom channel toggles — a reliable HTML "legend" we control. (ECharts' own
+// legend only blanked the line without re-laying-out, and a hidden item rendered
+// invisibly.) Toggling a chip re-facets the chart so the rest stretch to fill.
+const CHANNELS = [
+  { key: 'elev', name: 'Elevation', color: '#22c55e', has: (p: any) => p.altM != null },
+  { key: 'hr', name: 'HR', color: '#ef4444', has: (p: any) => p.hr != null && p.hr > 0 },
+  { key: 'power', name: 'Power', color: '#a855f7', has: (p: any) => p.power != null && p.power > 0 },
+  { key: 'speed', name: 'Speed', color: '#f59e0b', has: (p: any) => p.speedMs != null && p.speedMs > 0 },
+  { key: 'cadence', name: 'Cadence', color: '#06b6d4', has: (p: any) => p.cadence != null && p.cadence > 0 },
+] as const
+const presentChannels = computed(() => CHANNELS.filter(c => props.points.some(c.has)))
+const hidden = ref<Set<string>>(new Set())
+// Overlay switch: stack each graph (false) vs overlay them on one grid with
+// per-channel colour-coded y-axes (true).
+const overlayMode = ref(false)
+function toggleChannel(key: string) {
+  const next = new Set(hidden.value)
+  if (next.has(key)) {
+    next.delete(key)
+  } else {
+    // Keep at least one graph visible.
+    if (presentChannels.value.filter(c => !next.has(c.key)).length <= 1) return
+    next.add(key)
+  }
+  hidden.value = next
+}
 
 // ── Drag-to-measure ─────────────────────────────────────────────────────────
 // Press + drag across the chart to select a segment; we report its distance and
@@ -117,13 +144,18 @@ const option = computed(() => {
   // the height — so an HR-only ride uses the whole chart instead of leaving an
   // empty elevation band up top (MyTourbook-style).
   type Key = 'elev' | 'hr' | 'power' | 'speed' | 'cadence'
-  const panels: Key[] = []
-  if (hasElev) panels.push('elev')
-  if (hasHr) panels.push('hr')
-  if (hasPower) panels.push('power')
-  if (hasSpeed) panels.push('speed')
-  if (hasCadence) panels.push('cadence')
-  if (!panels.length) return {}
+  const present: Key[] = []
+  if (hasElev) present.push('elev')
+  if (hasHr) present.push('hr')
+  if (hasPower) present.push('power')
+  if (hasSpeed) present.push('speed')
+  if (hasCadence) present.push('cadence')
+  if (!present.length) return {}
+  // Stack only the channels enabled via the toggle chips; the rest are excluded
+  // so the visible graphs stretch to fill. (An all-data ride still shows all by
+  // default — `hidden` is empty until the user toggles.)
+  const visible = present.filter(k => !hidden.value.has(k))
+  const panels = visible.length ? visible : present
 
   const cfg = (key: Key) => {
     if (key === 'elev') return {
@@ -219,51 +251,85 @@ const option = computed(() => {
   // panel shrinking equally. While measuring, open a top lane so the distance /
   // gradient readout floats ABOVE the plot instead of over the peak.
   const N = panels.length
-  const topMargin = sel ? 18 : 6
-  const botMargin = 12
-  const gap = N > 3 ? 6 : (N > 1 ? 9 : 0)
-  const weights = panels.map(k => k === 'elev' ? 1.9 : 1)
-  const wsum = weights.reduce((a, b) => a + b, 0)
-  const usable = 100 - topMargin - botMargin - gap * (N - 1)
-  let acc = topMargin
 
-  panels.forEach((key, i) => {
-    const c = cfg(key)
-    const h = usable * weights[i] / wsum
-    grids.push({
-      left: leftPad, right: rightPad,
-      top: +acc.toFixed(2) + '%',
-      height: +h.toFixed(2) + '%',
-    })
-    acc += h + gap
+  if (overlayMode.value) {
+    // OVERLAY: one grid, every channel on top of each other, each with its own
+    // colour-coded y-axis (alternating left/right, offset for extras). Lines only
+    // — area fills would obscure one another.
+    const leftN = Math.ceil(N / 2)
+    const rightN = N - leftN
+    grids.push({ top: (sel ? 18 : 8) + '%', bottom: 26, left: 10 + leftN * 44, right: 10 + rightN * 44 })
     xAxes.push({
-      gridIndex: i, type: 'category', data: xData,
-      axisLabel: { show: i === N - 1, fontSize: 10, color: '#9ca3af', formatter: '{value} km' },
+      gridIndex: 0, type: 'category', data: xData,
+      axisLabel: { show: true, fontSize: 10, color: '#9ca3af', formatter: '{value} km' },
       axisLine: { show: false }, axisTick: { show: false }, boundaryGap: false,
     })
-    yAxes.push({ gridIndex: i, ...c.yAxis })
-    series.push({
-      name: c.name, type: 'line', xAxisIndex: i, yAxisIndex: i,
-      data: c.data, smooth: c.smooth, symbol: 'none',
-      lineStyle: { color: c.color, width: 1.5 },
-      areaStyle: {
-        color: {
-          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [{ offset: 0, color: c.area[0] }, { offset: 1, color: c.area[1] }],
-        },
-      },
-      // Measurement / section bands live on the top panel only.
-      ...(i === 0 && areaData.length ? {
-        markArea: {
-          silent: true,
-          label: { show: true, position: 'insideTop', fontSize: 9, color: '#0d9488', formatter: (p: any) => p.name ?? '' },
-          data: areaData,
-        },
-      } : {}),
+    let l = 0, r = 0
+    panels.forEach((key, i) => {
+      const c = cfg(key)
+      const side = i % 2 === 0 ? 'left' : 'right'
+      const offset = (side === 'left' ? l++ : r++) * 44
+      yAxes.push({
+        gridIndex: 0, position: side, offset,
+        ...c.yAxis,
+        axisLine: { show: true, lineStyle: { color: c.color } },
+        axisLabel: { ...(c.yAxis.axisLabel as any), fontSize: 9, color: c.color, margin: 4 },
+        splitLine: { show: i === 0, lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+      })
+      series.push({
+        name: c.name, type: 'line', xAxisIndex: 0, yAxisIndex: i,
+        data: c.data, smooth: c.smooth, symbol: 'none',
+        lineStyle: { color: c.color, width: 1.5 },
+        ...(i === 0 && areaData.length ? {
+          markArea: {
+            silent: true,
+            label: { show: true, position: 'insideTop', fontSize: 9, color: '#0d9488', formatter: (p2: any) => p2.name ?? '' },
+            data: areaData,
+          },
+        } : {}),
+      })
     })
-  })
-  const extras = panels.filter(k => k !== 'elev') // kept for legend/tooltip flags below
+  } else {
+    const topMargin = sel ? 18 : 6
+    const botMargin = 12
+    const gap = N > 3 ? 6 : (N > 1 ? 9 : 0)
+    const weights = panels.map(k => k === 'elev' ? 1.9 : 1)
+    const wsum = weights.reduce((a, b) => a + b, 0)
+    const usable = 100 - topMargin - botMargin - gap * (N - 1)
+    let acc = topMargin
 
+    panels.forEach((key, i) => {
+      const c = cfg(key)
+      const h = usable * weights[i] / wsum
+      grids.push({ left: leftPad, right: rightPad, top: +acc.toFixed(2) + '%', height: +h.toFixed(2) + '%' })
+      acc += h + gap
+      xAxes.push({
+        gridIndex: i, type: 'category', data: xData,
+        axisLabel: { show: i === N - 1, fontSize: 10, color: '#9ca3af', formatter: '{value} km' },
+        axisLine: { show: false }, axisTick: { show: false }, boundaryGap: false,
+      })
+      yAxes.push({ gridIndex: i, ...c.yAxis })
+      series.push({
+        name: c.name, type: 'line', xAxisIndex: i, yAxisIndex: i,
+        data: c.data, smooth: c.smooth, symbol: 'none',
+        lineStyle: { color: c.color, width: 1.5 },
+        areaStyle: {
+          color: {
+            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [{ offset: 0, color: c.area[0] }, { offset: 1, color: c.area[1] }],
+          },
+        },
+        // Measurement / section bands live on the top panel only.
+        ...(i === 0 && areaData.length ? {
+          markArea: {
+            silent: true,
+            label: { show: true, position: 'insideTop', fontSize: 9, color: '#0d9488', formatter: (p2: any) => p2.name ?? '' },
+            data: areaData,
+          },
+        } : {}),
+      })
+    })
+  }
   // Replay-cursor placeholder: declared empty (per series, so it spans every
   // sub-grid) so the markLine component exists from init — renderPlayCursor only
   // updates its `data`. ECharts won't render a markLine first introduced by a
@@ -283,12 +349,6 @@ const option = computed(() => {
     // wheel still zooms. (See drag-to-measure handlers below.)
     dataZoom: [{ type: 'inside', xAxisIndex: xAxes.map((_, i) => i), moveOnMouseMove: false, zoomOnMouseWheel: true }],
     axisPointer: { link: [{ xAxisIndex: 'all' }] },
-    legend: {
-      show: extras.length > 0,
-      top: 0, right: 15,
-      textStyle: { fontSize: 10, color: '#6b7280' },
-      itemHeight: 8,
-    },
     tooltip: {
       // Only while NOT replaying. During playback the position is shown by the
       // markLine cursor below; the value popup (elevation/speed/HR) would
@@ -330,15 +390,9 @@ const option = computed(() => {
 // How many series the option renders (elevation + optional HR/speed). Cached so
 // the per-frame cursor update below doesn't have to read the whole chart option.
 const seriesCount = computed(() => {
-  const pts = props.points
-  if (!pts.length) return 0
-  let n = 0
-  if (pts.some(p => p.altM != null)) n++
-  if (pts.some(p => p.hr != null && p.hr > 0)) n++
-  if (pts.some(p => p.speedMs != null && p.speedMs > 0)) n++
-  if (pts.some(p => p.power != null && p.power > 0)) n++
-  if (pts.some(p => p.cadence != null && p.cadence > 0)) n++
-  return n
+  // Matches `option`: rendered series = enabled (non-hidden) present channels.
+  const visible = presentChannels.value.filter(c => !hidden.value.has(c.key))
+  return visible.length || presentChannels.value.length
 })
 
 // Map the (full-resolution) shared activeIndex to the NEAREST chart point. The
@@ -462,6 +516,29 @@ const fmtSigned = (n: number, digits = 0) => (n >= 0 ? '+' : '') + n.toFixed(dig
       @mouseout="onChartMouseout"
       @click="onChartClick"
     />
+
+    <!-- Top-right controls: overlay switch + channel toggles (custom,
+         always-visible legend — click a chip to hide/show that graph). -->
+    <div v-if="presentChannels.length > 1"
+      class="absolute top-0.5 right-2 z-10 flex items-center gap-2 pointer-events-auto select-none">
+      <button type="button"
+        class="text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded border"
+        :class="overlayMode ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-fg hover:bg-muted/40'"
+        :title="overlayMode ? 'Switch to stacked graphs' : 'Overlay all graphs on one axis'"
+        @click="overlayMode = !overlayMode">
+        <Layers :size="11" /> Overlay
+      </button>
+      <span class="flex items-center gap-1.5">
+        <button v-for="c in presentChannels" :key="c.key" type="button"
+          class="text-[10px] inline-flex items-center gap-1 px-1 rounded hover:bg-muted/40"
+          :title="hidden.has(c.key) ? 'Show ' + c.name : 'Hide ' + c.name"
+          @click="toggleChannel(c.key)">
+          <span class="inline-block w-2 h-2 rounded-sm"
+            :style="{ backgroundColor: c.color, opacity: hidden.has(c.key) ? 0.3 : 1 }" />
+          <span :class="hidden.has(c.key) ? 'line-through text-muted-fg/60' : 'text-muted-fg'">{{ c.name }}</span>
+        </button>
+      </span>
+    </div>
 
     <!-- Drag-to-measure readout: distance + average gradient (Steilheit) -->
     <div

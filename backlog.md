@@ -45,21 +45,28 @@ with `[x]`.
       when present. Edited in Settings → Inbox folders; timezone moved to
       Settings → Language and the old "Device & app" section was removed.
 
-- [ ] **Port matrosdms storage + optional AES-GCM crypto** *(was task #28)*
-  - Goal: encrypt files in `store/` so the data dir can safely sync to Google
-    Drive / Dropbox.
-  - Must be **opt-in** via a `crypto.enabled` setting (default false). When
-    off, storage stays plain — no password prompt, no `.enc` suffix.
-  - Port `EncryptionService` (AES-256-GCM) + Argon2id KDF from matrosdms.
-  - Vault unlock flow: first-run password setup, derive key, keep in memory
-    only.
-  - Wrap `InboxService.importItem` + `TrackCacheService` reads with the
-    encryption stream when enabled.
-  - Frontend: Settings → Storage section toggle + first-time password wizard.
-  - Enabling the setting on a populated install should re-encrypt the
-    existing `store/` contents (or refuse to enable until the user opts into
-    the migration). Don't silently leave plaintext files behind.
-  - Must also cover `~/.tourgaze/media/`, not just `store/` (same key/envelope).
+- [~] **Port matrosdms storage + optional AES-GCM crypto** *(was task #28)* —
+  *mostly shipped.*
+  - ✓ `EncryptionService` (AES-256-GCM, 12-byte IV prefix + 128-bit tag,
+    streaming) + `EncryptionConfig` (Argon2id KDF, t=3/64MB/p=1, key in memory,
+    wiped on shutdown). BouncyCastle 1.80.
+  - ✓ Opt-in, **env-driven** (matros model): `TOURGAZE_STORE_CRYPTOR` /
+    `_PASSWORD` / `_SALT`; off by default (plaintext, no `.enc`). Fails fast if
+    on without a password.
+  - ✓ **Per-ride folder layout** `store/<rideId>/` (track + `media/` + sidecar);
+    track files written `*.enc` and transparently decrypted on every read
+    (`StorageService.moveIntoStore`/`readStoreBytes`/`openStore`); import, track
+    cache, peaks, similarity, wikimedia, export all routed through it. Sidecar
+    kept plaintext (recovery metadata).
+  - ✓ **Media encrypted too** — photos/videos written `*.enc` in
+    `store/<id>/media/`, served decrypted, EXIF/manifest read through
+    `StorageService.openEncrypted`/`writeEncrypted`/`listLogicalNames`. The
+    `media.json` manifest stays plaintext (metadata only).
+  - **Remaining:** (b) re-encryption migration when enabling on a populated
+    install (matros has none either — new files follow the current setting, old
+    plaintext stays readable via fallback); (c) optional UI unlock instead of env
+    vars; (d) `pruneOrphans` is now a no-op with nested folders — rewrite to
+    sweep orphan `store/<id>/` dirs.
 
 ---
 

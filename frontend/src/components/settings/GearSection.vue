@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
 import { getGear, createGear, updateGear, deleteGear, type Gear } from '@/api/client'
 import { Trash2, Bike, Pencil, Check, X } from 'lucide-vue-next'
+import { GEAR_ICONS, gearIconSvg } from '@/gearIcons'
 
 // Free-form on the backend; these are the common ones we suggest in the form.
 const GEAR_TYPES = ['bike', 'shoes', 'wetsuit', 'other'] as const
@@ -14,12 +15,14 @@ const { data: gear, isPending } = useQuery({ queryKey: ['gear'], queryFn: () => 
 const newName = ref('')
 const newType = ref<string>('bike')
 const newDescription = ref('')
+const newIcon = ref<string>('')
 
 const createMut = useMutation({
   mutationFn: () => createGear({
     name: newName.value.trim(),
     type: newType.value || null,
     description: newDescription.value.trim() || null,
+    icon: newIcon.value || null,
   }),
   onSuccess: () => {
     qc.invalidateQueries({ queryKey: ['gear'] })
@@ -27,6 +30,7 @@ const createMut = useMutation({
     newName.value = ''
     newType.value = 'bike'
     newDescription.value = ''
+    newIcon.value = ''
   },
   onError: () => push.error('Failed to add gear'),
 })
@@ -36,12 +40,14 @@ const editingId = ref<string | null>(null)
 const editName = ref('')
 const editType = ref<string>('bike')
 const editDescription = ref('')
+const editIcon = ref<string>('')
 
 function startEdit(g: Gear) {
   editingId.value = g.id!
   editName.value = g.name ?? ''
   editType.value = g.type ?? 'other'
   editDescription.value = g.description ?? ''
+  editIcon.value = g.icon ?? ''
 }
 function cancelEdit() { editingId.value = null }
 
@@ -52,6 +58,7 @@ const updateMut = useMutation({
       name: editName.value.trim(),
       type: editType.value || null,
       description: editDescription.value.trim() || null,
+      icon: editIcon.value || null,
       // Preserve fields the form doesn't expose so the PUT doesn't wipe them.
       userId: orig?.userId ?? null,
       retiredAt: orig?.retiredAt ?? null,
@@ -85,7 +92,8 @@ const deleteMut = useMutation({
         <!-- Display row -->
         <div v-if="editingId !== g.id" class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-2.5 min-w-0">
-            <Bike :size="15" class="text-muted-fg shrink-0" />
+            <span v-if="g.icon" class="text-primary shrink-0 inline-flex" v-html="gearIconSvg(g.icon, 16)"></span>
+            <Bike v-else :size="15" class="text-muted-fg shrink-0" />
             <div class="min-w-0">
               <div class="font-medium text-foreground truncate">{{ g.name }}</div>
               <div class="text-[11px] text-muted-fg truncate">
@@ -113,6 +121,16 @@ const deleteMut = useMutation({
           </div>
           <input v-model="editDescription" placeholder="Description (optional)"
             class="w-full px-2.5 py-1.5 text-sm rounded border border-border bg-background focus:outline-none focus:border-primary" />
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-[11px] text-muted-fg mr-0.5">Icon</span>
+            <button type="button" title="None" @click="editIcon = ''"
+              class="w-7 h-7 inline-flex items-center justify-center rounded border text-[11px] text-muted-fg"
+              :class="editIcon === '' ? 'border-primary text-primary bg-primary/10' : 'border-border'">—</button>
+            <button v-for="gi in GEAR_ICONS" :key="gi.key" type="button" :title="gi.label" @click="editIcon = gi.key"
+              class="w-7 h-7 inline-flex items-center justify-center rounded border"
+              :class="editIcon === gi.key ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-fg'"
+              v-html="gearIconSvg(gi.key, 16)"></button>
+          </div>
           <div class="flex items-center gap-1.5">
             <button type="submit" :disabled="updateMut.isPending.value || !editName.trim()"
               class="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded bg-primary text-primary-fg hover:bg-primary/90 disabled:opacity-50">
@@ -139,6 +157,16 @@ const deleteMut = useMutation({
       </div>
       <input v-model="newDescription" placeholder="Description (optional)"
         class="w-full px-3 py-1.5 text-sm rounded border border-border bg-transparent focus:outline-none focus:border-primary" />
+      <div class="flex items-center gap-1.5 flex-wrap">
+        <span class="text-[11px] text-muted-fg mr-0.5">Icon</span>
+        <button type="button" title="None" @click="newIcon = ''"
+          class="w-7 h-7 inline-flex items-center justify-center rounded border text-[11px] text-muted-fg"
+          :class="newIcon === '' ? 'border-primary text-primary bg-primary/10' : 'border-border'">—</button>
+        <button v-for="gi in GEAR_ICONS" :key="gi.key" type="button" :title="gi.label" @click="newIcon = gi.key"
+          class="w-7 h-7 inline-flex items-center justify-center rounded border"
+          :class="newIcon === gi.key ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-fg'"
+          v-html="gearIconSvg(gi.key, 16)"></button>
+      </div>
       <button type="submit" :disabled="createMut.isPending.value || !newName.trim()"
         class="px-4 py-1.5 bg-primary text-primary-fg text-sm font-medium rounded hover:bg-primary/90 disabled:opacity-50">
         Add

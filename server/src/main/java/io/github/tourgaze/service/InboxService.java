@@ -89,9 +89,9 @@ public class InboxService {
 
 	/**
 	 * Filename → originating watch-folder label, for files copied in by the scanner
-	 * (Settings → Inbox source). Persisted next to the staged files in
-	 * inbox/.origins.json so the card can show where a ride came from even after a
-	 * restart. Files dropped/uploaded by hand simply have no entry.
+	 * (Settings → Inbox source). Persisted in cache/inbox-origins.json (app state
+	 * never lives inside an inbox/watch folder) so the card can show where a ride
+	 * came from even after a restart. Hand-dropped/uploaded files have no entry.
 	 */
 	private final ConcurrentHashMap<String, String> origins = new ConcurrentHashMap<>();
 
@@ -153,13 +153,29 @@ public class InboxService {
 	}
 
 	private Path originsFile() {
-		return storage.inboxDir().resolve(".origins.json");
+		// App state lives in cache/, never inside an inbox/watch folder.
+		return storage.cacheDir().resolve("inbox-origins.json");
 	}
 
 	/** Load the filename → watch-folder-label map once at startup (best-effort). */
 	@PostConstruct
 	void loadOrigins() {
 		Path f = originsFile();
+		// One-time migration: earlier builds wrote this as a dotfile inside inbox/.
+		// App state must never live in an inbox/watch folder, so relocate it.
+		Path legacy = storage.inboxDir().resolve(".origins.json");
+		if (Files.isRegularFile(legacy)) {
+			try {
+				if (!Files.isRegularFile(f)) {
+					Files.createDirectories(f.getParent());
+					Files.move(legacy, f);
+				} else {
+					Files.deleteIfExists(legacy);
+				}
+			} catch (IOException e) {
+				log.debug("[Inbox] origins migration skipped: {}", e.getMessage());
+			}
+		}
 		if (!Files.isRegularFile(f))
 			return;
 		try {
@@ -516,7 +532,10 @@ public class InboxService {
 			Files.createDirectories(to);
 			try (var s = Files.list(from)) {
 				for (Path p : s.filter(Files::isRegularFile).toList()) {
-					Files.move(p, to.resolve(p.getFileName().toString()), StandardCopyOption.REPLACE_EXISTING);
+					// Staged media is plaintext (local workspace); encrypt it as it
+					// lands in the store when encryption is on.
+					storage.writeEncrypted(to.resolve(p.getFileName().toString()), Files.readAllBytes(p));
+					Files.delete(p);
 				}
 			}
 			Files.deleteIfExists(from);
@@ -544,7 +563,7 @@ public class InboxService {
 					if (!mediaProcessor.isAccepted(pext))
 						continue;
 					String name = uniqueMediaName(mediaDir, sanitizeMediaName(photo.name()));
-					Files.write(mediaDir.resolve(name), mediaProcessor.process(photo.bytes(), pext));
+					storage.writeEncrypted(mediaDir.resolve(name), mediaProcessor.process(photo.bytes(), pext));
 					if (photo.lat() != null && photo.lon() != null) {
 						known.put(name, new double[] { photo.lat(), photo.lon() });
 					}
@@ -571,14 +590,14 @@ public class InboxService {
 	}
 
 	private String uniqueMediaName(Path dir, String name) {
-		if (!Files.exists(dir.resolve(name)))
+		if (!storage.encryptedExists(dir.resolve(name)))
 			return name;
 		int dot = name.lastIndexOf('.');
 		String base = dot > 0 ? name.substring(0, dot) : name;
 		String ext = dot > 0 ? name.substring(dot) : "";
 		for (int i = 2;; i++) {
 			String c = base + "_" + i + ext;
-			if (!Files.exists(dir.resolve(c)))
+			if (!storage.encryptedExists(dir.resolve(c)))
 				return c;
 		}
 	}
@@ -638,21 +657,6 @@ public class InboxService {
 		byte[] data = Files.readAllBytes(source);
 		String hash = sha256Hex(data);
 		String ext = extensionOf(filename);
-		// Storage filename: `{sanitized-original-stem}_{hash}.{ext}`. The hash
-		// suffix keeps the file content-addressable for dedup, but the
-		// original filename stem is preserved at the front so a DB-loss
-		// disaster (corrupt H2, accidental schema rewipe, ransomware) still
-		// leaves a recoverable file tree — you can see "2024-06-13-tegernsee_…"
-		// sitting in `store/` and re-import. Truncate the stem to 100 chars
-		// so even with very long names + 64-char hash + ext we stay under
-		// typical 255-char filesystem limits.
-		String stem = filename.replaceAll("(?i)\\.(fit|gpx|tcx|kmz|kml)$", "");
-		String safeStem = stem.replaceAll("[^a-zA-Z0-9._\\-]", "_");
-		if (safeStem.length() > 100)
-			safeStem = safeStem.substring(0, 100);
-		if (safeStem.isBlank())
-			safeStem = "ride";
-		String storeFilename = safeStem + "_" + hash + "." + ext;
 
 		// Dedup — if already imported, drop the inbox copy and return the existing row.
 		Optional<Activity> existing = activityRepo.findBySourceHash(hash);
@@ -661,9 +665,22 @@ public class InboxService {
 			return existing.get();
 		}
 
-		Files.move(source, storage.storeFile(storeFilename), StandardCopyOption.REPLACE_EXISTING);
+		// Per-ride folder: store/<rideId>/<stem>.<ext>. The id is assigned up front
+		// so the folder name is known before save (a preset id survives @PrePersist).
+		// The original stem is preserved for file-tree recovery; the id folder makes
+		// it unique, so no content-hash suffix is needed. moveIntoStore encrypts the
+		// file (→ .enc) when store encryption is enabled.
+		String stem = filename.replaceAll("(?i)\\.(fit|gpx|tcx|kmz|kml)$", "");
+		String safeStem = stem.replaceAll("[^a-zA-Z0-9._\\-]", "_");
+		if (safeStem.length() > 80)
+			safeStem = safeStem.substring(0, 80);
+		if (safeStem.isBlank())
+			safeStem = "ride";
 
 		Activity a = new Activity();
+		a.setId(io.github.tourgaze.util.ShortId.next());
+		String storeFilename = a.getId() + "/" + safeStem + "." + ext;
+		storage.moveIntoStore(source, storeFilename);
 		a.setSourceHash(hash);
 		a.setSourceFilename(storeFilename);
 		// The on-disk name (sourceFilename) is the content hash so we can dedup

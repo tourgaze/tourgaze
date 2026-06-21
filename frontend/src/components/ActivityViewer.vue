@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
-import { getActivities, getSettings, saveSetting, getTrack, getChartTrack, getTileProviders, getActivityMedia, activityMediaUrl, deleteActivityMedia, discoverPhotos, makePhotoPersonal, isVideoFile, getMarkersForActivity, deleteMarker, updateMarker, getSections, getActivityHighlights, type ActivitySummary, type RideMedia, type Marker } from '@/api/client'
+import { getActivities, getSettings, saveSetting, getTrack, getChartTrack, getTileProviders, getActivityMedia, activityMediaUrl, deleteActivityMedia, discoverPhotos, makePhotoPersonal, isVideoFile, getMarkersForActivity, deleteMarker, updateMarker, getSections, getActivityHighlights, getGear, type ActivitySummary, type RideMedia, type Marker } from '@/api/client'
 import { markerCategory, markerIconSvg } from '@/markerCategories'
 import MapRenderer from '@/components/MapRenderer.vue'
 import ElevationChart from '@/components/ElevationChart.vue'
@@ -240,6 +240,12 @@ function fmtSkipSeconds(sec: number): string {
 const { data: activities } = useQuery({ queryKey: ['activities'], queryFn: getActivities })
 const activity = computed<ActivitySummary | null>(() =>
   activities.value?.find(a => a.id === activityId.value) ?? null,
+)
+
+// This ride's gear glyph (if its gear has one) → drives the replay cursor icon.
+const { data: gearList } = useQuery({ queryKey: ['gear'], queryFn: () => getGear() })
+const cursorIcon = computed<string | null>(() =>
+  gearList.value?.find(g => g.id === activity.value?.gearId)?.icon ?? null,
 )
 
 // "Tours" overlay: every OTHER ride's start point, for the map to pin whichever
@@ -597,6 +603,7 @@ const activeColorLabel = computed(() =>
           v-if="activityId"
           ref="mapRef"
           :activity-id="activityId"
+          :cursor-icon="cursorIcon"
           :tile-provider="tileProvider"
           :hover-index="activeIndex"
           :hover-coords="hoverCoords"
@@ -842,7 +849,7 @@ const activeColorLabel = computed(() =>
             :is-playing="isPlaying" :sections="sections ?? []"
             class="h-full" @jump="onChartJump" />
         </div>
-        <TimeInZone :zones="hrZones" :seconds="tiz" :total-sec="hrTotalSec" />
+        <TimeInZone :zones="hrZones" :seconds="tiz" :total-sec="hrTotalSec" :breakdown="false" />
       </template>
 
       <!-- Photos view — responsive gallery that reflows with the window. -->
@@ -910,7 +917,8 @@ const activeColorLabel = computed(() =>
       </div>
 
       <!-- Ride stats view — advanced ride analytics, computed from the track. -->
-      <RideStats v-else-if="!chartCollapsed && bottomView === 'stats'" :stats="rideStats" />
+      <RideStats v-else-if="!chartCollapsed && bottomView === 'stats'" :stats="rideStats"
+        :zones="hrZones" :tiz="tiz" :total-sec="hrTotalSec" />
 
       <!-- Compare view — pick a similar ride (same route) and race it as a ghost. -->
       <div v-else-if="!chartCollapsed && bottomView === 'compare'" class="flex-1 min-h-0 overflow-y-auto p-2 custom-scrollbar">

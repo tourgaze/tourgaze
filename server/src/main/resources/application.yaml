@@ -86,6 +86,17 @@ tourgaze:
   # sidecars. Defaults to data-dir/repository (kept separate from the workspace).
   repository-dir: ${TOURGAZE_REPOSITORY_DIR:${tourgaze.data-dir}/repository}
 
+  # ── Optional at-rest encryption of the store (off by default) ────────────────
+  # Set cryptor to an AES mode (e.g. "AES-GCM") to encrypt ride files in store/
+  # as *.enc, so the repository can safely sync to a cloud folder. The key is
+  # Argon2id(password, salt), derived at startup and held in memory only.
+  # WARNING: lose the password or salt and the encrypted store is unrecoverable
+  # — there is no key escrow. All three are read from the environment.
+  store:
+    cryptor: ${TOURGAZE_STORE_CRYPTOR:}
+    password: ${TOURGAZE_STORE_PASSWORD:}
+    salt: ${TOURGAZE_STORE_SALT:}
+
   # ── Inbox folders (deployment default) ──────────────────────────────────────
   # Folders scanned for new ride files (copy-never-move, SHA-deduped). This is a
   # DEFAULT only — the `inbox.sources` DB setting (Settings → Inbox) takes

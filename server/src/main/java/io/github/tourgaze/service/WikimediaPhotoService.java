@@ -73,7 +73,7 @@ public class WikimediaPhotoService {
 	/** Discover + download Commons photos for the ride; returns what was saved. */
     public List<DiscoveredPhoto> discover(String sourceFilename) throws Exception {
         List<TrackPoint> points = trackParser.parseByFilename(
-                Files.readAllBytes(storage.storeFile(sourceFilename)), sourceFilename).points();
+                storage.readStoreBytes(sourceFilename), sourceFilename).points();
         if (points.isEmpty()) return List.of();
 
         // De-dup candidates by Commons title across all sampled points.
@@ -113,18 +113,18 @@ public class WikimediaPhotoService {
             // The user already moved this one into their personal set — don't
             // resurrect a public twin alongside it.
             String personalTwin = MediaManifestService.PERSONAL_PREFIX + name.substring(MediaManifestService.PUBLIC_PREFIX.length());
-            if (Files.exists(dir.resolve(personalTwin))) continue;
+            if (storage.encryptedExists(dir.resolve(personalTwin))) continue;
             try {
                 // Already cached from a previous search → keep it, don't re-download.
                 // Still register its coords so the manifest rebuild re-matches it.
-                if (Files.exists(dir.resolve(name))) {
+                if (storage.encryptedExists(dir.resolve(name))) {
                     knownCoords.put(name, new double[]{c.lat(), c.lon()});
                     saved.add(new DiscoveredPhoto(name, c.lat(), c.lon(), attribution(ii)));
                     continue;
                 }
                 byte[] bytes = download(ii.path("thumburl").asText());
                 if (bytes.length == 0) continue;
-                Files.write(dir.resolve(name), bytes);
+                storage.writeEncrypted(dir.resolve(name), bytes);
                 knownCoords.put(name, new double[]{c.lat(), c.lon()});
                 saved.add(new DiscoveredPhoto(name, c.lat(), c.lon(), attribution(ii)));
             } catch (Exception e) {

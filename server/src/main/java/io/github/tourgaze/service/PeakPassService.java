@@ -5,7 +5,6 @@
  */
 package io.github.tourgaze.service;
 
-import java.nio.file.Files;
 import java.util.*;
 
 import org.slf4j.Logger;
@@ -191,7 +190,7 @@ public class PeakPassService {
 	private List<TrackPoint> pointsOf(Activity a) {
 		try {
 			return trackParser.parseByFilename(
-					Files.readAllBytes(storage.storeFile(a.getSourceFilename())), a.getSourceFilename()).points();
+					storage.readStoreBytes(a.getSourceFilename()), a.getSourceFilename()).points();
 		} catch (Exception e) {
 			log.debug("[Highlights] track read failed for {}: {}", a.getId(), e.getMessage());
 			return List.of();

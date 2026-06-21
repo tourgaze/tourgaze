@@ -2,9 +2,16 @@
 import { fmtClock } from '@/lib/format'
 import { computed, ref } from 'vue'
 import type { RideStats } from '@/composables/useRideStats'
+import type { HrZone } from '@/composables/useHrZones'
+import TimeInZone from '@/components/TimeInZone.vue'
 import { Gauge, Mountain, HeartPulse, Zap, Timer, TrendingUp, ChevronDown, ChevronRight, RotateCw } from 'lucide-vue-next'
 
-const props = defineProps<{ stats: RideStats }>()
+const props = defineProps<{
+  stats: RideStats
+  zones?: HrZone[]
+  tiz?: number[]
+  totalSec?: number
+}>()
 
 const decoupleTone = computed(() => {
   const d = props.stats.decouplingPct
@@ -69,6 +76,9 @@ const isOpen = (k: string) => !collapsed.value.has(k)
             <span class="stat-val" :class="decoupleTone">{{ stats.decouplingPct != null ? stats.decouplingPct + '%' : '—' }}</span>
             <span class="stat-lbl">Aerobic decoupling</span>
           </div>
+        </div>
+        <div v-show="isOpen('hr')" v-if="zones && zones.length && (totalSec ?? 0) > 0" class="mt-1.5 rounded overflow-hidden">
+          <TimeInZone :zones="zones" :seconds="tiz ?? []" :total-sec="totalSec ?? 0" />
         </div>
       </section>
 

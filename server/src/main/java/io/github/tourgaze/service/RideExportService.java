@@ -138,13 +138,15 @@ public class RideExportService {
 
 	// ── Write / path helpers ─────────────────────────────────────────────────
 	private void writeSidecar(Activity a) throws Exception {
-		Path dir = storage.storeDir();
-		Files.createDirectories(dir);
 		RideMetadataDto dto = mapper.toDto(a, Instant.now());
-		objectMapper.writerWithDefaultPrettyPrinter().writeValue(sidecarPath(a.getSourceFilename()).toFile(), dto);
+		Path sidecar = sidecarPath(a.getSourceFilename());
+		Files.createDirectories(sidecar.getParent()); // the ride's store/<id>/ folder
+		objectMapper.writerWithDefaultPrettyPrinter().writeValue(sidecar.toFile(), dto);
 	}
 
-	/** store/{source-basename}.metadata.json */
+	/**
+	 * store/<rideId>/<name>.metadata.json (plaintext sidecar, beside the track).
+	 */
 	private Path sidecarPath(String sourceFilename) {
 		int dot = sourceFilename.lastIndexOf('.');
 		String base = dot > 0 ? sourceFilename.substring(0, dot) : sourceFilename;

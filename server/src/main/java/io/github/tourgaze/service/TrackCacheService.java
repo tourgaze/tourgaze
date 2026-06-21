@@ -98,8 +98,7 @@ public class TrackCacheService {
 		if (chartOnly && !chartMissing)
 			return;
 
-		Path fitPath = storage.storeFile(sourceFilename);
-		byte[] data = Files.readAllBytes(fitPath);
+		byte[] data = storage.readStoreBytes(sourceFilename); // transparently decrypts
 		ParseResult result = trackParser.parseByFilename(data, sourceFilename);
 
 		List<TrackPoint> raw = result.points();

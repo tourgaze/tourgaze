@@ -60,28 +60,28 @@ public class AdminController {
     public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> exportAll() {
         // Materialise everything inside the tx (DTOs resolve lazy gear/rider/tags
         // to plain strings) so the post-return streaming never touches a closed session.
-        record Item(String name, java.nio.file.Path src, byte[] meta) {}
+        record Item(String name, String sf, byte[] meta) {}
         java.util.List<Item> items = new java.util.ArrayList<>();
         java.util.Set<String> used = new java.util.HashSet<>();
         for (var a : activityRepo.findAll()) {
-            java.nio.file.Path src = storage.storeFile(a.getSourceFilename());
-            if (!Files.exists(src)) continue;
+            String sf = a.getSourceFilename();
+            if (!Files.exists(storage.storeFileOnDisk(sf))) continue;
             String orig = (a.getOriginalFilename() != null && !a.getOriginalFilename().isBlank())
-                    ? a.getOriginalFilename() : a.getSourceFilename();
+                    ? a.getOriginalFilename() : sf;
             String name = uniqueName(orig, used);
             byte[] meta;
             try {
                 meta = objectMapper.writerWithDefaultPrettyPrinter()
                         .writeValueAsBytes(metadataMapper.toDto(a, java.time.Instant.now()));
             } catch (Exception e) { meta = new byte[0]; }
-            items.add(new Item(name, src, meta));
+            items.add(new Item(name, sf, meta));
         }
 
         org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody body = out -> {
             try (var zip = new java.util.zip.ZipOutputStream(out)) {
                 for (Item it : items) {
                     zip.putNextEntry(new java.util.zip.ZipEntry(it.name()));
-                    Files.copy(it.src(), zip);
+                    try (var in = storage.openStore(it.sf())) { in.transferTo(zip); }
                     zip.closeEntry();
                     if (it.meta().length > 0) {
                         int dot = it.name().lastIndexOf('.');

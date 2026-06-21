@@ -6,6 +6,7 @@
 package io.github.tourgaze.store;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,6 +21,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import io.github.tourgaze.config.AppConfig;
+import io.github.tourgaze.store.encryption.EncryptionConfig;
+import io.github.tourgaze.store.encryption.EncryptionService;
 
 /**
  * Single source of truth for all on-disk locations.
@@ -44,10 +47,14 @@ public class StorageService {
 
 	private final Path baseDir;
 	private final Path repoDir;
+	private final EncryptionService enc;
+	private final EncryptionConfig crypto;
 
-	public StorageService(AppConfig config) {
+	public StorageService(AppConfig config, EncryptionService enc, EncryptionConfig crypto) {
 		this.baseDir = Path.of(config.getDataDir());
 		this.repoDir = Path.of(config.getRepositoryDir());
+		this.enc = enc;
+		this.crypto = crypto;
 	}
 
 	@PostConstruct
@@ -175,24 +182,154 @@ public class StorageService {
 	}
 
 	/**
-	 * A ride's media folder, next to its source file in store/ —
-	 * {@code store/<source-basename>_media/} (e.g. {@code 2024-…_<hash>_media}).
-	 * Sits alongside the track + metadata sidecar for file-tree recovery.
+	 * A ride's own folder: {@code store/<activityId>/} (track + media + sidecar).
 	 */
-	public Path activityMediaDir(String sourceFilename) {
-		validateFilename(sourceFilename);
-		int dot = sourceFilename.lastIndexOf('.');
-		String base = dot > 0 ? sourceFilename.substring(0, dot) : sourceFilename;
-		return storeDir().resolve(base + "_media");
+	public Path rideDir(String activityId) {
+		validateFilename(activityId);
+		return storeDir().resolve(activityId);
 	}
 
 	/**
-	 * Resolve a filename inside the store directory.
-	 * Validates against path traversal.
+	 * A ride's media folder — {@code store/<rideId>/media}, beside its track file.
+	 * Derived from the source path ({@code "<rideId>/<name>"}) so callers holding
+	 * only the sourceFilename still resolve it.
 	 */
-	public Path storeFile(String filename) {
-		validateFilename(filename);
-		return storeDir().resolve(filename);
+	public Path activityMediaDir(String sourceFilename) {
+		Path parent = storeFile(sourceFilename).getParent();
+		return (parent != null ? parent : storeDir()).resolve("media");
+	}
+
+	/**
+	 * Logical path of a store file (no {@code .enc}). {@code relName} is the
+	 * sourceFilename, which is {@code "<rideId>/<name>"}. Validated against
+	 * traversal.
+	 */
+	public Path storeFile(String relName) {
+		validateRelPath(relName);
+		return storeDir().resolve(relName);
+	}
+
+	/** The actual on-disk file — the {@code .enc} variant when it exists. */
+	public Path storeFileOnDisk(String relName) {
+		Path logical = storeFile(relName);
+		Path encrypted = logical.resolveSibling(logical.getFileName() + ".enc");
+		return Files.exists(encrypted) ? encrypted : logical;
+	}
+
+	/**
+	 * Move an inbox file into the store, encrypting it (→ {@code .enc}) when on.
+	 */
+	public void moveIntoStore(Path source, String relName) throws IOException {
+		Path logical = storeFile(relName);
+		Files.createDirectories(logical.getParent());
+		if (crypto.isEncryptionEnabled()) {
+			Path encrypted = logical.resolveSibling(logical.getFileName() + ".enc");
+			enc.encryptFile(source, encrypted, crypto.getKey());
+			Files.deleteIfExists(source);
+		} else {
+			Files.move(source, logical, StandardCopyOption.REPLACE_EXISTING);
+		}
+	}
+
+	/**
+	 * Read a store file's bytes, transparently decrypting an {@code .enc} variant.
+	 */
+	public byte[] readStoreBytes(String relName) throws IOException {
+		Path logical = storeFile(relName);
+		Path encrypted = logical.resolveSibling(logical.getFileName() + ".enc");
+		if (crypto.isEncryptionEnabled() && Files.exists(encrypted))
+			return enc.decryptBytes(encrypted, crypto.getKey());
+		return Files.readAllBytes(logical);
+	}
+
+	/** Open a store file for streaming, transparently decrypting {@code .enc}. */
+	public InputStream openStore(String relName) throws IOException {
+		Path logical = storeFile(relName);
+		Path encrypted = logical.resolveSibling(logical.getFileName() + ".enc");
+		if (crypto.isEncryptionEnabled() && Files.exists(encrypted))
+			return enc.decryptStream(encrypted, crypto.getKey());
+		return Files.newInputStream(logical);
+	}
+
+	/** Delete a ride's entire folder (track + media + sidecar) in one shot. */
+	public void deleteRide(String activityId) throws IOException {
+		Path dir = rideDir(activityId);
+		if (Files.isDirectory(dir))
+			deleteTree(dir);
+	}
+
+	// ── Encryption-aware ops on a LOGICAL path (the .enc suffix is handled here).
+	// Used for per-ride media (store/<id>/media/<name>): the image/video bytes are
+	// encrypted; the media.json manifest stays plaintext (it's just metadata). ──
+
+	private Path encOf(Path logical) {
+		return logical.resolveSibling(logical.getFileName() + ".enc");
+	}
+
+	/**
+	 * Write bytes to {@code logical}, encrypting to {@code <logical>.enc} when on.
+	 */
+	public void writeEncrypted(Path logical, byte[] data) throws IOException {
+		Files.createDirectories(logical.getParent());
+		if (crypto.isEncryptionEnabled())
+			enc.encryptBytes(data, encOf(logical), crypto.getKey());
+		else
+			Files.write(logical, data);
+	}
+
+	/** Read {@code logical}, transparently decrypting an {@code .enc} variant. */
+	public byte[] readEncrypted(Path logical) throws IOException {
+		Path e = encOf(logical);
+		if (crypto.isEncryptionEnabled() && Files.exists(e))
+			return enc.decryptBytes(e, crypto.getKey());
+		return Files.readAllBytes(logical);
+	}
+
+	/** Stream {@code logical}, transparently decrypting an {@code .enc} variant. */
+	public InputStream openEncrypted(Path logical) throws IOException {
+		Path e = encOf(logical);
+		if (crypto.isEncryptionEnabled() && Files.exists(e))
+			return enc.decryptStream(e, crypto.getKey());
+		return Files.newInputStream(logical);
+	}
+
+	/** True if {@code logical} (or its {@code .enc} variant) exists. */
+	public boolean encryptedExists(Path logical) {
+		return Files.exists(logical) || Files.exists(encOf(logical));
+	}
+
+	/** Delete {@code logical} and its {@code .enc} variant. */
+	public void deleteEncrypted(Path logical) throws IOException {
+		Files.deleteIfExists(logical);
+		Files.deleteIfExists(encOf(logical));
+	}
+
+	/**
+	 * Rename a (possibly encrypted) file within {@code dir}, keeping the suffix.
+	 */
+	public void renameEncrypted(Path dir, String oldName, String newName) throws IOException {
+		Path oldEnc = dir.resolve(oldName + ".enc");
+		if (Files.exists(oldEnc))
+			Files.move(oldEnc, dir.resolve(newName + ".enc"), StandardCopyOption.REPLACE_EXISTING);
+		Path oldPlain = dir.resolve(oldName);
+		if (Files.exists(oldPlain))
+			Files.move(oldPlain, dir.resolve(newName), StandardCopyOption.REPLACE_EXISTING);
+	}
+
+	/**
+	 * Logical filenames in {@code dir} ({@code .enc} stripped); empty if no dir.
+	 */
+	public java.util.List<String> listLogicalNames(Path dir) throws IOException {
+		if (!Files.isDirectory(dir))
+			return java.util.List.of();
+		try (Stream<Path> s = Files.list(dir)) {
+			return s.filter(Files::isRegularFile)
+					.map(p -> {
+						String n = p.getFileName().toString();
+						return n.endsWith(".enc") ? n.substring(0, n.length() - 4) : n;
+					})
+					.sorted().toList();
+		}
 	}
 
 	/** Lazy JSON track cache for a given activity ID. */
@@ -220,6 +357,20 @@ public class StorageService {
 	private void validateFilename(String filename) {
 		if (filename == null || filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
 			throw new IllegalArgumentException("Invalid filename: " + filename);
+		}
+	}
+
+	/**
+	 * A store-relative path ({@code "<rideId>/<name>"}) — allows forward-slash
+	 * segments but still rejects traversal, backslashes and blank/absolute parts.
+	 */
+	private void validateRelPath(String rel) {
+		if (rel == null || rel.isBlank() || rel.contains("..") || rel.contains("\\") || rel.startsWith("/")) {
+			throw new IllegalArgumentException("Invalid path: " + rel);
+		}
+		for (String seg : rel.split("/")) {
+			if (seg.isBlank())
+				throw new IllegalArgumentException("Invalid path: " + rel);
 		}
 	}
 

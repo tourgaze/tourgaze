@@ -875,6 +875,7 @@ export interface components {
             name?: string;
             type?: string;
             description?: string;
+            icon?: string;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */

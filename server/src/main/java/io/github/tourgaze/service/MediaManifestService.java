@@ -52,9 +52,11 @@ public class MediaManifestService {
 	private static final String LEGACY_PUBLIC_PREFIX = "wiki_";
 
 	private final ObjectMapper objectMapper;
+	private final io.github.tourgaze.store.StorageService storage;
 
-	public MediaManifestService(ObjectMapper objectMapper) {
+	public MediaManifestService(ObjectMapper objectMapper, io.github.tourgaze.store.StorageService storage) {
 		this.objectMapper = objectMapper;
+		this.storage = storage;
 	}
 
 	/**
@@ -128,15 +130,11 @@ public class MediaManifestService {
 				if (it.author() != null)
 					authors.put(it.name(), it.author());
 
-			List<Path> images;
-			try (var s = Files.list(mediaDir)) {
-				images = s.filter(Files::isRegularFile)
-						.filter(p -> !p.getFileName().toString().equals(MANIFEST))
-						.sorted().toList();
-			}
+			List<String> names = storage.listLogicalNames(mediaDir).stream()
+					.filter(n -> !n.equals(MANIFEST)).toList();
 			List<MediaItem> items = new ArrayList<>();
-			for (Path img : images)
-				items.add(matchOne(img, points, knownCoords, authors));
+			for (String name : names)
+				items.add(matchOne(mediaDir, name, points, knownCoords, authors));
 			objectMapper.writerWithDefaultPrettyPrinter().writeValue(mediaDir.resolve(MANIFEST).toFile(), items);
 		} catch (Exception e) {
 			log.warn("[Media] manifest build failed for {}: {}", mediaDir, e.getMessage());
@@ -178,11 +176,9 @@ public class MediaManifestService {
 				log.debug("[Media] manifest read failed: {}", e.getMessage());
 			}
 		}
-		try (var s = Files.list(mediaDir)) {
-			return s.filter(Files::isRegularFile)
-					.map(p -> p.getFileName().toString())
+		try {
+			return storage.listLogicalNames(mediaDir).stream()
 					.filter(n -> !n.equals(MANIFEST))
-					.sorted()
 					.map(n -> new MediaItem(n, null, null, null, null, originOf(n), defaultAuthor(n, null)))
 					.toList();
 		} catch (Exception e) {
@@ -200,11 +196,10 @@ public class MediaManifestService {
 		return isPublic(name) ? "Wikimedia Commons" : null;
 	}
 
-	private MediaItem matchOne(Path img, List<TrackPoint> points, java.util.Map<String, double[]> knownCoords,
-			java.util.Map<String, String> authors) {
+	private MediaItem matchOne(Path mediaDir, String fname, List<TrackPoint> points,
+			java.util.Map<String, double[]> knownCoords, java.util.Map<String, String> authors) {
 		Double lat = null, lon = null;
 		Instant taken = null;
-		String fname = img.getFileName().toString();
 		String author = defaultAuthor(fname, authors.get(fname));
 		double[] known = knownCoords.get(fname);
 		if (known != null) {
@@ -213,8 +208,8 @@ public class MediaManifestService {
 			Integer idx = points.isEmpty() ? null : nearestByDistance(points, lat, lon);
 			return new MediaItem(fname, lat, lon, null, idx, originOf(fname), author);
 		}
-		try {
-			Metadata md = ImageMetadataReader.readMetadata(img.toFile());
+		try (var in = storage.openEncrypted(mediaDir.resolve(fname))) {
+			Metadata md = ImageMetadataReader.readMetadata(in);
 			GpsDirectory gps = md.getFirstDirectoryOfType(GpsDirectory.class);
 			if (gps != null) {
 				GeoLocation loc = gps.getGeoLocation();
@@ -227,7 +222,7 @@ public class MediaManifestService {
 			if (exif != null && exif.getDateOriginal() != null)
 				taken = exif.getDateOriginal().toInstant();
 		} catch (Exception e) {
-			log.debug("[Media] EXIF read failed for {}: {}", img.getFileName(), e.getMessage());
+			log.debug("[Media] EXIF read failed for {}: {}", fname, e.getMessage());
 		}
 
 		Integer idx = null;

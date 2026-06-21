@@ -7,6 +7,9 @@ const props = defineProps<{
   zones: HrZone[]
   seconds: number[]
   totalSec: number
+  /** Show the per-zone Z#·duration line under the bar (default true). Off in the
+   *  graph view, where the full breakdown lives in the stats panel. */
+  breakdown?: boolean
 }>()
 
 
@@ -20,32 +23,27 @@ const rows = computed(() =>
 </script>
 
 <template>
-  <div v-if="totalSec > 0" class="px-3 py-2 border-t border-border bg-muted/10">
-    <div class="flex items-baseline justify-between mb-1.5">
-      <h4 class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Time in zone</h4>
-      <span class="text-[10px] text-muted-fg font-mono">{{ fmtDuration(totalSec) }} HR data</span>
-    </div>
-
-    <!-- Stacked bar -->
-    <div class="flex h-2 rounded overflow-hidden bg-muted/30">
-      <div
-        v-for="r in rows"
-        :key="r.zone.index"
-        :style="{ width: (r.pct * 100) + '%', backgroundColor: r.zone.color }"
-        :title="`${r.zone.name} (${r.zone.lo}–${r.zone.hi} bpm): ${fmtDuration(r.sec)}`"
-      />
-    </div>
-
-    <!-- Per-zone breakdown -->
-    <div class="grid grid-cols-5 gap-1 mt-1.5 text-[10px]">
-      <div v-for="r in rows" :key="r.zone.index" class="text-center">
-        <div class="flex items-center justify-center gap-1">
-          <span class="inline-block w-2 h-2 rounded-sm" :style="{ backgroundColor: r.zone.color }" />
-          <span class="font-semibold text-foreground">Z{{ r.zone.index }}</span>
-        </div>
-        <div class="text-muted-fg leading-tight">{{ r.zone.lo }}–{{ r.zone.hi }}</div>
-        <div class="font-mono text-foreground">{{ fmtDuration(r.sec) }}</div>
+  <!-- Compact: title + stacked bar + total on one line, then a single wrapping
+       Z#·duration line. The full per-zone breakdown lives in the stats panel. -->
+  <div v-if="totalSec > 0" class="px-3 py-1.5 border-t border-border bg-muted/10">
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-fg shrink-0">Zones</span>
+      <div class="flex h-2.5 flex-1 rounded overflow-hidden bg-muted/30">
+        <div
+          v-for="r in rows"
+          :key="r.zone.index"
+          :style="{ width: (r.pct * 100) + '%', backgroundColor: r.zone.color }"
+          :title="`${r.zone.name} (${r.zone.lo}–${r.zone.hi} bpm): ${fmtDuration(r.sec)}`"
+        />
       </div>
+      <span class="text-[9px] text-muted-fg font-mono shrink-0">{{ fmtDuration(totalSec) }}</span>
+    </div>
+    <div v-if="breakdown !== false" class="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-1 text-[9px] text-muted-fg">
+      <span v-for="r in rows" :key="r.zone.index" class="inline-flex items-center gap-1"
+        :title="`${r.zone.name} (${r.zone.lo}–${r.zone.hi} bpm)`">
+        <span class="inline-block w-1.5 h-1.5 rounded-sm" :style="{ backgroundColor: r.zone.color }" />
+        Z{{ r.zone.index }} <span class="font-mono text-foreground">{{ fmtDuration(r.sec) }}</span>
+      </span>
     </div>
   </div>
 </template>

@@ -75,6 +75,7 @@ public class GearController {
 			g.setName(dto.name().trim());
 		g.setType(dto.type());
 		g.setDescription(dto.description());
+		g.setIcon(dto.icon());
 		g.setRetiredAt(dto.retiredAt());
 		// Owner is optional; clear it when the DTO omits it, otherwise resolve the
 		// user.
