@@ -107,12 +107,58 @@ const option = computed(() => {
   const pts = props.points
   if (!pts.length) return {}
 
+  const hasElev = pts.some(p => p.altM != null)
   const hasHr = pts.some(p => p.hr != null && p.hr > 0)
   const hasSpeed = pts.some(p => p.speedMs != null && p.speedMs > 0)
 
-  const extras: string[] = []
-  if (hasHr) extras.push('hr')
-  if (hasSpeed) extras.push('speed')
+  // Facet ONLY the channels that actually have data, then stretch them to fill
+  // the height — so an HR-only ride uses the whole chart instead of leaving an
+  // empty elevation band up top (MyTourbook-style). Order: elevation, HR, speed.
+  type Key = 'elev' | 'hr' | 'speed'
+  const panels: Key[] = []
+  if (hasElev) panels.push('elev')
+  if (hasHr) panels.push('hr')
+  if (hasSpeed) panels.push('speed')
+  if (!panels.length) return {}
+
+  const cfg = (key: Key) => {
+    if (key === 'elev') return {
+      name: 'Elevation', color: '#22c55e', smooth: 0.3,
+      data: pts.map(p => p.altM ?? null),
+      area: ['rgba(34,197,94,0.40)', 'rgba(34,197,94,0.02)'],
+      yAxis: {
+        type: 'value',
+        min: (v: any) => Math.floor(v.min - Math.max(10, (v.max - v.min) * 0.1)),
+        max: (v: any) => Math.ceil(v.max + Math.max(10, (v.max - v.min) * 0.1)),
+        axisLabel: { fontSize: 10, color: '#9ca3af', formatter: '{value}m', margin: 8 },
+        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+      },
+    }
+    if (key === 'hr') return {
+      name: 'Heart rate', color: '#ef4444', smooth: 0.4,
+      data: pts.map(p => p.hr ?? null),
+      area: ['rgba(239,68,68,0.25)', 'rgba(239,68,68,0.02)'],
+      yAxis: {
+        type: 'value', splitNumber: 2,
+        min: (v: any) => Math.max(0, Math.floor(v.min - 5)),
+        max: (v: any) => Math.ceil(v.max + 5),
+        axisLabel: { fontSize: 10, color: '#ef4444', margin: 8, formatter: '{value}' },
+        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+      },
+    }
+    return {
+      name: 'Speed', color: '#f59e0b', smooth: 0.3,
+      data: pts.map(p => p.speedMs != null ? +(p.speedMs * 3.6).toFixed(1) : null),
+      area: ['rgba(245,158,11,0.25)', 'rgba(245,158,11,0.02)'],
+      yAxis: {
+        type: 'value', splitNumber: 2,
+        min: (v: any) => Math.max(0, Math.floor(v.min - 2)),
+        max: (v: any) => Math.ceil(v.max + 2),
+        axisLabel: { fontSize: 10, color: '#f59e0b', margin: 8, formatter: '{value}' },
+        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+      },
+    }
+  }
 
   const grids: any[] = []
   const xAxes: any[] = []
@@ -123,36 +169,8 @@ const option = computed(() => {
   const leftPad = 48
   const rightPad = 15
 
-  // 1. Dynamic Grid Layout (Elite Faceting)
-  if (extras.length === 0) {
-    grids.push({ top: 15, left: leftPad, right: rightPad, bottom: 25 })
-  } else if (extras.length === 1) {
-    grids.push({ top: 15, left: leftPad, right: rightPad, bottom: '38%' }) // Elevation
-    grids.push({ top: '68%', left: leftPad, right: rightPad, bottom: 25 }) // Extra 1
-  } else {
-    grids.push({ top: 15, left: leftPad, right: rightPad, bottom: '48%' }) // Elevation
-    grids.push({ top: '57%', left: leftPad, right: rightPad, bottom: '26%' }) // Extra 1
-    grids.push({ top: '79%', left: leftPad, right: rightPad, bottom: 25 }) // Extra 2
-  }
-
-  // 2. Elevation Series & Axes (Grid 0)
-  xAxes.push({
-    gridIndex: 0, type: 'category', data: xData,
-    axisLabel: { show: extras.length === 0, fontSize: 10, color: '#9ca3af', formatter: '{value} km' },
-    axisLine: { show: false }, axisTick: { show: false }, boundaryGap: false
-  })
-  
-  yAxes.push({
-    gridIndex: 0, type: 'value',
-    min: (v: any) => Math.floor(v.min - Math.max(10, (v.max - v.min) * 0.1)),
-    max: (v: any) => Math.ceil(v.max + Math.max(10, (v.max - v.min) * 0.1)),
-    axisLabel: { fontSize: 10, color: '#9ca3af', formatter: '{value}m', margin: 8 },
-    splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
-  })
-
   const sel = selection.value
-  // Bands: saved sections (teal, labelled with their name) + the live drag
-  // measurement (indigo, no label).
+  // Bands: saved sections (teal, labelled) + the live drag measurement (indigo).
   const areaData: any[] = []
   for (const m of matchedSections.value) {
     areaData.push([
@@ -166,74 +184,57 @@ const option = computed(() => {
       { xAxis: xData[sel.b] },
     ])
   }
-  series.push({
-    name: 'Elevation', type: 'line', xAxisIndex: 0, yAxisIndex: 0,
-    data: pts.map(p => p.altM ?? null),
-    smooth: 0.3, symbol: 'none',
-    lineStyle: { color: '#22c55e', width: 1.5 },
-    areaStyle: {
-      color: {
-        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-        colorStops: [{ offset: 0, color: 'rgba(34,197,94,0.40)' }, { offset: 1, color: 'rgba(34,197,94,0.02)' }]
-      }
-    },
-    ...(areaData.length ? {
-      markArea: {
-        silent: true,
-        label: { show: true, position: 'insideTop', fontSize: 9, color: '#0d9488', formatter: (p: any) => p.name ?? '' },
-        data: areaData,
-      },
-    } : {}),
-  })
 
-  // 3. Extra Series & Axes (Grids 1 & 2)
-  extras.forEach((ext, idx) => {
-    const gridIdx = idx + 1
-    const isHr = ext === 'hr'
+  // Weighted stacked grids filling the height. Elevation is the hero (the profile
+  // people actually read), so it gets ~2× a secondary row — that keeps the chart
+  // legible as channels pile up (HR + speed + power + cadence) instead of every
+  // panel shrinking equally. While measuring, open a top lane so the distance /
+  // gradient readout floats ABOVE the plot instead of over the peak.
+  const N = panels.length
+  const topMargin = sel ? 18 : 6
+  const botMargin = 12
+  const gap = N > 3 ? 6 : (N > 1 ? 9 : 0)
+  const weights = panels.map(k => k === 'elev' ? 1.9 : 1)
+  const wsum = weights.reduce((a, b) => a + b, 0)
+  const usable = 100 - topMargin - botMargin - gap * (N - 1)
+  let acc = topMargin
 
+  panels.forEach((key, i) => {
+    const c = cfg(key)
+    const h = usable * weights[i] / wsum
+    grids.push({
+      left: leftPad, right: rightPad,
+      top: +acc.toFixed(2) + '%',
+      height: +h.toFixed(2) + '%',
+    })
+    acc += h + gap
     xAxes.push({
-      gridIndex: gridIdx, type: 'category', data: xData,
-      axisLabel: { show: idx === extras.length - 1, fontSize: 10, color: '#9ca3af', formatter: '{value} km' },
-      axisLine: { show: false }, axisTick: { show: false }, boundaryGap: false
+      gridIndex: i, type: 'category', data: xData,
+      axisLabel: { show: i === N - 1, fontSize: 10, color: '#9ca3af', formatter: '{value} km' },
+      axisLine: { show: false }, axisTick: { show: false }, boundaryGap: false,
     })
-
-    yAxes.push({
-      gridIndex: gridIdx, type: 'value',
-      min: (v: any) => Math.max(0, Math.floor(v.min - (isHr ? 5 : 2))),
-      max: (v: any) => Math.ceil(v.max + (isHr ? 5 : 2)),
-      axisLabel: { fontSize: 10, color: isHr ? '#ef4444' : '#f59e0b', margin: 8, formatter: '{value}' },
-      splitNumber: 2,
-      splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+    yAxes.push({ gridIndex: i, ...c.yAxis })
+    series.push({
+      name: c.name, type: 'line', xAxisIndex: i, yAxisIndex: i,
+      data: c.data, smooth: c.smooth, symbol: 'none',
+      lineStyle: { color: c.color, width: 1.5 },
+      areaStyle: {
+        color: {
+          type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: c.area[0] }, { offset: 1, color: c.area[1] }],
+        },
+      },
+      // Measurement / section bands live on the top panel only.
+      ...(i === 0 && areaData.length ? {
+        markArea: {
+          silent: true,
+          label: { show: true, position: 'insideTop', fontSize: 9, color: '#0d9488', formatter: (p: any) => p.name ?? '' },
+          data: areaData,
+        },
+      } : {}),
     })
-
-    if (isHr) {
-      series.push({
-        name: 'Heart rate', type: 'line', xAxisIndex: gridIdx, yAxisIndex: gridIdx,
-        data: pts.map(p => p.hr ?? null),
-        smooth: 0.4, symbol: 'none',
-        lineStyle: { color: '#ef4444', width: 1.5 },
-        areaStyle: {
-          color: {
-            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [{ offset: 0, color: 'rgba(239,68,68,0.25)' }, { offset: 1, color: 'rgba(239,68,68,0.02)' }]
-          }
-        }
-      })
-    } else {
-      series.push({
-        name: 'Speed', type: 'line', xAxisIndex: gridIdx, yAxisIndex: gridIdx,
-        data: pts.map(p => p.speedMs != null ? +(p.speedMs * 3.6).toFixed(1) : null),
-        smooth: 0.3, symbol: 'none',
-        lineStyle: { color: '#f59e0b', width: 1.5 },
-        areaStyle: {
-          color: {
-            type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [{ offset: 0, color: 'rgba(245,158,11,0.25)' }, { offset: 1, color: 'rgba(245,158,11,0.02)' }]
-          }
-        }
-      })
-    }
   })
+  const extras = panels.filter(k => k !== 'elev') // kept for legend/tooltip flags below
 
   // Replay-cursor placeholder: declared empty (per series, so it spans every
   // sub-grid) so the markLine component exists from init — renderPlayCursor only
@@ -300,7 +301,8 @@ const option = computed(() => {
 const seriesCount = computed(() => {
   const pts = props.points
   if (!pts.length) return 0
-  let n = 1
+  let n = 0
+  if (pts.some(p => p.altM != null)) n++
   if (pts.some(p => p.hr != null && p.hr > 0)) n++
   if (pts.some(p => p.speedMs != null && p.speedMs > 0)) n++
   return n
