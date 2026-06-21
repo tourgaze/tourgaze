@@ -697,6 +697,10 @@ public class InboxService {
 			a.setMaxHr(r.maxHr());
 			a.setAvgSpeedKmh(r.avgSpeedMs() != null ? r.avgSpeedMs() * 3.6 : null);
 			a.setMaxSpeedKmh(r.maxSpeedMs() != null ? r.maxSpeedMs() * 3.6 : null);
+			a.setAvgCadence(r.avgCadence());
+			a.setMaxCadence(r.maxCadence());
+			a.setAvgPowerW(r.avgPowerW());
+			a.setMaxPowerW(r.maxPowerW());
 			if (!r.points().isEmpty()) {
 				a.setStartLat(r.points().get(0).lat());
 				a.setStartLon(r.points().get(0).lon());

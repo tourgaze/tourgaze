@@ -2,7 +2,7 @@
 import { fmtClock } from '@/lib/format'
 import { computed, ref } from 'vue'
 import type { EliteStats } from '@/composables/useEliteStats'
-import { Gauge, Mountain, HeartPulse, Zap, Timer, TrendingUp, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { Gauge, Mountain, HeartPulse, Zap, Timer, TrendingUp, ChevronDown, ChevronRight, RotateCw } from 'lucide-vue-next'
 
 const props = defineProps<{ stats: EliteStats }>()
 
@@ -69,6 +69,30 @@ const isOpen = (k: string) => !collapsed.value.has(k)
             <span class="elite-val" :class="decoupleTone">{{ stats.decouplingPct != null ? stats.decouplingPct + '%' : '—' }}</span>
             <span class="elite-lbl">Aerobic decoupling</span>
           </div>
+        </div>
+      </section>
+
+      <!-- Power (measured by a power meter) -->
+      <section v-if="stats.measuredAvgPowerW != null">
+        <button type="button" class="elite-h" @click="toggle('powerMeter')">
+          <component :is="isOpen('powerMeter') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
+          <Zap :size="12" /> Power <span class="elite-est">meter</span>
+        </button>
+        <div v-show="isOpen('powerMeter')" class="elite-grid">
+          <div class="elite-card"><span class="elite-val">{{ stats.measuredAvgPowerW }}</span><span class="elite-unit">W</span><span class="elite-lbl">Avg power</span></div>
+          <div class="elite-card"><span class="elite-val">{{ stats.measuredMaxPowerW ?? '—' }}</span><span class="elite-unit">W</span><span class="elite-lbl">Max power</span></div>
+        </div>
+      </section>
+
+      <!-- Cadence (measured by a cadence sensor) -->
+      <section v-if="stats.avgCadence != null">
+        <button type="button" class="elite-h" @click="toggle('cadence')">
+          <component :is="isOpen('cadence') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
+          <RotateCw :size="12" /> Cadence
+        </button>
+        <div v-show="isOpen('cadence')" class="elite-grid">
+          <div class="elite-card"><span class="elite-val">{{ stats.avgCadence }}</span><span class="elite-unit">rpm</span><span class="elite-lbl">Avg cadence</span></div>
+          <div class="elite-card"><span class="elite-val">{{ stats.maxCadence ?? '—' }}</span><span class="elite-unit">rpm</span><span class="elite-lbl">Max cadence</span></div>
         </div>
       </section>
 

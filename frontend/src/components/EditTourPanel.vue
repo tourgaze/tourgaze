@@ -6,7 +6,7 @@ import { push } from 'notivue'
 import {
   Bike, Tag as TagIcon, Save, CloudSun, X as XIcon, ImagePlus,
   MapPin, Timer, Ruler, Mountain, Activity as ActivityIcon, Gauge, FileText, Hash, Copy, Scale,
-  Globe, UserRound,
+  Globe, UserRound, Zap, RotateCw,
 } from 'lucide-vue-next'
 import {
   getActivities, getWeatherConditions, getGear, updateActivity,
@@ -219,6 +219,14 @@ async function copyToClipboard(text: string | null | undefined) {
         <div>
           <div class="text-muted-fg flex items-center gap-1"><ActivityIcon :size="10" />HR avg/max</div>
           <div class="font-medium">{{ activity.avgHr ?? '—' }} / {{ activity.maxHr ?? '—' }}</div>
+        </div>
+        <div v-if="activity.avgCadence != null || activity.maxCadence != null">
+          <div class="text-muted-fg flex items-center gap-1"><RotateCw :size="10" />Cadence avg/max</div>
+          <div class="font-medium">{{ activity.avgCadence ?? '—' }} / {{ activity.maxCadence ?? '—' }} rpm</div>
+        </div>
+        <div v-if="activity.avgPowerW != null || activity.maxPowerW != null">
+          <div class="text-muted-fg flex items-center gap-1"><Zap :size="10" />Power avg/max</div>
+          <div class="font-medium">{{ activity.avgPowerW ?? '—' }} / {{ activity.maxPowerW ?? '—' }} W</div>
         </div>
       </div>
 

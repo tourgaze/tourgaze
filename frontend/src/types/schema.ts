@@ -987,6 +987,14 @@ export interface components {
             avgSpeedKmh?: number;
             /** Format: double */
             maxSpeedKmh?: number;
+            /** Format: int32 */
+            avgCadence?: number;
+            /** Format: int32 */
+            maxCadence?: number;
+            /** Format: int32 */
+            avgPowerW?: number;
+            /** Format: int32 */
+            maxPowerW?: number;
             /** Format: double */
             weatherTempC?: number;
             /** Format: int32 */

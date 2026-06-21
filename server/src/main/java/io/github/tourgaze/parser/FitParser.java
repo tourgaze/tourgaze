@@ -94,6 +94,10 @@ public class FitParser implements TrackFileParser {
 			session.maxHr = mesg.getMaxHeartRate() != null ? mesg.getMaxHeartRate().intValue() : null;
 			session.avgSpeedMs = mesg.getAvgSpeed() != null ? mesg.getAvgSpeed().doubleValue() : null;
 			session.maxSpeedMs = mesg.getMaxSpeed() != null ? mesg.getMaxSpeed().doubleValue() : null;
+			session.avgCadence = mesg.getAvgCadence() != null ? mesg.getAvgCadence().intValue() : null;
+			session.maxCadence = mesg.getMaxCadence() != null ? mesg.getMaxCadence().intValue() : null;
+			session.avgPowerW = mesg.getAvgPower() != null ? mesg.getAvgPower().intValue() : null;
+			session.maxPowerW = mesg.getMaxPower() != null ? mesg.getMaxPower().intValue() : null;
 		});
 
 		try (ByteArrayInputStream in = new ByteArrayInputStream(data)) {
@@ -118,19 +122,24 @@ public class FitParser implements TrackFileParser {
 						? (int) (endTime.getEpochSecond() - startTime.getEpochSecond())
 						: null);
 
-		return new ParseResult(
-				points,
-				session.sport,
-				session.distanceM,
-				session.ascentM,
-				startTime,
-				endTime,
-				durationS,
-				session.movingS,
-				session.avgHr,
-				session.maxHr,
-				session.avgSpeedMs,
-				session.maxSpeedMs);
+		return ParseResult.builder()
+				.points(points)
+				.sport(session.sport)
+				.distanceM(session.distanceM)
+				.ascentM(session.ascentM)
+				.startTime(startTime)
+				.endTime(endTime)
+				.durationS(durationS)
+				.movingTimeS(session.movingS)
+				.avgHr(session.avgHr)
+				.maxHr(session.maxHr)
+				.avgSpeedMs(session.avgSpeedMs)
+				.maxSpeedMs(session.maxSpeedMs)
+				.avgCadence(session.avgCadence)
+				.maxCadence(session.maxCadence)
+				.avgPowerW(session.avgPowerW)
+				.maxPowerW(session.maxPowerW)
+				.build();
 	}
 
 	private static String decodeSport(Sport sport) {
@@ -157,5 +166,9 @@ public class FitParser implements TrackFileParser {
 		Integer maxHr;
 		Double avgSpeedMs;
 		Double maxSpeedMs;
+		Integer avgCadence;
+		Integer maxCadence;
+		Integer avgPowerW;
+		Integer maxPowerW;
 	}
 }

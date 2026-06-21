@@ -12,6 +12,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.stereotype.Component;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
 import io.github.tourgaze.util.Geo;
 import io.jenetics.jpx.GPX;
@@ -57,6 +59,11 @@ public class GpxParser implements TrackFileParser {
 		double distanceM = 0, ascentM = 0, maxSpeedMs = 0;
 		Double prevLat = null, prevLon = null, prevEle = null;
 		Instant prevTime = null;
+		// Cadence / power live in each point's <extensions> (Garmin
+		// TrackPointExtension <gpxtpx:cad>, power as <power>/PowerInWatts).
+		// Accumulate avg + max over the points that recorded them.
+		long cadSum = 0, powSum = 0;
+		int cadCount = 0, cadMax = 0, powCount = 0, powMax = 0;
 
 		for (WayPoint wp : wps) {
 			double lat = wp.getLatitude().doubleValue();
@@ -79,6 +86,19 @@ public class GpxParser implements TrackFileParser {
 				}
 			}
 
+			Integer cad = extInt(wp, "cad", "cadence");
+			if (cad != null) {
+				cadSum += cad;
+				cadCount++;
+				cadMax = Math.max(cadMax, cad);
+			}
+			Integer pow = extInt(wp, "power", "powerinwatts", "watts");
+			if (pow != null) {
+				powSum += pow;
+				powCount++;
+				powMax = Math.max(powMax, pow);
+			}
+
 			points.add(new TrackPoint(time, lat, lon, ele, null, null));
 			prevLat = lat;
 			prevLon = lon;
@@ -93,17 +113,64 @@ public class GpxParser implements TrackFileParser {
 				: null;
 		Double avgSpeedMs = (durationS != null && durationS > 0) ? distanceM / durationS : null;
 
-		return new ParseResult(
-				points,
-				null, // sport — not in GPX
-				distanceM > 0 ? distanceM : null,
-				ascentM > 0 ? ascentM : null,
-				startTime, endTime,
-				durationS,
-				null, // moving time — not derivable reliably
-				null, null, // avg / max HR — not standardised in GPX
-				avgSpeedMs,
-				maxSpeedMs > 0 ? maxSpeedMs : null);
+		// sport, moving time and HR aren't standardised in plain GPX → left unset
+		// (null).
+		return ParseResult.builder()
+				.points(points)
+				.distanceM(distanceM > 0 ? distanceM : null)
+				.ascentM(ascentM > 0 ? ascentM : null)
+				.startTime(startTime)
+				.endTime(endTime)
+				.durationS(durationS)
+				.avgSpeedMs(avgSpeedMs)
+				.maxSpeedMs(maxSpeedMs > 0 ? maxSpeedMs : null)
+				.avgCadence(cadCount > 0 ? (int) Math.round((double) cadSum / cadCount) : null)
+				.maxCadence(cadCount > 0 ? cadMax : null)
+				.avgPowerW(powCount > 0 ? (int) Math.round((double) powSum / powCount) : null)
+				.maxPowerW(powCount > 0 ? powMax : null)
+				.build();
+	}
+
+	/**
+	 * First int value under a waypoint's {@code <extensions>} matching a local
+	 * name.
+	 */
+	private static Integer extInt(WayPoint wp, String... localNames) {
+		return wp.getExtensions().map(doc -> findInt(doc.getDocumentElement(), localNames)).orElse(null);
+	}
+
+	/**
+	 * Depth-first search for the first element whose local name matches, parsed as
+	 * int.
+	 */
+	private static Integer findInt(Node node, String[] names) {
+		if (node == null)
+			return null;
+		NodeList kids = node.getChildNodes();
+		for (int i = 0; i < kids.getLength(); i++) {
+			Node n = kids.item(i);
+			if (n.getNodeType() != Node.ELEMENT_NODE)
+				continue;
+			String ln = n.getLocalName() != null ? n.getLocalName() : n.getNodeName();
+			int colon = ln.indexOf(':');
+			if (colon >= 0)
+				ln = ln.substring(colon + 1);
+			for (String want : names) {
+				if (ln.equalsIgnoreCase(want)) {
+					String txt = n.getTextContent();
+					if (txt != null && !txt.isBlank()) {
+						try {
+							return (int) Math.round(Double.parseDouble(txt.trim()));
+						} catch (NumberFormatException ignored) {
+							/* keep scanning */ }
+					}
+				}
+			}
+			Integer deep = findInt(n, names);
+			if (deep != null)
+				return deep;
+		}
+		return null;
 	}
 
 	/**

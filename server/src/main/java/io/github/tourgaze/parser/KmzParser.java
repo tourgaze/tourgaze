@@ -110,19 +110,48 @@ public class KmzParser implements TrackFileParser {
 				hrMax = Math.max(hrMax, p.hr());
 			}
 		}
+		// Cadence / power come as gx:SimpleArrayData arrays (OpenTracks), like HR.
+		int[] cad = arrayStats(doc, "cadence", "cad");
+		int[] pow = arrayStats(doc, "power", "watts", "power_w");
 
-		return new ParseResult(
-				points,
-				null, // sport — not reliably in KML
-				distanceM > 0 ? distanceM : null,
-				ascentM > 0 ? ascentM : null,
-				startTime, endTime,
-				durationS,
-				null, // moving time — not derivable reliably
-				hrCount > 0 ? (int) (hrSum / hrCount) : null,
-				hrCount > 0 ? hrMax : null,
-				avgSpeedMs,
-				maxSpeedMs > 0 ? maxSpeedMs : null);
+		// sport and moving time aren't reliably in KML → left unset (null).
+		return ParseResult.builder()
+				.points(points)
+				.distanceM(distanceM > 0 ? distanceM : null)
+				.ascentM(ascentM > 0 ? ascentM : null)
+				.startTime(startTime)
+				.endTime(endTime)
+				.durationS(durationS)
+				.avgHr(hrCount > 0 ? (int) (hrSum / hrCount) : null)
+				.maxHr(hrCount > 0 ? hrMax : null)
+				.avgSpeedMs(avgSpeedMs)
+				.maxSpeedMs(maxSpeedMs > 0 ? maxSpeedMs : null)
+				.avgCadence(cad != null ? cad[0] : null)
+				.maxCadence(cad != null ? cad[1] : null)
+				.avgPowerW(pow != null ? pow[0] : null)
+				.maxPowerW(pow != null ? pow[1] : null)
+				.build();
+	}
+
+	/**
+	 * Average + max of a gx:SimpleArrayData series (by name) across every track, or
+	 * null if none recorded. Returns {@code [avg, max]}.
+	 */
+	private int[] arrayStats(Document doc, String... names) {
+		long sum = 0;
+		int count = 0, max = 0;
+		NodeList tracks = doc.getElementsByTagNameNS("*", "Track");
+		for (int t = 0; t < tracks.getLength(); t++) {
+			for (String v : simpleArray((Element) tracks.item(t), names)) {
+				Integer n = parseInt(v);
+				if (n != null) {
+					sum += n;
+					count++;
+					max = Math.max(max, n);
+				}
+			}
+		}
+		return count > 0 ? new int[] { (int) Math.round((double) sum / count), max } : null;
 	}
 
 	/** Unzip a KMZ to its KML payload, or take the bytes as-is if already KML. */

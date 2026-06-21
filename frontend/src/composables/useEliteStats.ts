@@ -30,6 +30,10 @@ export type EliteStats = {
   maxHr: number | null
   trimp: number | null            // Banister training-impulse training load
   decouplingPct: number | null    // aerobic decoupling (HR:pace drift)
+  avgCadence: number | null       // measured (cadence sensor)
+  maxCadence: number | null
+  measuredAvgPowerW: number | null // measured (power meter) — distinct from the estimate
+  measuredMaxPowerW: number | null
   estAvgPowerW: number | null     // cycling only
   estNpW: number | null           // normalized power
   variabilityIndex: number | null // NP / avg
@@ -53,6 +57,16 @@ const GRADE_BANDS: { label: string; color: string; lo: number; hi: number }[] = 
   { label: '↑ steep',  color: '#ef4444', lo: 10, hi: Infinity },
 ]
 
+/** Device-measured cadence/power straight off the activity (no derivation). */
+function measuredChannels(a: ActivitySummary | null) {
+  return {
+    avgCadence: a?.avgCadence ?? null,
+    maxCadence: a?.maxCadence ?? null,
+    measuredAvgPowerW: a?.avgPowerW ?? null,
+    measuredMaxPowerW: a?.maxPowerW ?? null,
+  }
+}
+
 export function useEliteStats(
   points: () => StatPoint[],
   activity: Ref<ActivitySummary | null>,
@@ -64,10 +78,11 @@ export function useEliteStats(
       hasData: false, isCycling: false, distanceKm: 0, movingTimeS: 0, totalTimeS: 0,
       avgSpeedKmh: null, maxSpeedKmh: null, ascentM: 0, descentM: 0, maxGradePct: null, vamMh: null,
       avgHr: null, maxHr: null, trimp: null, decouplingPct: null,
+      avgCadence: null, maxCadence: null, measuredAvgPowerW: null, measuredMaxPowerW: null,
       estAvgPowerW: null, estNpW: null, variabilityIndex: null, workKj: null, calories: null,
       bestEfforts: [], gradeBuckets: [],
     }
-    if (!pts || pts.length < 2) return empty
+    if (!pts || pts.length < 2) return { ...empty, ...measuredChannels(activity.value) }
 
     const n = pts.length
     const isCycling = (activity.value?.activityType ?? '') === 'cycling'
@@ -205,6 +220,7 @@ export function useEliteStats(
       maxHr: hrMax > 0 ? hrMax : (activity.value?.maxHr ?? null),
       trimp: trimp > 0 ? Math.round(trimp) : null,
       decouplingPct,
+      ...measuredChannels(activity.value),
       estAvgPowerW,
       estNpW,
       variabilityIndex: vi,

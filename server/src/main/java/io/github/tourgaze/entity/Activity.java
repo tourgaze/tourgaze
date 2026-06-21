@@ -142,6 +142,18 @@ public class Activity extends BaseEntity {
 	@Column(name = "max_speed_kmh")
 	private Double maxSpeedKmh;
 
+	@Column(name = "avg_cadence")
+	private Integer avgCadence;
+
+	@Column(name = "max_cadence")
+	private Integer maxCadence;
+
+	@Column(name = "avg_power_w")
+	private Integer avgPowerW;
+
+	@Column(name = "max_power_w")
+	private Integer maxPowerW;
+
 	@Column(name = "start_lat")
 	private Double startLat;
 
@@ -376,6 +388,38 @@ public class Activity extends BaseEntity {
 
 	public void setMaxSpeedKmh(Double maxSpeedKmh) {
 		this.maxSpeedKmh = maxSpeedKmh;
+	}
+
+	public Integer getAvgCadence() {
+		return avgCadence;
+	}
+
+	public void setAvgCadence(Integer avgCadence) {
+		this.avgCadence = avgCadence;
+	}
+
+	public Integer getMaxCadence() {
+		return maxCadence;
+	}
+
+	public void setMaxCadence(Integer maxCadence) {
+		this.maxCadence = maxCadence;
+	}
+
+	public Integer getAvgPowerW() {
+		return avgPowerW;
+	}
+
+	public void setAvgPowerW(Integer avgPowerW) {
+		this.avgPowerW = avgPowerW;
+	}
+
+	public Integer getMaxPowerW() {
+		return maxPowerW;
+	}
+
+	public void setMaxPowerW(Integer maxPowerW) {
+		this.maxPowerW = maxPowerW;
 	}
 
 	/**
