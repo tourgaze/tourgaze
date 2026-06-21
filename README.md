@@ -66,16 +66,28 @@ TourGaze ships as a **single container** — the API and the web UI are served
 together on port `8085`. State (H2 DB, media, cache, tiles) lives under a
 `/data` volume.
 
+Pull the published **`mschwehl/tourgaze`** image and run it:
+
+```bash
+docker pull mschwehl/tourgaze
+docker run -d --name tourgaze -p 8085:8085 -v tourgaze-data:/data mschwehl/tourgaze
+# → open http://localhost:8085
+```
+
+That mounts a named `tourgaze-data` volume (swap for a bind mount
+`-v "$PWD/data:/data"` to keep the library host-visible). To encrypt the store
+at rest — so the volume can safely sync to a cloud folder — add
+`-e TOURGAZE_STORE_CRYPTOR=AES-GCM -e TOURGAZE_STORE_PASSWORD=… -e TOURGAZE_STORE_SALT=…`;
+**lose the password or salt and the data is unrecoverable.**
+
+Or build the image from source (for development):
+
 ```bash
 # from the project root: build the SPA + jar, then the image
 cd frontend && npm ci && npm run build && cd ..
 mvn -f server/pom.xml clean package -DskipTests
 docker compose -f infra/docker-compose.yml up --build   # → http://localhost:8085
 ```
-
-The published image is **`mschwehl/tourgaze`**. The compose file mounts a named
-`tourgaze-data` volume (swap for a bind mount `../data:/data` to keep the DB
-host-visible).
 
 ## Deploy with Helm
 
