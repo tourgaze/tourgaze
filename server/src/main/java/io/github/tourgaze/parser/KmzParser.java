@@ -332,13 +332,17 @@ public class KmzParser implements TrackFileParser {
 			List<String> whens = directChildText(track, "when");
 			List<String> coords = directChildText(track, "coord");
 			List<String> hr = simpleArray(track, "heartrate", "heart_rate", "hr");
+			List<String> cad = simpleArray(track, "cadence", "cad");
+			List<String> pow = simpleArray(track, "power", "watts", "power_w");
 			for (int i = 0; i < coords.size(); i++) {
 				double[] c = parseCoordSpace(coords.get(i));
 				if (c == null)
 					continue;
 				Instant time = i < whens.size() ? parseTime(whens.get(i)) : null;
 				Integer h = parseInt(i < hr.size() ? hr.get(i) : null);
-				out.add(new TrackPoint(time, c[1], c[0], c.length > 2 ? c[2] : null, h, null));
+				Integer cd = parseInt(i < cad.size() ? cad.get(i) : null);
+				Integer pw = parseInt(i < pow.size() ? pow.get(i) : null);
+				out.add(new TrackPoint(time, c[1], c[0], c.length > 2 ? c[2] : null, h, null, cd, pw));
 			}
 		}
 		return out;

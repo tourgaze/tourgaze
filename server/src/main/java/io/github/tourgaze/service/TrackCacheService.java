@@ -109,7 +109,9 @@ public class TrackCacheService {
 						Math.round(p.lon() * 1e6) / 1e6,
 						p.altM() != null ? Math.round(p.altM() * 10.0) / 10.0 : null,
 						p.hr(),
-						p.speedMs() != null ? Math.round(p.speedMs() * 100.0) / 100.0 : null))
+						p.speedMs() != null ? Math.round(p.speedMs() * 100.0) / 100.0 : null,
+						p.cadence(),
+						p.power()))
 				.toList();
 		List<TrackPointDto> chartPoints = buildChartPoints(raw, CHART_POINT_LIMIT);
 
@@ -152,6 +154,8 @@ public class TrackCacheService {
 					p.altM() != null ? Math.round(p.altM() * 10.0) / 10.0 : null,
 					p.hr(),
 					p.speedMs() != null ? Math.round(p.speedMs() * 100.0) / 100.0 : null,
+					p.cadence(),
+					p.power(),
 					idx));
 		}
 		return out;

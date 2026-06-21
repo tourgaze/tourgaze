@@ -11,6 +11,8 @@ export type TrackPoint = {
   altM: number | null
   hr: number | null
   speedMs: number | null
+  cadence?: number | null
+  power?: number | null
   rawIdx?: number | null
 }
 export type Setting = components['schemas']['SettingDto']

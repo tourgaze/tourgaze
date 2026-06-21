@@ -8,4 +8,11 @@ package io.github.tourgaze.parser;
 import java.time.Instant;
 
 /** A single GPS sample from a ride file, format-agnostic. */
-public record TrackPoint(Instant time, double lat, double lon, Double altM, Integer hr, Double speedMs) {}
+public record TrackPoint(Instant time, double lat, double lon, Double altM, Integer hr, Double speedMs,
+        Integer cadence, Integer power) {
+
+    /** Back-compat constructor for sources without cadence/power channels. */
+    public TrackPoint(Instant time, double lat, double lon, Double altM, Integer hr, Double speedMs) {
+        this(time, lat, lon, altM, hr, speedMs, null, null);
+    }
+}

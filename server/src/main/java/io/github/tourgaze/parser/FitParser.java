@@ -58,6 +58,8 @@ public class FitParser implements TrackFileParser {
 			Double altM = mesg.getAltitude() != null ? mesg.getAltitude().doubleValue() : null;
 			Integer hr = mesg.getHeartRate() != null ? mesg.getHeartRate().intValue() : null;
 			Double speedMs = mesg.getSpeed() != null ? mesg.getSpeed().doubleValue() : null;
+			Integer cad = mesg.getCadence() != null ? mesg.getCadence().intValue() : null;
+			Integer pow = mesg.getPower() != null ? mesg.getPower().intValue() : null;
 
 			points.add(new TrackPoint(
 					time,
@@ -65,7 +67,9 @@ public class FitParser implements TrackFileParser {
 					lonSc * SEMICIRCLE_TO_DEG,
 					altM,
 					hr,
-					speedMs));
+					speedMs,
+					cad,
+					pow));
 		});
 
 		broadcaster.addListener((SessionMesgListener) mesg -> {

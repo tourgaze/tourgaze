@@ -22,10 +22,13 @@ public record TrackPointDto(
         Double altM,
         Integer hr,
         Double speedMs,
+        Integer cadence,
+        Integer power,
         Integer rawIdx
 ) {
     /** Convenience constructor for the full-resolution cache (no rawIdx). */
-    public TrackPointDto(double lat, double lon, Double altM, Integer hr, Double speedMs) {
-        this(lat, lon, altM, hr, speedMs, null);
+    public TrackPointDto(double lat, double lon, Double altM, Integer hr, Double speedMs,
+            Integer cadence, Integer power) {
+        this(lat, lon, altM, hr, speedMs, cadence, power, null);
     }
 }

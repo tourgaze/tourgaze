@@ -99,7 +99,7 @@ public class GpxParser implements TrackFileParser {
 				powMax = Math.max(powMax, pow);
 			}
 
-			points.add(new TrackPoint(time, lat, lon, ele, null, null));
+			points.add(new TrackPoint(time, lat, lon, ele, null, null, cad, pow));
 			prevLat = lat;
 			prevLon = lon;
 			prevEle = ele;

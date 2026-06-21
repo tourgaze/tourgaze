@@ -110,15 +110,19 @@ const option = computed(() => {
   const hasElev = pts.some(p => p.altM != null)
   const hasHr = pts.some(p => p.hr != null && p.hr > 0)
   const hasSpeed = pts.some(p => p.speedMs != null && p.speedMs > 0)
+  const hasPower = pts.some(p => p.power != null && p.power > 0)
+  const hasCadence = pts.some(p => p.cadence != null && p.cadence > 0)
 
   // Facet ONLY the channels that actually have data, then stretch them to fill
   // the height — so an HR-only ride uses the whole chart instead of leaving an
-  // empty elevation band up top (MyTourbook-style). Order: elevation, HR, speed.
-  type Key = 'elev' | 'hr' | 'speed'
+  // empty elevation band up top (MyTourbook-style).
+  type Key = 'elev' | 'hr' | 'power' | 'speed' | 'cadence'
   const panels: Key[] = []
   if (hasElev) panels.push('elev')
   if (hasHr) panels.push('hr')
+  if (hasPower) panels.push('power')
   if (hasSpeed) panels.push('speed')
+  if (hasCadence) panels.push('cadence')
   if (!panels.length) return {}
 
   const cfg = (key: Key) => {
@@ -143,6 +147,30 @@ const option = computed(() => {
         min: (v: any) => Math.max(0, Math.floor(v.min - 5)),
         max: (v: any) => Math.ceil(v.max + 5),
         axisLabel: { fontSize: 10, color: '#ef4444', margin: 8, formatter: '{value}' },
+        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+      },
+    }
+    if (key === 'power') return {
+      name: 'Power', color: '#a855f7', smooth: 0.2,
+      data: pts.map(p => p.power ?? null),
+      area: ['rgba(168,85,247,0.25)', 'rgba(168,85,247,0.02)'],
+      yAxis: {
+        type: 'value', splitNumber: 2,
+        min: () => 0,
+        max: (v: any) => Math.ceil(v.max + 10),
+        axisLabel: { fontSize: 10, color: '#a855f7', margin: 8, formatter: '{value}' },
+        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+      },
+    }
+    if (key === 'cadence') return {
+      name: 'Cadence', color: '#06b6d4', smooth: 0.3,
+      data: pts.map(p => p.cadence ?? null),
+      area: ['rgba(6,182,212,0.22)', 'rgba(6,182,212,0.02)'],
+      yAxis: {
+        type: 'value', splitNumber: 2,
+        min: () => 0,
+        max: (v: any) => Math.ceil(v.max + 5),
+        axisLabel: { fontSize: 10, color: '#06b6d4', margin: 8, formatter: '{value}' },
         splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
       },
     }
@@ -280,10 +308,13 @@ const option = computed(() => {
         }
         const km = pts[p.dataIndex]?.distKm.toFixed(2) ?? '?'
         let s = `<b>${km} km</b>`
+        const units: Record<string, string> = {
+          Elevation: ' m', Speed: ' km/h', 'Heart rate': ' bpm', Power: ' W', Cadence: ' rpm',
+        }
         for (const item of params) {
           if (item.data == null) continue
           const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${item.color};margin-right:4px"></span>`
-          const val = item.data + (item.seriesName === 'Elevation' ? ' m' : (item.seriesName === 'Speed' ? ' km/h' : ' bpm'))
+          const val = item.data + (units[item.seriesName] ?? '')
           s += `<br/>${dot}${item.seriesName}: <b>${val}</b>`
         }
         return s
@@ -305,6 +336,8 @@ const seriesCount = computed(() => {
   if (pts.some(p => p.altM != null)) n++
   if (pts.some(p => p.hr != null && p.hr > 0)) n++
   if (pts.some(p => p.speedMs != null && p.speedMs > 0)) n++
+  if (pts.some(p => p.power != null && p.power > 0)) n++
+  if (pts.some(p => p.cadence != null && p.cadence > 0)) n++
   return n
 })
 
