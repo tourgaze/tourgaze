@@ -2,12 +2,64 @@
 import { ref, computed, watch } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { getUsers, updateUser, type User } from '@/api/client'
+import { getUsers, updateUser, getActivities, type User } from '@/api/client'
 import { estimateMaxHr, computeZones } from '@/composables/useHrZones'
-import { Save, Heart, RefreshCw } from 'lucide-vue-next'
+import { Save, Heart, RefreshCw, Scale } from 'lucide-vue-next'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
+import VChart from 'vue-echarts'
+
+use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
 
 const qc = useQueryClient()
 const { data: users } = useQuery({ queryKey: ['users'], queryFn: getUsers })
+
+// Body-weight trend: each ride records the rider's weight at import, so the
+// activity history IS the weight log. Plot those points over time.
+const { data: activities } = useQuery({ queryKey: ['activities'], queryFn: getActivities })
+const weightPoints = computed<[number, number][]>(() => {
+  const out: [number, number][] = []
+  for (const a of activities.value ?? []) {
+    if (a.weightKg != null && a.startTime) {
+      const t = new Date(a.startTime).getTime()
+      if (Number.isFinite(t)) out.push([t, a.weightKg])
+    }
+  }
+  return out.sort((x, y) => x[0] - y[0])
+})
+const weightOption = computed(() => ({
+  grid: { top: 10, left: 38, right: 12, bottom: 20 },
+  xAxis: {
+    type: 'time', axisLabel: { fontSize: 9, color: '#9ca3af' },
+    axisLine: { show: false }, axisTick: { show: false },
+  },
+  yAxis: {
+    type: 'value', scale: true,
+    axisLabel: { fontSize: 9, color: '#9ca3af', formatter: '{value}' },
+    splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+  },
+  tooltip: {
+    trigger: 'axis',
+    formatter: (p: any) => {
+      const it = p[0]
+      return `${new Date(it.value[0]).toLocaleDateString()}<br/><b>${it.value[1]} kg</b>`
+    },
+    backgroundColor: 'rgba(255,255,255,0.96)', borderColor: '#e5e7eb',
+    textStyle: { color: '#374151', fontSize: 11 },
+  },
+  series: [{
+    type: 'line', data: weightPoints.value, smooth: 0.2, symbol: 'circle', symbolSize: 4,
+    lineStyle: { color: '#22c55e', width: 1.5 }, itemStyle: { color: '#22c55e' },
+    areaStyle: {
+      color: {
+        type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+        colorStops: [{ offset: 0, color: 'rgba(34,197,94,0.25)' }, { offset: 1, color: 'rgba(34,197,94,0.02)' }],
+      },
+    },
+  }],
+}))
 
 const profile = ref<User>({} as User)
 const dirty = ref(false)
@@ -108,6 +160,21 @@ function fmtZoneRange(lo: number, hi: number) {
         <input v-model.number="profile.weightKg" type="number" step="0.1" min="20" max="300" @input="markDirty"
           class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none" />
       </label>
+    </div>
+
+    <!-- ── Body-weight trend ──────────────────────────────────────────────── -->
+    <div class="border-t border-border pt-3">
+      <div class="text-[11px] text-muted-fg flex items-center gap-1 mb-1.5">
+        <Scale :size="11" class="text-emerald-500" />
+        <span class="font-medium text-foreground">Body-weight trend</span>
+        <span class="opacity-70">· from each ride's recorded weight</span>
+      </div>
+      <div v-if="weightPoints.length >= 2" class="h-32 w-full">
+        <VChart class="w-full h-full" :option="weightOption" :autoresize="true" />
+      </div>
+      <div v-else class="text-[11px] text-muted-fg opacity-70 py-2">
+        Not enough data yet — weight is recorded per ride, so the trend fills in as you import.
+      </div>
     </div>
 
     <!-- ── Heart rate ─────────────────────────────────────────────────────── -->

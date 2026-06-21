@@ -185,12 +185,10 @@ curation quality.
 
 ## Captured ideas (unsorted)
 
-- [ ] **Body-weight + resting-HR trend chart in Settings → Profile** — we already
-      capture per-ride `weight_kg` (a snapshot at import) and the profile carries
-      `resting_hr`; plot them over time so the rider sees the trend. Note: resting
-      HR is currently a single profile value, not a time series — decide whether to
-      log it per measurement (a small `health_log` table) before building that line;
-      body weight can come straight from the rides' `weight_kg` history.
+- [x] **Body-weight trend chart in Settings → Profile** — ✓ shipped. Plots each
+      ride's recorded `weight_kg` over time (the activity history is the weight
+      log). Resting-HR trend was dropped — it's a single profile value, not a
+      time series, and not important enough to warrant a `health_log` table.
 - [ ] **Custom gear icon, usable in replay** — let a gear entry carry an icon
       (road / MTB / gravel / run / …) and use it as the moving marker during map
       playback instead of the generic dot, so the replay reflects what you rode.
