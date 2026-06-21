@@ -3,7 +3,7 @@ import type { ActivitySummary, User } from '@/api/client'
 import { estimateMaxHr } from '@/composables/useHrZones'
 
 /**
- * "Elite" ride analytics computed client-side from the full-res track. FIT is
+ * Ride analytics computed client-side from the full-res track. FIT is
  * ~1 Hz, so we treat one point ≈ one second (same assumption the rest of the
  * app makes). Everything is best-effort and degrades gracefully when a channel
  * (HR, speed, altitude) is missing.
@@ -14,7 +14,7 @@ export type StatPoint = { lat: number; lon: number; altM: number | null; hr: num
 export type BestEffort = { label: string; seconds: number; speedKmh: number | null }
 export type GradeBucket = { label: string; color: string; meters: number; pct: number }
 
-export type EliteStats = {
+export type RideStats = {
   hasData: boolean
   isCycling: boolean
   distanceKm: number
@@ -67,14 +67,14 @@ function measuredChannels(a: ActivitySummary | null) {
   }
 }
 
-export function useEliteStats(
+export function useRideStats(
   points: () => StatPoint[],
   activity: Ref<ActivitySummary | null>,
   user: Ref<User | null | undefined>,
 ) {
-  return computed<EliteStats>(() => {
+  return computed<RideStats>(() => {
     const pts = points()
-    const empty: EliteStats = {
+    const empty: RideStats = {
       hasData: false, isCycling: false, distanceKm: 0, movingTimeS: 0, totalTimeS: 0,
       avgSpeedKmh: null, maxSpeedKmh: null, ascentM: 0, descentM: 0, maxGradePct: null, vamMh: null,
       avgHr: null, maxHr: null, trimp: null, decouplingPct: null,

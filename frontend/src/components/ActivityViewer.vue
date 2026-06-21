@@ -7,8 +7,8 @@ import { markerCategory, markerIconSvg } from '@/markerCategories'
 import MapRenderer from '@/components/MapRenderer.vue'
 import ElevationChart from '@/components/ElevationChart.vue'
 import TimeInZone from '@/components/TimeInZone.vue'
-import EliteStats from '@/components/EliteStats.vue'
-import { useEliteStats } from '@/composables/useEliteStats'
+import RideStats from '@/components/RideStats.vue'
+import { useRideStats } from '@/composables/useRideStats'
 import { Layers, Play, Pause, Check, Camera, ChevronDown, ChevronUp, Crosshair, LockOpen, ImagePlus, Globe, UserRound, Gauge, Swords, MapPin, Trash2, Pencil, X } from 'lucide-vue-next'
 import { push } from 'notivue'
 import { onClickOutside } from '@vueuse/core'
@@ -256,8 +256,8 @@ const { zones: hrZones, tiz, totalSec: hrTotalSec } = useHrZones(
   currentUser,
   computed(() => rawPoints.value ?? null),
 )
-// Advanced ("elite") ride analytics — computed from the full-res track.
-const eliteStats = useEliteStats(() => withDist.value, activity, currentUser)
+// Advanced ride analytics — computed from the full-res track.
+const rideStats = useRideStats(() => withDist.value, activity, currentUser)
 
 const colorMode = ref<'none' | 'hr' | 'slope'>('none')
 const colorModes = [
@@ -909,8 +909,8 @@ const activeColorLabel = computed(() =>
         </div>
       </div>
 
-      <!-- Elite stats view — advanced ride analytics, computed from the track. -->
-      <EliteStats v-else-if="!chartCollapsed && bottomView === 'stats'" :stats="eliteStats" />
+      <!-- Ride stats view — advanced ride analytics, computed from the track. -->
+      <RideStats v-else-if="!chartCollapsed && bottomView === 'stats'" :stats="rideStats" />
 
       <!-- Compare view — pick a similar ride (same route) and race it as a ghost. -->
       <div v-else-if="!chartCollapsed && bottomView === 'compare'" class="flex-1 min-h-0 overflow-y-auto p-2 custom-scrollbar">

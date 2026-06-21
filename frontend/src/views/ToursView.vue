@@ -555,7 +555,7 @@ const firstResultActivity = computed<ActivitySummary | null>(() => {
   return top.activities?.[0] ?? null
 })
 
-// Elite-UX filtering: whenever the faceted query changes, open the top result
+// Auto-select filtering: whenever the faceted query changes, open the top result
 // bucket and preview the first match. Driven off the serialized query so it
 // fires on every facet/text change but not on unrelated re-renders. Uses
 // router.replace (no history spam) and never steals focus from the search box.

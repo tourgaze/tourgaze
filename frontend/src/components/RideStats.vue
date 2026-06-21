@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { fmtClock } from '@/lib/format'
 import { computed, ref } from 'vue'
-import type { EliteStats } from '@/composables/useEliteStats'
+import type { RideStats } from '@/composables/useRideStats'
 import { Gauge, Mountain, HeartPulse, Zap, Timer, TrendingUp, ChevronDown, ChevronRight, RotateCw } from 'lucide-vue-next'
 
-const props = defineProps<{ stats: EliteStats }>()
+const props = defineProps<{ stats: RideStats }>()
 
 const decoupleTone = computed(() => {
   const d = props.stats.decouplingPct
@@ -29,92 +29,92 @@ const isOpen = (k: string) => !collapsed.value.has(k)
     <div class="flex-1 min-h-0 overflow-y-auto p-1.5 space-y-1.5 custom-scrollbar">
       <!-- Summary -->
       <section>
-        <button type="button" class="elite-h" @click="toggle('summary')">
+        <button type="button" class="stat-h" @click="toggle('summary')">
           <component :is="isOpen('summary') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
           <Gauge :size="12" /> Summary
         </button>
-        <div v-show="isOpen('summary')" class="elite-grid">
-          <div class="elite-card"><span class="elite-val">{{ stats.distanceKm }}</span><span class="elite-unit">km</span><span class="elite-lbl">Distance</span></div>
-          <div class="elite-card"><span class="elite-val">{{ fmtClock(stats.movingTimeS) }}</span><span class="elite-lbl">Moving time</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.avgSpeedKmh ?? '—' }}</span><span class="elite-unit">km/h</span><span class="elite-lbl">Avg speed</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.maxSpeedKmh ?? '—' }}</span><span class="elite-unit">km/h</span><span class="elite-lbl">Max speed</span></div>
+        <div v-show="isOpen('summary')" class="stat-grid">
+          <div class="stat-card"><span class="stat-val">{{ stats.distanceKm }}</span><span class="stat-unit">km</span><span class="stat-lbl">Distance</span></div>
+          <div class="stat-card"><span class="stat-val">{{ fmtClock(stats.movingTimeS) }}</span><span class="stat-lbl">Moving time</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.avgSpeedKmh ?? '—' }}</span><span class="stat-unit">km/h</span><span class="stat-lbl">Avg speed</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.maxSpeedKmh ?? '—' }}</span><span class="stat-unit">km/h</span><span class="stat-lbl">Max speed</span></div>
         </div>
       </section>
 
       <!-- Climbing -->
       <section>
-        <button type="button" class="elite-h" @click="toggle('climbing')">
+        <button type="button" class="stat-h" @click="toggle('climbing')">
           <component :is="isOpen('climbing') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
           <Mountain :size="12" /> Climbing
         </button>
-        <div v-show="isOpen('climbing')" class="elite-grid">
-          <div class="elite-card"><span class="elite-val">{{ stats.ascentM }}</span><span class="elite-unit">m</span><span class="elite-lbl">Ascent</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.descentM }}</span><span class="elite-unit">m</span><span class="elite-lbl">Descent</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.maxGradePct ?? '—' }}</span><span class="elite-unit">%</span><span class="elite-lbl">Max grade</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.vamMh ?? '—' }}</span><span class="elite-unit">m/h</span><span class="elite-lbl">VAM</span></div>
+        <div v-show="isOpen('climbing')" class="stat-grid">
+          <div class="stat-card"><span class="stat-val">{{ stats.ascentM }}</span><span class="stat-unit">m</span><span class="stat-lbl">Ascent</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.descentM }}</span><span class="stat-unit">m</span><span class="stat-lbl">Descent</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.maxGradePct ?? '—' }}</span><span class="stat-unit">%</span><span class="stat-lbl">Max grade</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.vamMh ?? '—' }}</span><span class="stat-unit">m/h</span><span class="stat-lbl">VAM</span></div>
         </div>
       </section>
 
       <!-- Heart rate -->
       <section v-if="stats.avgHr != null">
-        <button type="button" class="elite-h" @click="toggle('hr')">
+        <button type="button" class="stat-h" @click="toggle('hr')">
           <component :is="isOpen('hr') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
           <HeartPulse :size="12" /> Heart rate
         </button>
-        <div v-show="isOpen('hr')" class="elite-grid">
-          <div class="elite-card"><span class="elite-val">{{ stats.avgHr }}</span><span class="elite-unit">bpm</span><span class="elite-lbl">Avg HR</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.maxHr ?? '—' }}</span><span class="elite-unit">bpm</span><span class="elite-lbl">Max HR</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.trimp ?? '—' }}</span><span class="elite-lbl">Training load <span class="opacity-60">(TRIMP)</span></span></div>
-          <div class="elite-card">
-            <span class="elite-val" :class="decoupleTone">{{ stats.decouplingPct != null ? stats.decouplingPct + '%' : '—' }}</span>
-            <span class="elite-lbl">Aerobic decoupling</span>
+        <div v-show="isOpen('hr')" class="stat-grid">
+          <div class="stat-card"><span class="stat-val">{{ stats.avgHr }}</span><span class="stat-unit">bpm</span><span class="stat-lbl">Avg HR</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.maxHr ?? '—' }}</span><span class="stat-unit">bpm</span><span class="stat-lbl">Max HR</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.trimp ?? '—' }}</span><span class="stat-lbl">Training load <span class="opacity-60">(TRIMP)</span></span></div>
+          <div class="stat-card">
+            <span class="stat-val" :class="decoupleTone">{{ stats.decouplingPct != null ? stats.decouplingPct + '%' : '—' }}</span>
+            <span class="stat-lbl">Aerobic decoupling</span>
           </div>
         </div>
       </section>
 
       <!-- Power (measured by a power meter) -->
       <section v-if="stats.measuredAvgPowerW != null">
-        <button type="button" class="elite-h" @click="toggle('powerMeter')">
+        <button type="button" class="stat-h" @click="toggle('powerMeter')">
           <component :is="isOpen('powerMeter') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
-          <Zap :size="12" /> Power <span class="elite-est">meter</span>
+          <Zap :size="12" /> Power <span class="stat-est">meter</span>
         </button>
-        <div v-show="isOpen('powerMeter')" class="elite-grid">
-          <div class="elite-card"><span class="elite-val">{{ stats.measuredAvgPowerW }}</span><span class="elite-unit">W</span><span class="elite-lbl">Avg power</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.measuredMaxPowerW ?? '—' }}</span><span class="elite-unit">W</span><span class="elite-lbl">Max power</span></div>
+        <div v-show="isOpen('powerMeter')" class="stat-grid">
+          <div class="stat-card"><span class="stat-val">{{ stats.measuredAvgPowerW }}</span><span class="stat-unit">W</span><span class="stat-lbl">Avg power</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.measuredMaxPowerW ?? '—' }}</span><span class="stat-unit">W</span><span class="stat-lbl">Max power</span></div>
         </div>
       </section>
 
       <!-- Cadence (measured by a cadence sensor) -->
       <section v-if="stats.avgCadence != null">
-        <button type="button" class="elite-h" @click="toggle('cadence')">
+        <button type="button" class="stat-h" @click="toggle('cadence')">
           <component :is="isOpen('cadence') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
           <RotateCw :size="12" /> Cadence
         </button>
-        <div v-show="isOpen('cadence')" class="elite-grid">
-          <div class="elite-card"><span class="elite-val">{{ stats.avgCadence }}</span><span class="elite-unit">rpm</span><span class="elite-lbl">Avg cadence</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.maxCadence ?? '—' }}</span><span class="elite-unit">rpm</span><span class="elite-lbl">Max cadence</span></div>
+        <div v-show="isOpen('cadence')" class="stat-grid">
+          <div class="stat-card"><span class="stat-val">{{ stats.avgCadence }}</span><span class="stat-unit">rpm</span><span class="stat-lbl">Avg cadence</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.maxCadence ?? '—' }}</span><span class="stat-unit">rpm</span><span class="stat-lbl">Max cadence</span></div>
         </div>
       </section>
 
       <!-- Power (cycling, estimated) -->
       <section v-if="stats.isCycling && stats.estAvgPowerW != null">
-        <button type="button" class="elite-h" @click="toggle('power')">
+        <button type="button" class="stat-h" @click="toggle('power')">
           <component :is="isOpen('power') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
-          <Zap :size="12" /> Power <span class="elite-est">estimated</span>
+          <Zap :size="12" /> Power <span class="stat-est">estimated</span>
         </button>
-        <div v-show="isOpen('power')" class="elite-grid">
-          <div class="elite-card"><span class="elite-val">{{ stats.estAvgPowerW }}</span><span class="elite-unit">W</span><span class="elite-lbl">Avg power</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.estNpW ?? '—' }}</span><span class="elite-unit">W</span><span class="elite-lbl">Normalized (NP)</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.variabilityIndex ?? '—' }}</span><span class="elite-lbl">Variability index</span></div>
-          <div class="elite-card"><span class="elite-val">{{ stats.workKj ?? '—' }}</span><span class="elite-unit">kJ</span><span class="elite-lbl">Work · ~{{ stats.calories ?? '—' }} kcal</span></div>
+        <div v-show="isOpen('power')" class="stat-grid">
+          <div class="stat-card"><span class="stat-val">{{ stats.estAvgPowerW }}</span><span class="stat-unit">W</span><span class="stat-lbl">Avg power</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.estNpW ?? '—' }}</span><span class="stat-unit">W</span><span class="stat-lbl">Normalized (NP)</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.variabilityIndex ?? '—' }}</span><span class="stat-lbl">Variability index</span></div>
+          <div class="stat-card"><span class="stat-val">{{ stats.workKj ?? '—' }}</span><span class="stat-unit">kJ</span><span class="stat-lbl">Work · ~{{ stats.calories ?? '—' }} kcal</span></div>
         </div>
       </section>
 
       <!-- Best efforts -->
       <section v-if="stats.bestEfforts.length">
-        <button type="button" class="elite-h" @click="toggle('best')">
+        <button type="button" class="stat-h" @click="toggle('best')">
           <component :is="isOpen('best') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
-          <Timer :size="12" /> Best efforts <span class="elite-est">peak avg speed</span>
+          <Timer :size="12" /> Best efforts <span class="stat-est">peak avg speed</span>
         </button>
         <div v-show="isOpen('best')" class="flex flex-wrap gap-1.5">
           <div v-for="b in stats.bestEfforts" :key="b.label"
@@ -128,7 +128,7 @@ const isOpen = (k: string) => !collapsed.value.has(k)
 
     <!-- Pinned footer: gradient distribution stays visible while the rest scrolls -->
     <div v-if="stats.gradeBuckets.some(g => g.meters > 0)" class="shrink-0 border-t border-border p-1.5 bg-background">
-      <h3 class="elite-h"><TrendingUp :size="12" /> Gradient distribution</h3>
+      <h3 class="stat-h"><TrendingUp :size="12" /> Gradient distribution</h3>
       <div class="flex h-2.5 w-full rounded-full overflow-hidden border border-border">
         <div v-for="g in stats.gradeBuckets" :key="g.label" :style="{ width: g.pct + '%', background: g.color }"
           :title="`${g.label}: ${(g.meters / 1000).toFixed(1)} km (${g.pct.toFixed(0)}%)`" />
@@ -147,30 +147,30 @@ const isOpen = (k: string) => !collapsed.value.has(k)
 </template>
 
 <style scoped>
-.elite-h {
+.stat-h {
   display: flex; align-items: center; gap: 4px; width: 100%;
   font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
   color: hsl(var(--muted-fg)); margin-bottom: 2px;
   background: none; border: none; padding: 1px 0; text-align: left; cursor: pointer;
 }
-button.elite-h:hover { color: hsl(var(--foreground)); }
-.elite-est { text-transform: none; letter-spacing: 0; font-weight: 500; opacity: 0.6; }
+button.stat-h:hover { color: hsl(var(--foreground)); }
+.stat-est { text-transform: none; letter-spacing: 0; font-weight: 500; opacity: 0.6; }
 /* Compact, dense grid — smaller cards pack more per row so wide panes don't
    leave the top-right empty. */
-.elite-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 4px; }
+.stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(68px, 1fr)); gap: 4px; }
 /* Dashboard tile: kind as a top-right caption (full-width row), then value and
    unit together on one line below. Row-wrap + top alignment keeps it to two
    compact lines so the grid packs densely on a wide monitor. */
-.elite-card {
+.stat-card {
   display: flex; flex-flow: row wrap; align-items: baseline; align-content: center;
   min-height: 34px; row-gap: 0;
   border: 1px solid hsl(var(--border)); border-radius: 6px;
   background-color: hsl(var(--muted) / 0.1); padding: 2px 6px;
 }
-.elite-lbl {
+.stat-lbl {
   order: -1; flex-basis: 100%; text-align: right;
   font-size: 9px; line-height: 1.05; color: hsl(var(--muted-fg));
 }
-.elite-val { font-size: 13px; font-weight: 700; line-height: 1.1; color: hsl(var(--foreground)); }
-.elite-unit { font-size: 9px; color: hsl(var(--muted-fg)); margin-left: 3px; }
+.stat-val { font-size: 13px; font-weight: 700; line-height: 1.1; color: hsl(var(--foreground)); }
+.stat-unit { font-size: 9px; color: hsl(var(--muted-fg)); margin-left: 3px; }
 </style>
