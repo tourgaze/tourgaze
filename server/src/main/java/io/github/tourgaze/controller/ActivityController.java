@@ -136,6 +136,10 @@ public class ActivityController {
 
 		if (dto.name() != null)
 			a.setName(dto.name());
+		// Store the chosen sport key as-is (it comes from the Sport lookup; custom
+		// keys must survive, so we don't coerce through the old fixed enum).
+		if (dto.activityType() != null && !dto.activityType().isBlank())
+			a.setActivityType(dto.activityType().trim().toLowerCase());
 		if (dto.description() != null)
 			a.setDescription(dto.description());
 		if (dto.gearId() != null) {
@@ -154,8 +158,16 @@ public class ActivityController {
 			a.getWeather().setWindKph(dto.weatherWindKph());
 		if (dto.weatherCondition() != null)
 			a.getWeather().setCondition(dto.weatherCondition());
-		if (dto.weightKg() != null)
+		if (dto.weightKg() != null) {
+			boolean weightChanged = !java.util.Objects.equals(a.getWeightKg(), dto.weightKg());
 			a.setWeightKg(dto.weightKg());
+			// Keep the rider's profile (masterdata) body weight in sync: editing a
+			// tour's weight is the natural place to record "this is what I weigh now".
+			// Managed user → flushed on commit, no explicit save needed.
+			if (weightChanged && a.getUser() != null) {
+				a.getUser().setWeightKg(dto.weightKg());
+			}
+		}
 		if (dto.startLocation() != null)
 			a.setStartLocation(dto.startLocation());
 		if (dto.startCountry() != null)

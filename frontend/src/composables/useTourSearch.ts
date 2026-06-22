@@ -393,6 +393,14 @@ export function useTourSearch(sources: TourSearchSources) {
     activeFilters.value.push({ field: 'gear', op: '=', value: v, label: chipLabel('gear', '=', v) })
   }
 
+  /** Add a `sport:<key>` filter (used by the sport-icon facets). No-op if dup. */
+  function addSportFilter(key: string) {
+    const v = (key ?? '').trim()
+    if (!v) return
+    if (activeFilters.value.some(f => f.field === 'sport' && f.value.toLowerCase() === v.toLowerCase())) return
+    activeFilters.value.push({ field: 'sport', op: '=', value: v, label: chipLabel('sport', '=', v) })
+  }
+
   function removeFilter(idx: number) {
     activeFilters.value.splice(idx, 1)
   }
@@ -438,6 +446,7 @@ export function useTourSearch(sources: TourSearchSources) {
     commitTrigger,
     addTagFilter,
     addGearFilter,
+    addSportFilter,
     removeFilter,
     popLastFilter,
     clearAll,

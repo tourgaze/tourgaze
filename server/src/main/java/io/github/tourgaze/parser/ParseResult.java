@@ -34,7 +34,11 @@ public record ParseResult(
         Integer avgCadence,
         Integer maxCadence,
         Integer avgPowerW,
-        Integer maxPowerW) {
+        Integer maxPowerW,
+        // Device sub-sport (FIT), e.g. "road", "mountain", "gravel_cycling",
+        // "trail". Captured for future use (discipline detail); null for formats
+        // that don't carry it (GPX/TCX).
+        String subSport) {
 
     public static Builder builder() {
         return new Builder();
@@ -58,6 +62,7 @@ public record ParseResult(
         private Integer maxCadence;
         private Integer avgPowerW;
         private Integer maxPowerW;
+        private String subSport;
 
         public Builder points(List<TrackPoint> v) {
             this.points = v != null ? v : List.of();
@@ -139,10 +144,15 @@ public record ParseResult(
             return this;
         }
 
+        public Builder subSport(String v) {
+            this.subSport = v;
+            return this;
+        }
+
         public ParseResult build() {
             return new ParseResult(points, sport, distanceM, ascentM, startTime, endTime,
                     durationS, movingTimeS, avgHr, maxHr, avgSpeedMs, maxSpeedMs,
-                    avgCadence, maxCadence, avgPowerW, maxPowerW);
+                    avgCadence, maxCadence, avgPowerW, maxPowerW, subSport);
         }
     }
 }

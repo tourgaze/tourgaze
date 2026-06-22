@@ -41,6 +41,12 @@ export type ReplayStrategyConfig = {
   offsetY: number
   duration: number
   requires3D?: boolean
+  /**
+   * Camera deadzone as a fraction of the smaller viewport dimension — how far the
+   * rider may roam from centre before the camera moves. Bigger = calmer map (the
+   * drone "hovers" and lets the rider drift in-frame). Defaults to 0.08.
+   */
+  deadzoneFrac?: number
 }
 
 export const REPLAY_STRATEGIES: ReplayStrategyConfig[] = [
@@ -56,13 +62,19 @@ export const REPLAY_STRATEGIES: ReplayStrategyConfig[] = [
     id: 'drone',
     label: 'Drone',
     description: 'Quadcopter feel — leans into the terrain for an elevation view, smooth tight follow. Reads like footage from a DJI hovering close behind you.',
-    pitch: 60, pitchFlat: 45,   // oblique elevation view, never top-down
+    // "Trench run": camera sits low behind the rider, steeply pitched so you look
+    // straight down the road/valley ahead (the rider rushing forward, world coming
+    // at you). Rider a bit below centre with a lead up the road so the "trench"
+    // fills the upper frame. Gentle deadzone keeps it from flickering (no hard
+    // lock) while the map rotates to travel direction via the windowed heading.
+    pitch: 68, pitchFlat: 58,   // steep forward look down the corridor
     bearingMode: 'smoothed', smoothAlpha: 0.10,
-    lookAhead: 6,
-    minZoom: 15.5,        // hovers in close on the rider (was 13 ≈ 5× wider)
-    centerBias: 0.6,
-    offsetY: 0.12,
+    lookAhead: 10,
+    minZoom: 15.5,
+    centerBias: 0.5,      // look-at well ahead → down the trench
+    offsetY: 0.16,        // rider lower → road ahead fills the frame
     duration: 320,
+    deadzoneFrac: 0.1,    // gentle give → smooth, no flicker
   },
   {
     id: 'helicopter',
@@ -339,16 +351,24 @@ export function precomputeSmoothedBearings(points: TrackPoint[]): SmoothedBearin
       holdHint: new Uint8Array(0),
     }
   }
-  for (let i = 1; i < N; i++) {
-    const a = points[i - 1]
-    const b = points[i]
+  // Heading from a point ~LOOKAHEAD_M AHEAD, not the next sample. Consecutive GPS
+  // points are centimetres apart, so a per-step heading is dominated by jitter and
+  // makes the camera (and thus the rider) flicker. We know the whole track, so we
+  // look ahead to a point far enough away that the direction is stable — "where
+  // you're going", computed in advance. The EMA below then just polishes it.
+  const LOOKAHEAD_M = 30
+  for (let i = 0; i < N; i++) {
+    let j = i + 1
+    while (j < N - 1 && distanceM(points[i].lat, points[i].lon, points[j].lat, points[j].lon) < LOOKAHEAD_M)
+      j++
+    const a = points[i]
+    const b = points[Math.min(j, N - 1)]
     const dLon = b.lon - a.lon
     const dLat = b.lat - a.lat
-    raw[i] = (Math.abs(dLon) + Math.abs(dLat) > 1e-7)
+    raw[i] = (Math.abs(dLon) + Math.abs(dLat) > 1e-9)
       ? Math.atan2(dLon, dLat) * 180 / Math.PI
-      : raw[i - 1]
+      : (i > 0 ? raw[i - 1] : 0)
   }
-  raw[0] = raw[1] ?? 0
 
   const rawArr = Array.from(raw)
   const byStrategy = {} as Record<ReplayStrategy, Float32Array>

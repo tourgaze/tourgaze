@@ -16,18 +16,24 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+
+import jakarta.annotation.PostConstruct;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import io.github.tourgaze.parser.TrackParser;
 import io.github.tourgaze.parser.TrackPoint;
 import io.github.tourgaze.store.StorageService;
+import io.github.tourgaze.util.DiskJsonCache;
 import io.github.tourgaze.util.Geo;
 
 /**
@@ -59,12 +65,25 @@ public class WikimediaPhotoService {
 	private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10))
 			.followRedirects(HttpClient.Redirect.NORMAL).build();
 
+	/**
+	 * On-disk cache of Commons geosearch results, keyed by ~100 m grid cell. The
+	 * same regions get queried repeatedly (re-discovery, nearby rides, the inbox
+	 * re-warm), and the data barely changes — so this is persisted to
+	 * {@code cache/wikimedia-geosearch.json} to survive restarts and spare
+	 * Wikimedia the traffic. Photo bytes are already cached in each ride's media
+	 * folder.
+	 */
+	private final DiskJsonCache<List<JsonNode>> searchCache;
+
 	public WikimediaPhotoService(StorageService storage, TrackParser trackParser,
 			MediaManifestService manifest, ObjectMapper json) {
 		this.storage = storage;
 		this.trackParser = trackParser;
 		this.manifest = manifest;
 		this.json = json;
+		this.searchCache = new DiskJsonCache<>(json, storage.cacheDir().resolve("wikimedia-geosearch.json"),
+				new TypeReference<Map<String, List<JsonNode>>>() {
+				});
 	}
 
 	public record DiscoveredPhoto(String name, double lat, double lon, String attribution) {
@@ -139,6 +158,11 @@ public class WikimediaPhotoService {
     }
 
 	private List<JsonNode> geosearch(double lat, double lon) {
+		String key = String.format(Locale.ROOT, "%.3f,%.3f", lat, lon); // ~100 m grid
+		List<JsonNode> hit = searchCache.get(key);
+		if (hit != null)
+			return hit;
+		// (cache miss → fetch below; only successful results are cached)
 		String url = API + "?action=query&format=json&formatversion=2"
 				+ "&generator=geosearch&ggsnamespace=6"
 				+ "&ggscoord=" + lat + "%7C" + lon
@@ -151,16 +175,33 @@ public class WikimediaPhotoService {
 							.timeout(Duration.ofSeconds(15)).GET().build(),
 					HttpResponse.BodyHandlers.ofString());
 			if (r.statusCode() != 200)
-				return List.of();
+				return List.of(); // transient → don't cache, let it retry
 			JsonNode pages = json.readTree(r.body()).path("query").path("pages");
 			List<JsonNode> out = new ArrayList<>();
 			if (pages.isArray())
 				pages.forEach(out::add);
+			// Cache the successful result (even if empty — that cell simply has no
+			// nearby Commons photos).
+			searchCache.put(key, out);
 			return out;
 		} catch (Exception e) {
 			log.debug("[Commons] geosearch failed at {},{}: {}", lat, lon, e.getMessage());
 			return List.of();
 		}
+	}
+
+	/** Load the on-disk geosearch cache at startup (best-effort). */
+	@PostConstruct
+	void loadSearchCache() {
+		int n = searchCache.load();
+		if (n > 0)
+			log.info("[Commons] loaded {} cached geosearch cells", n);
+	}
+
+	/** Persist new geosearch entries to disk periodically. */
+	@Scheduled(fixedDelay = 60_000)
+	public void flushSearchCache() {
+		searchCache.flush();
 	}
 
 	private byte[] download(String url) throws Exception {

@@ -23,6 +23,12 @@ import com.garmin.fit.Sport;
  * FIT file parser backed by the official Garmin FIT Java SDK.
  * Extracts GPS track points from Record messages and summary metadata
  * from the (first) Session message.
+ *
+ * <p>
+ * Attribution: uses the Garmin FIT SDK ({@code com.garmin.fit}); sport /
+ * sub-sport names follow the FIT protocol. FIT, Garmin and the FIT logo are
+ * trademarks of Garmin International, Inc. or its subsidiaries; the FIT SDK is
+ * © Garmin Canada Inc. TourGaze is not affiliated with or endorsed by Garmin.
  */
 @Component
 public class FitParser implements TrackFileParser {
@@ -79,6 +85,11 @@ public class FitParser implements TrackFileParser {
 
 			Sport sport = mesg.getSport();
 			session.sport = sport != null ? decodeSport(sport) : null;
+			com.garmin.fit.SubSport sub = mesg.getSubSport();
+			// Generic decode: FIT enum name → lowercase key (road, mountain,
+			// gravel_cycling, trail, …). Skip the placeholder values.
+			session.subSport = (sub != null && sub != com.garmin.fit.SubSport.INVALID
+					&& sub != com.garmin.fit.SubSport.GENERIC) ? sub.name().toLowerCase() : null;
 			session.startTime = mesg.getStartTime() != null
 					? mesg.getStartTime().getDate().toInstant()
 					: null;
@@ -143,6 +154,7 @@ public class FitParser implements TrackFileParser {
 				.maxCadence(session.maxCadence)
 				.avgPowerW(session.avgPowerW)
 				.maxPowerW(session.maxPowerW)
+				.subSport(session.subSport)
 				.build();
 	}
 
@@ -161,6 +173,7 @@ public class FitParser implements TrackFileParser {
 	private static final class SessionData {
 		boolean seen;
 		String sport;
+		String subSport;
 		Instant startTime;
 		Double distanceM;
 		Double ascentM;

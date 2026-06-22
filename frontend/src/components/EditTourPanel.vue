@@ -9,7 +9,7 @@ import {
   Globe, UserRound, Zap, RotateCw,
 } from 'lucide-vue-next'
 import {
-  getActivities, getWeatherConditions, getGear, updateActivity,
+  getActivities, getWeatherConditions, getGear, getSports, updateActivity,
   getActivityMedia, uploadActivityMedia, deleteActivityMedia, activityMediaUrl, isVideoFile, makePhotoPersonal,
   type ActivitySummary,
 } from '@/api/client'
@@ -29,6 +29,7 @@ const { data: conditions } = useQuery({
   staleTime: 60 * 60 * 1000,
 })
 const { data: gear } = useQuery({ queryKey: ['gear'], queryFn: () => getGear() })
+const { data: sports } = useQuery({ queryKey: ['sports'], queryFn: () => getSports(true) })
 
 // ── Photos: drop onto an existing ride → store/<ride>_media/, geo-matched ────
 // Reactive value key (NOT a function) so it matches value-based invalidations
@@ -78,6 +79,7 @@ const activity = computed<ActivitySummary | null>(() =>
 // ── Form state ──────────────────────────────────────────────────────────────
 const name = ref('')
 const description = ref('')
+const activityType = ref<string>('cycling')
 const gearId = ref<string>('')
 const selectedTags = ref<Set<string>>(new Set())
 const tempC = ref<number | null>(null)
@@ -96,6 +98,7 @@ watch([activity, () => props.activityId], () => {
   if (!a) return
   name.value = a.name ?? ''
   description.value = a.description ?? ''
+  activityType.value = a.activityType ?? 'cycling'
   gearId.value = a.gearId ?? ''
   selectedTags.value = new Set(a.tagIds ?? [])
   tempC.value = a.weatherTempC ?? null
@@ -113,6 +116,7 @@ const saveMut = useMutation({
   mutationFn: () => updateActivity(props.activityId, {
     name: name.value.trim(),
     description: description.value,
+    activityType: activityType.value || undefined,
     // '' clears gear (backend treats blank as explicit clear); an id assigns it.
     gearId: gearId.value,
     weatherTempC: tempC.value,
@@ -190,7 +194,10 @@ async function copyToClipboard(text: string | null | undefined) {
       <div v-if="activity" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] p-3 rounded bg-muted/20 border border-border">
         <div>
           <div class="text-muted-fg flex items-center gap-1"><Bike :size="10" />Sport</div>
-          <div class="font-medium">{{ activity.activityType ?? '—' }}</div>
+          <select v-model="activityType" class="mt-0.5 w-full bg-transparent border border-border rounded px-1 py-0.5 text-[11px] font-medium focus:outline-none focus:border-primary">
+            <option v-for="s in sports ?? []" :key="s.key" :value="s.key">{{ s.name }}</option>
+            <option v-if="activityType && !(sports ?? []).some(s => s.key === activityType)" :value="activityType">{{ activityType }}</option>
+          </select>
         </div>
         <div>
           <div class="text-muted-fg flex items-center gap-1"><Ruler :size="10" />Distance</div>

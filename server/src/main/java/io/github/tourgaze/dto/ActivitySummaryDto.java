@@ -8,13 +8,15 @@ package io.github.tourgaze.dto;
 import java.time.Instant;
 import java.util.List;
 
-import io.github.tourgaze.enums.ActivityType;
 import io.github.tourgaze.parser.SourceFormat;
 
 public record ActivitySummaryDto(
         String id,
         String name,
-        ActivityType activityType,
+        // Sport key (see Sport masterdata, e.g. "cycling").
+        String activityType,
+        // Device sub-sport (FIT) captured for future use, e.g. "road", "mountain".
+        String subSport,
         String description,
         Instant startTime,
         Instant endTime,

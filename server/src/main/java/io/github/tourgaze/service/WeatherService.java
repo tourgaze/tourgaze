@@ -24,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 
 import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.repository.ActivityRepository;
@@ -58,6 +60,15 @@ public class WeatherService {
 	private final ObjectMapper json;
 	private final org.springframework.context.ApplicationEventPublisher events;
 
+	/**
+	 * In-memory cache of successful lookups. Historical weather is immutable, so a
+	 * result is reusable forever; we key by ~1 km-rounded location + the UTC hour,
+	 * which collapses the many rides that start at the same place/time (and the
+	 * inbox re-warms) onto one Open-Meteo call. Bounded; only real hits are cached
+	 * (errors/empties stay uncached so they retry).
+	 */
+	private final Cache<String, WeatherResult> cache = Caffeine.newBuilder().maximumSize(10_000).build();
+
 	public WeatherService(ActivityRepository activityRepo, SettingRepository settingRepo, ObjectMapper json,
 			org.springframework.context.ApplicationEventPublisher events) {
 		this.activityRepo = activityRepo;
@@ -75,6 +86,11 @@ public class WeatherService {
 	public WeatherResult fetchWeather(Double lat, Double lon, Instant time) {
 		if (!isEnabled() || lat == null || lon == null || time == null)
 			return WeatherResult.empty();
+		String cacheKey = String.format(java.util.Locale.ROOT, "%.2f,%.2f,%d",
+				lat, lon, time.truncatedTo(ChronoUnit.HOURS).getEpochSecond());
+		WeatherResult cached = cache.getIfPresent(cacheKey);
+		if (cached != null)
+			return cached;
 		try {
 			LocalDate day = time.atZone(ZoneOffset.UTC).toLocalDate();
 			String url = String.format(java.util.Locale.ROOT, OPEN_METEO_URL, lat, lon, day, day);
@@ -94,12 +110,16 @@ public class WeatherService {
 			if (idx < 0)
 				return WeatherResult.empty();
 			Integer code = intAt(hourly, "weathercode", idx);
-			return new WeatherResult(
+			WeatherResult result = new WeatherResult(
 					doubleAt(hourly, "temperature_2m", idx),
 					intAt(hourly, "relative_humidity_2m", idx),
 					doubleAt(hourly, "windspeed_10m", idx),
 					decodeWmoCode(code),
 					code);
+			// Cache only real data (don't pin errors/empties — let them retry).
+			if (result.tempC() != null)
+				cache.put(cacheKey, result);
+			return result;
 		} catch (Exception e) {
 			log.warn("Weather lookup errored: {}", e.getMessage());
 			return WeatherResult.empty();

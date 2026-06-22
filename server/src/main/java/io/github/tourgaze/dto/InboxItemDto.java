@@ -7,7 +7,6 @@ package io.github.tourgaze.dto;
 
 import java.time.Instant;
 
-import io.github.tourgaze.enums.ActivityType;
 import io.github.tourgaze.parser.SourceFormat;
 
 /**
@@ -38,7 +37,8 @@ public record InboxItemDto(
         long sizeBytes,
         SourceFormat format,
         String suggestedName,
-        ActivityType activityType,
+        // Sport key (see Sport masterdata), e.g. "cycling".
+        String activityType,
         Instant startTime,
         Double distanceKm,
         Integer durationS,

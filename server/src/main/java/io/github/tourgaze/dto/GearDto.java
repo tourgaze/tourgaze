@@ -15,6 +15,7 @@ public record GearDto(
         String type,
         String description,
         String icon,
+        boolean assisted,
         Instant createdAt,
         Instant retiredAt
 ) {

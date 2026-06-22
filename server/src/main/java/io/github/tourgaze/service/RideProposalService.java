@@ -33,19 +33,30 @@ public class RideProposalService {
 		this.activityRepo = activityRepo;
 	}
 
-	public ActivityType proposeType(String deviceSport, Double avgSpeedKmh) {
+	/**
+	 * Infer the sport. The device-reported sport wins when it's specific (Garmin
+	 * FITs say "cycling" etc.); otherwise — GPX/TCX or generic FITs — fall back to
+	 * average moving speed, with distance as a tie-breaker in the run/ride overlap.
+	 *
+	 * Pace bands (km/h): &lt;6.5 walking / hiking (wandern), ≥14 cycling, and the
+	 * ambiguous 6.5–14 band is a run unless it's a long ride (≥30 km ⇒ cycling).
+	 * No speed at all → cycling (this is a cyclist's library by default).
+	 */
+	public ActivityType proposeType(String deviceSport, Double avgSpeedKmh, Double distanceKm) {
 		ActivityType fromDevice = ActivityType.from(deviceSport);
 		if (fromDevice != null && fromDevice != ActivityType.GENERIC && fromDevice != ActivityType.OTHER) {
 			return fromDevice;
 		}
 		double v = avgSpeedKmh == null ? 0 : avgSpeedKmh;
-		if (v >= 12)
+		double d = distanceKm == null ? 0 : distanceKm;
+		if (v <= 0)
 			return ActivityType.CYCLING;
-		if (v >= 7)
-			return ActivityType.RUNNING;
-		if (v > 0)
-			return ActivityType.HIKING;
-		return ActivityType.CYCLING;
+		if (v < 6.5)
+			return ActivityType.HIKING; // walking / wandern
+		if (v >= 14)
+			return ActivityType.CYCLING;
+		// 6.5–14: fast walk/run vs leisure ride — a long distance tips it to a ride.
+		return d >= 30 ? ActivityType.CYCLING : ActivityType.RUNNING;
 	}
 
 	public record GearProposal(String gearId, String gearName) {

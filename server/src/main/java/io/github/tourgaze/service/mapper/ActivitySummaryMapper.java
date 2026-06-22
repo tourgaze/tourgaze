@@ -15,7 +15,6 @@ import org.mapstruct.Named;
 import io.github.tourgaze.dto.ActivitySummaryDto;
 import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.entity.Tag;
-import io.github.tourgaze.enums.ActivityType;
 import io.github.tourgaze.parser.SourceFormat;
 
 /**
@@ -27,7 +26,6 @@ import io.github.tourgaze.parser.SourceFormat;
 @Mapper(componentModel = "spring")
 public interface ActivitySummaryMapper {
 
-	@Mapping(target = "activityType", source = "activityType", qualifiedByName = "toActivityType")
 	@Mapping(target = "sourceFormat", source = "sourceFormat", qualifiedByName = "toSourceFormat")
 	@Mapping(target = "weatherTempC", source = "weather.tempC")
 	@Mapping(target = "weatherHumidityPct", source = "weather.humidityPct")
@@ -46,11 +44,6 @@ public interface ActivitySummaryMapper {
 		return u.getDisplayName() != null && !u.getDisplayName().isBlank()
 				? u.getDisplayName()
 				: u.getUsername();
-	}
-
-	@Named("toActivityType")
-	static ActivityType toActivityType(String s) {
-		return ActivityType.from(s);
 	}
 
 	@Named("toSourceFormat")

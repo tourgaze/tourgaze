@@ -252,6 +252,12 @@ const option = computed(() => {
   // gradient readout floats ABOVE the plot instead of over the peak.
   const N = panels.length
 
+  // Theme-aware chip behind axis labels so overlaid lines don't render over them
+  // (especially in dark mode). Drawn in front of the series via a high z.
+  const dark = document.documentElement.classList.contains('dark')
+  const labelBg = dark ? 'rgba(17,24,39,0.78)' : 'rgba(255,255,255,0.8)'
+  const labelChip = { backgroundColor: labelBg, padding: [1, 3] as [number, number], borderRadius: 2 }
+
   if (overlayMode.value) {
     // OVERLAY: one grid, every channel on top of each other, each with its own
     // colour-coded y-axis (alternating left/right, offset for extras). Lines only
@@ -261,7 +267,7 @@ const option = computed(() => {
     grids.push({ top: (sel ? 18 : 8) + '%', bottom: 26, left: 10 + leftN * 44, right: 10 + rightN * 44 })
     xAxes.push({
       gridIndex: 0, type: 'category', data: xData,
-      axisLabel: { show: true, fontSize: 10, color: '#9ca3af', formatter: '{value} km' },
+      axisLabel: { show: true, fontSize: 10, color: dark ? '#9ca3af' : '#374151', formatter: '{value} km', ...labelChip },
       axisLine: { show: false }, axisTick: { show: false }, boundaryGap: false,
     })
     let l = 0, r = 0
@@ -271,9 +277,11 @@ const option = computed(() => {
       const offset = (side === 'left' ? l++ : r++) * 44
       yAxes.push({
         gridIndex: 0, position: side, offset,
+        z: 10,
         ...c.yAxis,
         axisLine: { show: true, lineStyle: { color: c.color } },
-        axisLabel: { ...(c.yAxis.axisLabel as any), fontSize: 9, color: c.color, margin: 4 },
+        // Colour-coded label on a theme chip so the overlaid lines can't wash it out.
+        axisLabel: { ...(c.yAxis.axisLabel as any), fontSize: 9, color: c.color, margin: 4, ...labelChip },
         splitLine: { show: i === 0, lineStyle: { color: '#f3f4f6', type: 'dashed' } },
       })
       series.push({
@@ -520,10 +528,11 @@ const fmtSigned = (n: number, digits = 0) => (n >= 0 ? '+' : '') + n.toFixed(dig
     <!-- Top-right controls: overlay switch + channel toggles (custom,
          always-visible legend — click a chip to hide/show that graph). -->
     <div v-if="presentChannels.length > 1"
-      class="absolute top-0.5 right-2 z-10 flex items-center gap-2 pointer-events-auto select-none">
+      class="absolute top-0.5 right-2 z-10 flex items-center gap-2 pointer-events-auto select-none
+             bg-background/90 backdrop-blur-sm rounded-md border border-border px-1.5 py-0.5 shadow-sm">
       <button type="button"
         class="text-[10px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded border"
-        :class="overlayMode ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-fg hover:bg-muted/40'"
+        :class="overlayMode ? 'border-primary text-primary bg-primary/10' : 'border-border text-foreground hover:bg-muted/40'"
         :title="overlayMode ? 'Switch to stacked graphs' : 'Overlay all graphs on one axis'"
         @click="overlayMode = !overlayMode">
         <Layers :size="11" /> Overlay
@@ -535,7 +544,7 @@ const fmtSigned = (n: number, digits = 0) => (n >= 0 ? '+' : '') + n.toFixed(dig
           @click="toggleChannel(c.key)">
           <span class="inline-block w-2 h-2 rounded-sm"
             :style="{ backgroundColor: c.color, opacity: hidden.has(c.key) ? 0.3 : 1 }" />
-          <span :class="hidden.has(c.key) ? 'line-through text-muted-fg/60' : 'text-muted-fg'">{{ c.name }}</span>
+          <span :class="hidden.has(c.key) ? 'line-through text-muted-fg/60' : 'text-foreground font-medium'">{{ c.name }}</span>
         </button>
       </span>
     </div>

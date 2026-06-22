@@ -25,5 +25,7 @@ public record ActivityUpdateDto(
         String startCountry,
         String endLocation,
         String endCountry,
-        List<String> tagIds
+        List<String> tagIds,
+        // Sport override (wire value, e.g. "hiking"). Null → leave unchanged.
+        String activityType
 ) {}

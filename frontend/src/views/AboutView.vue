@@ -96,6 +96,15 @@ const data: { name: string; what: string; href: string }[] = [
             <span class="text-muted-fg text-right text-[11px]">{{ l.what }}</span>
           </div>
         </div>
+        <!-- Garmin FIT attribution / trademark notice (FIT SDK + sport names). -->
+        <p class="text-[11px] text-muted-fg leading-relaxed pt-1">
+          FIT files are read with the
+          <a href="https://developer.garmin.com/fit/" target="_blank" rel="noopener" class="text-primary hover:underline">Garmin FIT SDK</a>,
+          and sport / sub-sport names follow the FIT protocol. FIT, Garmin and the FIT
+          logo are trademarks of Garmin International, Inc. or its subsidiaries; the
+          FIT SDK is © Garmin Canada Inc. TourGaze is not affiliated with or endorsed
+          by Garmin.
+        </p>
       </section>
 
       <!-- Map & data attribution -->

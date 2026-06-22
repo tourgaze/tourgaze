@@ -109,6 +109,14 @@ public class Activity extends BaseEntity {
 	@Column(name = "activity_type")
 	private String activityType;
 
+	/**
+	 * Device sub-sport (FIT), e.g. "road", "mountain", "gravel_cycling". Captured
+	 * from the file for future use (discipline detail); not surfaced/edited yet —
+	 * discipline currently comes from gear. Null for formats without it.
+	 */
+	@Column(name = "sub_sport", length = 64)
+	private String subSport;
+
 	private String name;
 	private String description;
 
@@ -292,6 +300,14 @@ public class Activity extends BaseEntity {
 
 	public void setActivityType(String activityType) {
 		this.activityType = activityType;
+	}
+
+	public String getSubSport() {
+		return subSport;
+	}
+
+	public void setSubSport(String subSport) {
+		this.subSport = subSport;
 	}
 
 	public String getName() {

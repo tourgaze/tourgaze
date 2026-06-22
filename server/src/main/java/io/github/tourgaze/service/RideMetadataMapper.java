@@ -38,7 +38,7 @@ public class RideMetadataMapper {
 		return new RideMetadataDto(
 				SCHEMA_VERSION, exportedAt,
 				a.getId(), a.getName(), a.getDescription(),
-				io.github.tourgaze.enums.ActivityType.from(a.getActivityType()),
+				a.getActivityType(),
 				a.getStartTime(), a.getEndTime(), a.getDurationS(), a.getMovingTimeS(),
 				a.getDistanceKm(), a.getElevationGainM(),
 				a.getAvgHr(), a.getMaxHr(), a.getAvgSpeedKmh(), a.getMaxSpeedKmh(),

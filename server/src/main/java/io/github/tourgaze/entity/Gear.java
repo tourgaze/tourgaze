@@ -37,6 +37,13 @@ public class Gear extends BaseEntity {
 	@Column(length = 32)
 	private String icon;
 
+	/**
+	 * Motor-assisted (e-bike). A property of the bike, not the ride — lets stats
+	 * exclude/segment assisted rides so they don't skew speed/power records.
+	 */
+	@Column(nullable = false)
+	private boolean assisted = false;
+
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
@@ -97,6 +104,14 @@ public class Gear extends BaseEntity {
 
 	public void setIcon(String icon) {
 		this.icon = icon;
+	}
+
+	public boolean isAssisted() {
+		return assisted;
+	}
+
+	public void setAssisted(boolean assisted) {
+		this.assisted = assisted;
 	}
 
 	public Instant getCreatedAt() {

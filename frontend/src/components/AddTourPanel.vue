@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { fmtDuration, fmtDateTime } from '@/lib/format'
+import { fmtDuration } from '@/lib/format'
 import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
@@ -7,7 +7,7 @@ import { push } from 'notivue'
 import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Archive, Heart, Zap, Gauge } from 'lucide-vue-next'
 import {
   importInbox, discardInbox, moveInboxToProcessed, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
-  getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile,
+  getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile, getSports,
   type InboxItem, type WeatherResult, type Prediction,
 } from '@/api/client'
 import StartLocationMap from '@/components/StartLocationMap.vue'
@@ -23,6 +23,7 @@ const qc = useQueryClient()
 const router = useRouter()
 const { data: users } = useQuery({ queryKey: ['users'], queryFn: getUsers })
 const { data: gear } = useQuery({ queryKey: ['gear'], queryFn: () => getGear() })
+const { data: sports } = useQuery({ queryKey: ['sports'], queryFn: () => getSports(true) })
 
 // Foldable map card: collapsed shows the small start-location preview; expanded
 // fetches + draws the whole route. The track is only fetched once expanded.
@@ -72,6 +73,18 @@ const { data: conditions } = useQuery({
 
 const name = ref('')
 const description = ref('')
+const activityType = ref<string>('cycling')   // detected sport, user-overridable
+// Editable start time (datetime-local string). Garmin sometimes records a wrong
+// start; we only send an override when the user actually changes it (so we don't
+// truncate the original's seconds, which the minute-precision input can't show).
+const startTime = ref('')
+const startTimeOriginal = ref('')
+function toLocalInput(iso: string | null | undefined): string {
+  if (!iso) return ''
+  const d = new Date(iso)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
 const userId = ref<string | null>(null)
 const gearId = ref<string | null>(null)
 const selectedTags = ref<Set<string>>(new Set())
@@ -102,6 +115,9 @@ const predictionLoading = ref(false)
 
 watch(() => props.item, async (it) => {
   name.value = it.suggestedName ?? ''
+  activityType.value = it.activityType ?? 'cycling'
+  startTime.value = toLocalInput(it.startTime)
+  startTimeOriginal.value = startTime.value
   description.value = ''
   selectedTags.value = new Set()
   // Pre-select active rider; falls back to first user only if none active.
@@ -168,6 +184,9 @@ const importMut = useMutation({
   mutationFn: () => importInbox(props.item.filename!, {
     name: name.value.trim() || undefined,
     description: description.value.trim() || undefined,
+    activityType: activityType.value || undefined,
+    startTime: (startTime.value && startTime.value !== startTimeOriginal.value)
+      ? new Date(startTime.value).toISOString() : undefined,
     gearId: gearId.value || undefined,
     userId: userId.value || undefined,
     tagIds: Array.from(selectedTags.value),
@@ -231,10 +250,19 @@ const processedMut = useMutation({
       <!-- Detected metadata -->
       <div class="text-[11px] grid grid-cols-3 sm:grid-cols-5 gap-2 p-2 rounded bg-muted/20 border border-border">
         <div><div class="text-muted-fg">Format</div><div>{{ item.format?.toUpperCase() }}</div></div>
-        <div><div class="text-muted-fg">Detected sport</div><div>{{ item.activityType ?? '—' }}</div></div>
+        <div><div class="text-muted-fg">Detected sport</div>
+          <select v-model="activityType" class="mt-0.5 w-full bg-transparent border border-border rounded px-1 py-0.5 text-[11px] focus:outline-none focus:border-primary">
+            <option v-for="s in sports ?? []" :key="s.key" :value="s.key">{{ s.name }}</option>
+            <option v-if="activityType && !(sports ?? []).some(s => s.key === activityType)" :value="activityType">{{ activityType }}</option>
+          </select>
+        </div>
         <div><div class="text-muted-fg flex items-center gap-1"><Timer :size="10" />Duration</div><div>{{ fmtDuration(item.durationS) }}</div></div>
         <div><div class="text-muted-fg flex items-center gap-1"><Ruler :size="10" />Distance</div><div>{{ item.distanceKm != null ? item.distanceKm.toFixed(1) + ' km' : '—' }}</div></div>
-        <div class="col-span-2 sm:col-span-1"><div class="text-muted-fg flex items-center gap-1"><MapPin :size="10" />Start</div><div>{{ fmtDateTime(item.startTime) }}</div></div>
+        <div class="col-span-2 sm:col-span-1"><div class="text-muted-fg flex items-center gap-1"><MapPin :size="10" />Start</div>
+          <input type="datetime-local" v-model="startTime"
+            class="mt-0.5 w-full bg-transparent border border-border rounded px-1 py-0.5 text-[11px] focus:outline-none focus:border-primary"
+            :class="startTime !== startTimeOriginal ? 'border-primary text-primary' : ''" />
+        </div>
       </div>
 
       <!-- Available sensor channels — what extra data this file carries beyond GPS -->
@@ -279,15 +307,18 @@ const processedMut = useMutation({
           <component :is="mapExpanded ? ChevronDown : ChevronRight" :size="12" />
           <MapPin :size="11" />
           <span>{{ mapExpanded ? 'Route' : 'Start location' }}</span>
-          <span class="ml-auto text-[10px] opacity-70">{{ mapExpanded ? 'whole trip' : 'expand for full route' }}</span>
+          <span class="ml-auto text-[10px] opacity-70">{{ mapExpanded ? 'whole trip' : 'expand to preview the route' }}</span>
         </button>
-        <div class="p-1">
+        <!-- Only mount the map on demand (no tile loads per inbox item while
+             collapsed), and key it to the file so it refreshes when you switch
+             rides instead of reusing the previous ride's view. -->
+        <div v-if="mapExpanded" class="p-1">
           <StartLocationMap
-            :key="mapExpanded ? 'route' : 'start'"
+            :key="item.filename ?? 'map'"
             :lat="item.startLat ?? null"
             :lon="item.startLon ?? null"
-            :points="mapExpanded ? (previewTrack ?? null) : null"
-            :height-class="mapExpanded ? 'h-72' : 'h-32'"
+            :points="previewTrack ?? null"
+            height-class="h-72"
           />
         </div>
       </div>

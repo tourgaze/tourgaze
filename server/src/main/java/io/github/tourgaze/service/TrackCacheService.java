@@ -101,7 +101,9 @@ public class TrackCacheService {
 		byte[] data = storage.readStoreBytes(sourceFilename); // transparently decrypts
 		ParseResult result = trackParser.parseByFilename(data, sourceFilename);
 
-		List<TrackPoint> raw = result.points();
+		// GPX/TCX (and Derby-recovered tracks) carry no per-point speed; derive it
+		// from position+time so the chart's speed channel isn't empty for them.
+		List<TrackPoint> raw = withDerivedSpeed(result.points());
 		List<TrackPointDto> fullPoints = raw.stream()
 				.map(p -> new TrackPointDto(
 						Math.round(p.lat() * 1e6) / 1e6,
@@ -121,6 +123,31 @@ public class TrackCacheService {
 		if (chartMissing) {
 			objectMapper.writeValue(chartCache.toFile(), chartPoints);
 		}
+	}
+
+	/**
+	 * Fill per-point {@code speedMs} from haversine distance / time delta wherever
+	 * the source didn't provide it (GPX/TCX, recovered tracks). Skips big time gaps
+	 * and discards implausible spikes (&gt;40 m/s ≈ 144 km/h) from GPS jitter.
+	 */
+	static List<TrackPoint> withDerivedSpeed(List<TrackPoint> pts) {
+		if (pts.isEmpty() || pts.stream().noneMatch(p -> p.speedMs() == null))
+			return pts;
+		List<TrackPoint> out = new ArrayList<>(pts.size());
+		TrackPoint prev = null;
+		for (TrackPoint p : pts) {
+			Double sp = p.speedMs();
+			if (sp == null && prev != null && prev.time() != null && p.time() != null) {
+				double dt = (p.time().toEpochMilli() - prev.time().toEpochMilli()) / 1000.0;
+				if (dt > 0 && dt < 600) {
+					double v = Geo.distanceM(prev.lat(), prev.lon(), p.lat(), p.lon()) / dt;
+					sp = v <= 40 ? v : null; // drop GPS-glitch spikes
+				}
+			}
+			out.add(new TrackPoint(p.time(), p.lat(), p.lon(), p.altM(), p.hr(), sp, p.cadence(), p.power()));
+			prev = p;
+		}
+		return out;
 	}
 
 	private List<TrackPointDto> buildChartPoints(List<TrackPoint> raw, int threshold) {

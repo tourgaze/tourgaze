@@ -150,7 +150,7 @@ onMounted(() => {
   map = new maplibregl.Map({
     container: mapEl.value,
     style: rasterStyle('osm'),
-    center: [11, 48], zoom: 6, attributionControl: false,
+    center: [11, 48], zoom: 6, attributionControl: { compact: true },
   })
   map.addControl(new maplibregl.NavigationControl(), 'top-right')
   map.on('load', renderPins)

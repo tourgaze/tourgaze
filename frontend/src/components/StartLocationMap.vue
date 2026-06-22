@@ -43,7 +43,7 @@ function ensureMap() {
   map = new maplibregl.Map({
     container: containerEl.value,
     interactive: false,                // small preview — no panning
-    attributionControl: false,
+    attributionControl: { compact: true },   // OSM/CARTO terms require visible credit
     style: {
       version: 8,
       sources: {
@@ -52,6 +52,7 @@ function ensureMap() {
           tiles: [tileUrl('osm')],
           tileSize: 256,
           maxzoom: 19,
+          attribution: '© OpenStreetMap contributors',
         },
         // Separate raster-dem source for hillshade (matches ActivityMap convention).
         'terrain-dem-hillshade': {

@@ -80,6 +80,20 @@ public class InboxController {
 		return Map.of("copied", watchFolders.scanNow());
 	}
 
+	/** Recompute inbox proposals (gear/type/duplicate) from current history. */
+	@PostMapping("/refresh")
+	public ResponseEntity<Void> refresh() {
+		inboxService.refreshProposals();
+		return ResponseEntity.noContent().build();
+	}
+
+	/** Recompute proposals for a single inbox file. */
+	@PostMapping("/{filename}/refresh")
+	public ResponseEntity<Void> refreshOne(@PathVariable("filename") String filename) {
+		inboxService.refreshProposal(filename);
+		return ResponseEntity.noContent().build();
+	}
+
 	/**
 	 * Free-text place autocomplete (Nominatim forward geocode). Used by the
 	 * Start / End location inputs in the AddTour + EditTour forms — as the

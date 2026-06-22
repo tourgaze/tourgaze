@@ -12,7 +12,10 @@ project's exact terms govern, those terms — not this summary — control.
   Used to decode `.fit` activity files. "FIT" and the FIT logo are trademarks of
   Garmin; the SDK is distributed under the *Flexible and Interoperable Data
   Transfer (FIT) Protocol License*. Garmin's copyright notice is retained per
-  that license.
+  that license. Because that license is **not GPL-compatible**, TourGaze grants an
+  **AGPL v3 §7 additional permission** to combine the app with the FIT SDK — see
+  *License → Additional permission* in the [README](README.md). TourGaze is not
+  affiliated with or endorsed by Garmin.
 - **jpx** (`io.jenetics:jpx`) — © Franz Wilhelmstötter — Apache License 2.0.
   GPX (`.gpx`) reading/writing. KML/KMZ parsing is TourGaze's own code.
 
@@ -51,7 +54,12 @@ bundled. Attribution is shown in-app where the data appears.
 
 - **OpenStreetMap** — map tiles, **Overpass** (peaks/passes highlights) and
   **Nominatim** (reverse geocoding). Map data © OpenStreetMap contributors,
-  licensed under the **Open Database License (ODbL)**.
+  licensed under the **Open Database License (ODbL)**. **Note:** the default
+  raster basemap proxies `tile.openstreetmap.org`, which is governed by the
+  [OSM Tile Usage Policy](https://operations.osmfoundation.org/policies/tiles/)
+  (no bulk/heavy use, attribution required — shown on every map). For multi-user
+  or production deployments, switch the basemap to CARTO / OpenFreeMap or your own
+  tile server in **Settings → Map providers**.
 - **Terrarium elevation tiles** (AWS `elevation-tiles-prod`) — terrain hillshade.
   Terrain data © **Mapzen** and contributors (Mapzen Terrain Tiles attribution).
 - **Open-Meteo** — weather auto-fill. Data under **CC-BY 4.0**.

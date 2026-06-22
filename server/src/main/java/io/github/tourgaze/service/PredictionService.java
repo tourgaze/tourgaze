@@ -5,17 +5,12 @@
  */
 package io.github.tourgaze.service;
 
-import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
@@ -35,6 +30,7 @@ import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.repository.ActivityRepository;
 import io.github.tourgaze.repository.SettingRepository;
 import io.github.tourgaze.store.StorageService;
+import io.github.tourgaze.util.DiskJsonCache;
 import io.github.tourgaze.util.Geo;
 
 /**
@@ -74,8 +70,7 @@ public class PredictionService {
 	 * home/trailhead, and at ~200m grid resolution they all share one entry, so
 	 * after the first run Nominatim is barely touched (and never on restart).
 	 */
-	private final ConcurrentHashMap<String, ReverseGeoResult> geoCache = new ConcurrentHashMap<>();
-	private final AtomicBoolean geoDirty = new AtomicBoolean(false);
+	private final DiskJsonCache<ReverseGeoResult> geoCache;
 
 	/**
 	 * Min spacing between actual Nominatim calls (cache misses only) — OSM policy
@@ -95,52 +90,32 @@ public class PredictionService {
 		this.activityRepo = activityRepo;
 		this.objectMapper = objectMapper;
 		this.storage = storage;
+		this.geoCache = new DiskJsonCache<>(objectMapper, storage.cacheDir().resolve("geocode.json"),
+				new TypeReference<Map<String, ReverseGeoResult>>() {
+				});
 		this.httpClient = HttpClient.newBuilder()
 				.connectTimeout(Duration.ofSeconds(8))
 				.followRedirects(HttpClient.Redirect.NORMAL)
 				.build();
 	}
 
-	private Path geoCacheFile() {
-		return storage.cacheDir().resolve("geocode.json");
-	}
-
 	/** Load the on-disk geocode cache once at startup (best-effort). */
 	@PostConstruct
 	void loadGeoCache() {
-		Path f = geoCacheFile();
-		if (!Files.isRegularFile(f))
-			return;
-		try {
-			Map<String, ReverseGeoResult> saved = objectMapper.readValue(Files.readAllBytes(f),
-					new TypeReference<Map<String, ReverseGeoResult>>() {
-					});
-			geoCache.putAll(saved);
-			log.info("[Geocode] loaded {} cached places from {}", geoCache.size(), f);
-		} catch (Exception e) {
-			log.debug("[Geocode] cache load skipped: {}", e.getMessage());
-		}
+		int n = geoCache.load();
+		if (n > 0)
+			log.info("[Geocode] loaded {} cached places", n);
 	}
 
-	/** Persist new geocode entries to disk periodically (and on shutdown). */
+	/** Persist new geocode entries to disk periodically. */
 	@Scheduled(fixedDelay = 30_000)
 	public void flushGeoCache() {
-		if (!geoDirty.getAndSet(false))
-			return;
-		Path f = geoCacheFile();
-		try {
-			Files.createDirectories(f.getParent());
-			Files.write(f, objectMapper.writeValueAsBytes(geoCache));
-		} catch (IOException e) {
-			geoDirty.set(true); // retry next tick
-			log.debug("[Geocode] cache flush failed: {}", e.getMessage());
-		}
+		geoCache.flush();
 	}
 
 	@PreDestroy
 	void flushGeoCacheOnShutdown() {
-		geoDirty.set(true);
-		flushGeoCache();
+		geoCache.flush();
 	}
 
 	/**
@@ -232,7 +207,6 @@ public class PredictionService {
 		ReverseGeoResult result = fetchReverseGeocode(lat, lon, lang);
 		if (result != null) { // never cache failures — they retry independently
 			geoCache.put(key, result);
-			geoDirty.set(true);
 		}
 		return result;
 	}

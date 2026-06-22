@@ -151,3 +151,20 @@ Developer guide: **[README-dev.md](README-dev.md)**. See also
 
 [GNU AGPL-3.0](LICENSE) © TourGaze contributors. If you run a modified version as a
 network service, you must offer your users the corresponding source.
+
+### Additional permission (AGPL v3 §7) — Garmin FIT SDK
+
+The Garmin FIT SDK that TourGaze uses to read `.fit` files is distributed under
+Garmin's own proprietary *FIT Protocol License*, which is not GPL-compatible. To
+remove any doubt about combining it with AGPL-licensed code:
+
+> As a special exception, the copyright holders of TourGaze grant you, under
+> section 7 of the GNU Affero General Public License version 3, additional
+> permission to combine or link TourGaze with the **Garmin FIT SDK** (the
+> "FIT SDK") and to convey the resulting work. The GNU AGPL v3 continues to
+> govern the TourGaze portions; the FIT SDK remains governed by its own license.
+> This permission applies only to the combination with the FIT SDK and does not
+> otherwise limit the AGPL.
+
+If you fork TourGaze, keep this exception (or replace the FIT SDK) so the
+combined work stays distributable.

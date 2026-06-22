@@ -335,7 +335,7 @@ public class InboxService {
 				Double avgKmh = (r.durationS() != null && r.durationS() > 0 && distanceKm != null)
 						? distanceKm / (r.durationS() / 3600.0)
 						: (r.avgSpeedMs() != null ? r.avgSpeedMs() * 3.6 : null);
-				var type = proposalService.proposeType(r.sport(), avgKmh);
+				var type = proposalService.proposeType(r.sport(), avgKmh, distanceKm);
 				var gear = proposalService.proposeGear(avgKmh, distanceKm, r.ascentM(), type);
 				RouteCandidate dup = findSameTrack(r.points(), candidates);
 				return new ParsedCard(mtime, sha, size, format, suggestedName, type, r.startTime(), distanceKm,
@@ -355,6 +355,31 @@ public class InboxService {
 
 	/** Push an inbox-changed event now (no warm) — for new files / removals. */
 	public void notifyChanged() {
+		inboxStream.changed();
+	}
+
+	/**
+	 * Force proposals to be recomputed: drops the parse cache (where the gear
+	 * proposal lives) so the next warm re-derives gear/type/duplicate from the
+	 * CURRENT activity history — e.g. after you import a ride with a gear and want
+	 * the next items to reflect it. Geocode cache is kept (expensive, unchanged).
+	 * The scheduled warm refills shortly; an SSE nudge repaints the list.
+	 */
+	public void refreshProposals() {
+		parseCache.clear();
+		inboxStream.changed();
+	}
+
+	/**
+	 * Recompute proposals for ONE inbox file (gear/type/duplicate + geocode): drop
+	 * its cache entries and re-run the warm, which then only re-processes this file
+	 * (others stay cached). Fast, single-item version of {@link #refreshProposals}.
+	 */
+	public void refreshProposal(String filename) {
+		ParsedCard pc = parseCache.remove(filename);
+		if (pc != null && pc.sha() != null)
+			predictionCache.remove(pc.sha());
+		warmPending();
 		inboxStream.changed();
 	}
 
@@ -395,7 +420,8 @@ public class InboxService {
 		// "Processing" once parsed: has GPS but the geocode/tag-vote hasn't run yet.
 		boolean proposalPending = pred == null && pc.lat() != null;
 		return new InboxItemDto(
-				filename, pc.sha(), pc.size(), pc.format(), displayName, pc.type(),
+				filename, pc.sha(), pc.size(), pc.format(), displayName,
+				pc.type() != null ? pc.type().wire() : null,
 				pc.startTime(), pc.distanceKm(), pc.durationS(), pc.lat(), pc.lon(), pc.endLat(), pc.endLon(),
 				pc.existingActivityId(), pc.gearId(), pc.gearName(), pc.dupId(), pc.dupName(),
 				pred != null ? pred.startLocation() : null,
@@ -700,17 +726,32 @@ public class InboxService {
 			// Route fingerprint for "same route" / ghost-chase compare detection.
 			if (!trackPoints.isEmpty())
 				a.setRouteGeocells(RouteSimilarityService.fingerprint(trackPoints));
-			// Apply the proposed type (the form shows it but can't edit it): trust the
-			// device sport, else infer from pace, else cycling.
+			// Sport: an explicit override from the import form wins; otherwise trust
+			// the device sport, else infer from pace/distance.
 			Double avgKmh = r.avgSpeedMs() != null ? r.avgSpeedMs() * 3.6
 					: (r.durationS() != null && r.durationS() > 0 && r.distanceM() != null
 							? (r.distanceM() / 1000.0) / (r.durationS() / 3600.0)
 							: null);
-			a.setActivityType(proposalService.proposeType(r.sport(), avgKmh).wire());
+			Double distKm = r.distanceM() != null ? r.distanceM() / 1000.0 : null;
+			var detectedType = proposalService.proposeType(r.sport(), avgKmh, distKm);
+			// An explicit override from the form (a Sport key) is stored as-is; else
+			// the detected enum's wire value.
+			a.setActivityType((req.activityType() != null && !req.activityType().isBlank())
+					? req.activityType().trim().toLowerCase()
+					: detectedType.wire());
+			a.setSubSport(r.subSport()); // captured for future discipline detail
 			a.setStartTime(r.startTime());
 			a.setEndTime(r.endTime());
 			a.setDurationS(r.durationS());
 			a.setMovingTimeS(r.movingTimeS());
+			// Start-time override from the form (Garmin sometimes records a bad
+			// start): shift end by the same duration so the elapsed time is kept.
+			if (req.startTime() != null) {
+				a.setStartTime(req.startTime());
+				a.setEndTime(a.getDurationS() != null
+						? req.startTime().plusSeconds(a.getDurationS())
+						: r.endTime());
+			}
 			a.setDistanceKm(r.distanceM() != null ? r.distanceM() / 1000.0 : null);
 			a.setElevationGainM(r.ascentM());
 			a.setAvgHr(r.avgHr());

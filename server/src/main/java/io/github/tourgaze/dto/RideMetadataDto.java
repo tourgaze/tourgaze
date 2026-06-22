@@ -8,7 +8,6 @@ package io.github.tourgaze.dto;
 import java.time.Instant;
 import java.util.List;
 
-import io.github.tourgaze.enums.ActivityType;
 import io.github.tourgaze.parser.SourceFormat;
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -34,8 +33,8 @@ public record RideMetadataDto(
         String id,
         String name,
         String description,
-        @Schema(description = "Sport: cycling, running, hiking, …", example = "cycling")
-        ActivityType activityType,
+        @Schema(description = "Sport key: cycling, running, hiking, …", example = "cycling")
+        String activityType,
         Instant startTime,
         Instant endTime,
         Integer durationS,

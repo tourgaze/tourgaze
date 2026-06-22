@@ -36,7 +36,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/settings/{key}": {
+    "/api/sports/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -45,6 +45,22 @@ export interface paths {
         };
         get?: never;
         put: operations["update_2"];
+        post?: never;
+        delete: operations["delete_2"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["update_3"];
         post?: never;
         delete?: never;
         options?: never;
@@ -60,9 +76,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["update_3"];
+        put: operations["update_4"];
         post?: never;
-        delete: operations["delete_2"];
+        delete: operations["delete_3"];
         options?: never;
         head?: never;
         patch?: never;
@@ -76,9 +92,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["update_4"];
+        put: operations["update_5"];
         post?: never;
-        delete: operations["delete_3"];
+        delete: operations["delete_4"];
         options?: never;
         head?: never;
         patch?: never;
@@ -92,9 +108,9 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        put: operations["update_5"];
+        put: operations["update_6"];
         post?: never;
-        delete: operations["delete_4"];
+        delete: operations["delete_5"];
         options?: never;
         head?: never;
         patch?: never;
@@ -132,6 +148,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/sports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_1"];
+        put?: never;
+        post: operations["create_2"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/markers": {
         parameters: {
             query?: never;
@@ -141,7 +173,7 @@ export interface paths {
         };
         get: operations["all"];
         put?: never;
-        post: operations["create_2"];
+        post: operations["create_3"];
         delete?: never;
         options?: never;
         head?: never;
@@ -157,7 +189,7 @@ export interface paths {
         };
         get: operations["getAll_1"];
         put?: never;
-        post: operations["create_3"];
+        post: operations["create_4"];
         delete?: never;
         options?: never;
         head?: never;
@@ -171,7 +203,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_1"];
+        get: operations["list_2"];
         put?: never;
         post: operations["upload"];
         delete?: never;
@@ -253,7 +285,7 @@ export interface paths {
         };
         get: operations["getAll_2"];
         put?: never;
-        post: operations["create_4"];
+        post: operations["create_5"];
         delete?: never;
         options?: never;
         head?: never;
@@ -267,9 +299,9 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_2"];
+        get: operations["list_3"];
         put?: never;
-        post: operations["create_5"];
+        post: operations["create_6"];
         delete?: never;
         options?: never;
         head?: never;
@@ -382,10 +414,10 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete: operations["delete_5"];
+        delete: operations["delete_6"];
         options?: never;
         head?: never;
-        patch: operations["update_6"];
+        patch: operations["update_7"];
         trace?: never;
     };
     "/api/activities/{id}": {
@@ -398,10 +430,10 @@ export interface paths {
         get: operations["get"];
         put?: never;
         post?: never;
-        delete: operations["delete_6"];
+        delete: operations["delete_7"];
         options?: never;
         head?: never;
-        patch: operations["update_7"];
+        patch: operations["update_8"];
         trace?: never;
     };
     "/api/weather": {
@@ -508,6 +540,22 @@ export interface paths {
             cookie?: never;
         };
         get: operations["impact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/sports/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["byKey"];
         put?: never;
         post?: never;
         delete?: never;
@@ -703,7 +751,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get: operations["list_3"];
+        get: operations["list_4"];
         put?: never;
         post?: never;
         delete?: never;
@@ -869,6 +917,16 @@ export interface components {
             color?: string;
             icon?: string;
         };
+        SportDto: {
+            id?: string;
+            key?: string;
+            name?: string;
+            icon?: string;
+            color?: string;
+            /** Format: int32 */
+            ordinal?: number;
+            enabled?: boolean;
+        };
         SettingDto: {
             key?: string;
             value?: string;
@@ -892,6 +950,7 @@ export interface components {
             type?: string;
             description?: string;
             icon?: string;
+            assisted?: boolean;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */
@@ -942,6 +1001,9 @@ export interface components {
             startCountry?: string;
             endLocation?: string;
             endCountry?: string;
+            activityType?: string;
+            /** Format: date-time */
+            startTime?: string;
         };
         MediaItem: {
             name?: string;
@@ -978,11 +1040,13 @@ export interface components {
             endLocation?: string;
             endCountry?: string;
             tagIds?: string[];
+            activityType?: string;
         };
         ActivitySummaryDto: {
             id?: string;
             name?: string;
-            activityType?: components["schemas"]["ActivityType"];
+            activityType?: string;
+            subSport?: string;
             description?: string;
             /** Format: date-time */
             startTime?: string;
@@ -1041,11 +1105,6 @@ export interface components {
             riderName?: string;
         };
         /**
-         * @description Sport / activity type of a ride. Unknown or unsupported sports map to 'other'.
-         * @enum {string}
-         */
-        ActivityType: "cycling" | "running" | "walking" | "hiking" | "swimming" | "generic" | "other";
-        /**
          * @description Supported ride-file formats for import.
          * @enum {string}
          */
@@ -1101,7 +1160,7 @@ export interface components {
             sizeBytes?: number;
             format?: components["schemas"]["SourceFormat"];
             suggestedName?: string;
-            activityType?: components["schemas"]["ActivityType"];
+            activityType?: string;
             /** Format: date-time */
             startTime?: string;
             /** Format: double */
@@ -1226,10 +1285,10 @@ export interface components {
             name?: string;
             description?: string;
             /**
-             * @description Sport: cycling, running, hiking, …
+             * @description Sport key: cycling, running, hiking, …
              * @example cycling
              */
-            activityType?: components["schemas"]["ActivityType"];
+            activityType?: string;
             /** Format: date-time */
             startTime?: string;
             /** Format: date-time */
@@ -1424,39 +1483,13 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
-                key: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SettingDto"];
-            };
-        };
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["SettingDto"];
-                };
-            };
-        };
-    };
-    update_3: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
                 id: string;
             };
             cookie?: never;
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["MapProviderDto"];
+                "application/json": components["schemas"]["SportDto"];
             };
         };
         responses: {
@@ -1466,7 +1499,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["MapProviderDto"];
+                    "*/*": components["schemas"]["SportDto"];
                 };
             };
         };
@@ -1491,6 +1524,32 @@ export interface operations {
             };
         };
     };
+    update_3: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SettingDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SettingDto"];
+                };
+            };
+        };
+    };
     update_4: {
         parameters: {
             query?: never;
@@ -1502,7 +1561,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GearDto"];
+                "application/json": components["schemas"]["MapProviderDto"];
             };
         };
         responses: {
@@ -1512,7 +1571,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "*/*": components["schemas"]["GearDto"];
+                    "*/*": components["schemas"]["MapProviderDto"];
                 };
             };
         };
@@ -1548,6 +1607,52 @@ export interface operations {
         };
         requestBody: {
             content: {
+                "application/json": components["schemas"]["GearDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["GearDto"];
+                };
+            };
+        };
+    };
+    delete_4: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    update_6: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
                 "application/json": components["schemas"]["FilterPresetDto"];
             };
         };
@@ -1563,7 +1668,7 @@ export interface operations {
             };
         };
     };
-    delete_4: {
+    delete_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -1671,6 +1776,52 @@ export interface operations {
             };
         };
     };
+    list_1: {
+        parameters: {
+            query?: {
+                enabledOnly?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SportDto"][];
+                };
+            };
+        };
+    };
+    create_2: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SportDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SportDto"];
+                };
+            };
+        };
+    };
     all: {
         parameters: {
             query?: never;
@@ -1691,7 +1842,7 @@ export interface operations {
             };
         };
     };
-    create_2: {
+    create_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -1735,7 +1886,7 @@ export interface operations {
             };
         };
     };
-    create_3: {
+    create_4: {
         parameters: {
             query?: never;
             header?: never;
@@ -1759,7 +1910,7 @@ export interface operations {
             };
         };
     };
-    list_1: {
+    list_2: {
         parameters: {
             query?: never;
             header?: never;
@@ -1944,7 +2095,7 @@ export interface operations {
             };
         };
     };
-    create_4: {
+    create_5: {
         parameters: {
             query?: never;
             header?: never;
@@ -1968,7 +2119,7 @@ export interface operations {
             };
         };
     };
-    list_2: {
+    list_3: {
         parameters: {
             query?: never;
             header?: never;
@@ -1988,7 +2139,7 @@ export interface operations {
             };
         };
     };
-    create_5: {
+    create_6: {
         parameters: {
             query?: never;
             header?: never;
@@ -2173,7 +2324,7 @@ export interface operations {
             };
         };
     };
-    delete_5: {
+    delete_6: {
         parameters: {
             query?: never;
             header?: never;
@@ -2193,7 +2344,7 @@ export interface operations {
             };
         };
     };
-    update_6: {
+    update_7: {
         parameters: {
             query?: never;
             header?: never;
@@ -2241,7 +2392,7 @@ export interface operations {
             };
         };
     };
-    delete_6: {
+    delete_7: {
         parameters: {
             query?: never;
             header?: never;
@@ -2261,7 +2412,7 @@ export interface operations {
             };
         };
     };
-    update_7: {
+    update_8: {
         parameters: {
             query?: never;
             header?: never;
@@ -2437,6 +2588,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["TagImpactDto"];
+                };
+            };
+        };
+    };
+    byKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SportDto"];
                 };
             };
         };
@@ -2701,7 +2874,7 @@ export interface operations {
             };
         };
     };
-    list_3: {
+    list_4: {
         parameters: {
             query?: never;
             header?: never;

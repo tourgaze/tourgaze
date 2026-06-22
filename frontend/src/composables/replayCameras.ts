@@ -126,6 +126,9 @@ const HOLD_RELEASE_M = 150
  */
 const DEADZONE_VIEWPORT_FRAC = 0.08
 const DEADZONE_MIN_M = 10
+// Per-frame easing of the camera centre toward its target — inertia, so the map
+// glides rather than teleporting (a drone can't move instantly). Lower = heavier.
+const CENTER_EASE = 0.16
 
 
 export class PerFrameFollowCamera implements ReplayCamera {
@@ -219,39 +222,50 @@ export class PerFrameFollowCamera implements ReplayCamera {
     // movement. `held` also freezes the bearing so the map doesn't rotate in
     // place while parked.
     const mpp = 156543.03392 * Math.cos((pt.lat * Math.PI) / 180) / Math.pow(2, ctx.currentZoom)
-    const deadzoneM = Math.max(DEADZONE_MIN_M,
-      DEADZONE_VIEWPORT_FRAC * Math.min(ctx.viewportPxW, ctx.viewportPxH) * mpp)
-    let center = desired
+    const deadzoneFrac = this.config.deadzoneFrac ?? DEADZONE_VIEWPORT_FRAC
+    // 0 = no deadzone → the camera locks onto the rider every frame (chase-cam).
+    const deadzoneM = deadzoneFrac <= 0 ? 0
+      : Math.max(DEADZONE_MIN_M, deadzoneFrac * Math.min(ctx.viewportPxW, ctx.viewportPxH) * mpp)
+    let target = desired
     let held = false
     if (this.lastCenter) {
       const d = distanceM(this.lastCenter[1], this.lastCenter[0], desired[1], desired[0])
       if (d < deadzoneM) {
-        center = this.lastCenter
+        target = this.lastCenter
         held = true
       } else {
         const f = (d - deadzoneM) / d   // pull only to the zone edge
-        center = [
+        target = [
           this.lastCenter[0] + (desired[0] - this.lastCenter[0]) * f,
           this.lastCenter[1] + (desired[1] - this.lastCenter[1]) * f,
         ]
       }
     }
+    // Inertia: glide the committed centre toward the target instead of snapping to
+    // it — a real drone can't teleport. Critically-damped-ish exponential ease.
+    const center: [number, number] = this.lastCenter
+      ? [
+          this.lastCenter[0] + (target[0] - this.lastCenter[0]) * CENTER_EASE,
+          this.lastCenter[1] + (target[1] - this.lastCenter[1]) * CENTER_EASE,
+        ]
+      : target
     this.lastCenter = center
 
-    // Smoothed-bearing strategies EMA per-frame toward the pre-baked target
-    // so the camera rotation is buttery. Fixed-bearing strategies stay
-    // north-up. The non-3D path always locks bearing to 0 — pitched-bearing
-    // doesn't make sense without terrain in view. While held (rider inside the
-    // deadzone) the bearing is frozen too, so a roundabout doesn't spin the map.
+    // Smoothed-bearing strategies (drone/helicopter) rotate the map to the travel
+    // heading so the rider is always followed from the rear — in EVERY direction,
+    // on flat basemaps too (west/east/south → the map turns so travel is "up").
+    // EMA per-frame toward the pre-baked target keeps the rotation buttery. Fixed
+    // strategies (follow/top-down) stay north-up. While held (rider inside the
+    // deadzone) the bearing is frozen so a roundabout doesn't spin the map.
     let bearing = ctx.currentBearing
     if (held) {
       bearing = ctx.currentBearing
-    } else if (this.config.bearingMode === 'smoothed' && ctx.is3D) {
+    } else if (this.config.bearingMode === 'smoothed') {
       const arr = ctx.bearings?.byStrategy[this.config.id]
       const target = arr ? arr[Math.min(aheadIdx, arr.length - 1)] : 0
       bearing = lerpAngleDeg(bearing, target, 0.18)
-    } else if (!ctx.is3D) {
-      bearing = 0
+    } else {
+      bearing = 0   // fixed-bearing strategies stay north-up
     }
 
     const pitch = ctx.is3D ? this.config.pitch : this.config.pitchFlat

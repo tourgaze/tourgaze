@@ -17,6 +17,7 @@ import {
   Filter, ChevronDown, ChevronRight, Ruler, Timer, Tag as TagIcon,
   PanelLeftClose, PanelLeftOpen, X, Pencil, Map as MapIcon, MapPin,
   Bookmark, Save, Trash2, RotateCcw, ImagePlus,
+  ChevronsUpDown, ChevronsDownUp, MoreVertical, ListTree,
 } from 'lucide-vue-next'
 import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
 import { TOURS_LAYOUT_SLOT, VIEWER_LAYOUT_SLOT, autoLayoutRef, registerLayoutSaver, LayoutSlot } from '@/composables/useLayoutState'
@@ -295,7 +296,28 @@ function resultButtons(): HTMLElement[] {
 function focusFirstResult() {
   resultButtons()[0]?.focus()
 }
+function findGroup(key: string): GroupNode | null {
+  const walk = (ns: GroupNode[]): GroupNode | null => {
+    for (const n of ns) {
+      if (n.key === key) return n
+      if (n.children) { const f = walk(n.children); if (f) return f }
+    }
+    return null
+  }
+  return walk(grouped.value)
+}
+
 function onResultsKeydown(e: KeyboardEvent) {
+  // →/← on a focused group row expand / collapse its whole subtree.
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    const key = (document.activeElement as HTMLElement)?.getAttribute?.('data-group-key')
+    if (!key) return
+    e.preventDefault()
+    const node = findGroup(key)
+    if (e.key === 'ArrowRight') { node ? expandSubtree(node) : toggle(key) }
+    else { node ? collapseSubtree(node) : (expanded.value.has(key) && toggle(key)) }
+    return
+  }
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
   const btns = resultButtons()
   if (!btns.length) return
@@ -534,6 +556,79 @@ function toggle(key: string) {
   expanded.value = new Set(expanded.value)
 }
 
+// A node's key + all descendant group keys (the tree is group → children).
+function subtreeKeys(n: GroupNode): string[] {
+  const out = [n.key]
+  if (n.children) for (const c of n.children) out.push(...subtreeKeys(c))
+  return out
+}
+const allGroupKeys = computed(() => grouped.value.flatMap(subtreeKeys))
+function expandSubtree(n: GroupNode) {
+  const s = new Set(expanded.value); subtreeKeys(n).forEach(k => s.add(k)); expanded.value = s
+}
+function collapseSubtree(n: GroupNode) {
+  const s = new Set(expanded.value); subtreeKeys(n).forEach(k => s.delete(k)); expanded.value = s
+}
+// Subtree expand state (drives the kebab — disable the no-op action).
+function isSubtreeFullyExpanded(n: GroupNode): boolean {
+  return subtreeKeys(n).every(k => expanded.value.has(k))
+}
+function isSubtreeAnyExpanded(n: GroupNode): boolean {
+  return subtreeKeys(n).some(k => expanded.value.has(k))
+}
+
+// Whole-tree control — one button cycling three actions. "fold" also sets the
+// per-group-click depth to one level; "expand all" sets it to recursive (so
+// clicking a group after Expand-all keeps drilling to the rides). Persisted.
+const recursiveExpand = autoLayoutRef<boolean>(TOURS_LAYOUT_SLOT, 'recursiveExpand', false)
+function onGroupToggle(n: GroupNode) {
+  if (!recursiveExpand.value) { toggle(n.key); return }
+  if (expanded.value.has(n.key)) collapseSubtree(n)
+  else expandSubtree(n)
+}
+
+// The cycling control's NEXT action (what a click does); advances each click.
+const treeAction = ref<'expand' | 'collapse' | 'fold'>('expand')
+const treeActionMeta = computed(() => ({
+  expand: { icon: ChevronsUpDown, label: 'Expand all' },
+  collapse: { icon: ChevronsDownUp, label: 'Collapse all' },
+  fold: { icon: ListTree, label: 'Fold' },
+}[treeAction.value]))
+function cycleTree() {
+  if (treeAction.value === 'expand') {
+    expanded.value = new Set(allGroupKeys.value)   // open the whole tree
+    recursiveExpand.value = true                    // group-clicks now drill deep
+    treeAction.value = 'collapse'
+  } else if (treeAction.value === 'collapse') {
+    expanded.value = new Set()                       // close everything
+    treeAction.value = 'fold'
+  } else {
+    // Fold: show top groups only + one-level group-clicks.
+    expanded.value = new Set(grouped.value.map(g => g.key))
+    recursiveExpand.value = false
+    treeAction.value = 'expand'
+  }
+}
+// Per-group kebab ("⋮") menu — which group's menu is open (null = none).
+const groupMenuKey = ref<string | null>(null)
+
+// ── Sport facets (icon chips that filter by sport) ──────────────────────────
+const activeSportKeys = computed(() =>
+  new Set(search.activeFilters.value.filter(f => f.field === 'sport').map(f => f.value.toLowerCase())))
+const sportFacets = computed(() => {
+  const counts = new Map<string, number>()
+  for (const a of activities.value ?? []) {
+    const k = (a.activityType ?? '').toLowerCase()
+    if (k) counts.set(k, (counts.get(k) ?? 0) + 1)
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([key, count]) => ({ key, count }))
+})
+function toggleSport(key: string) {
+  const i = search.activeFilters.value.findIndex(f => f.field === 'sport' && f.value.toLowerCase() === key.toLowerCase())
+  if (i >= 0) search.removeFilter(i)
+  else search.addSportFilter(key)
+}
+
 watch(grouped, (g) => {
   if (didAutoExpand || !g.length) return
   didAutoExpand = true
@@ -745,30 +840,64 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
           </div>
         </div>
 
-        <!-- ── Foldable area 2 — Results ───────────────────────────────────── -->
-        <button class="w-full flex items-center gap-1 px-2 py-1.5 border-b border-border hover:bg-muted/30 text-left text-[10px] font-semibold uppercase tracking-wide text-muted-fg"
-          @click="resultsOpen = !resultsOpen">
-          <component :is="resultsOpen ? ChevronDown : ChevronRight" :size="11" />
-          <span>Results</span>
-          <span class="ml-auto text-[9px] normal-case font-normal opacity-70">{{ filtered.length }} {{ filtered.length === 1 ? 'tour' : 'tours' }}</span>
-        </button>
+        <!-- ── Foldable area 2 — Results (prominent header) ─────────────────── -->
+        <div class="w-full flex items-center gap-2 px-2 py-2 border-b-2 border-primary/30 bg-muted/20">
+          <button class="flex items-center gap-1.5 flex-1 min-w-0 text-left hover:text-foreground" @click="resultsOpen = !resultsOpen">
+            <component :is="resultsOpen ? ChevronDown : ChevronRight" :size="14" class="text-primary" />
+            <span class="text-sm font-semibold">Results</span>
+            <span class="text-[11px] font-medium px-1.5 rounded-full bg-primary/15 text-primary tabular-nums">{{ filtered.length }}</span>
+          </button>
+          <button v-if="resultsOpen && grouped.length" class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded border border-border hover:border-primary hover:text-primary transition-colors shrink-0"
+            title="Cycle: Expand all → Collapse all → Fold (top level + one-level clicks)"
+            @click="cycleTree">
+            <component :is="treeActionMeta.icon" :size="13" />
+            <span>{{ treeActionMeta.label }}</span>
+          </button>
+        </div>
+
+        <!-- Sport facets — icon chips that toggle a sport: filter -->
+        <div v-if="resultsOpen && sportFacets.length > 1" class="flex flex-wrap gap-1 px-2 py-1.5 border-b border-border">
+          <button v-for="f in sportFacets" :key="f.key" type="button"
+            class="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded-full border transition-colors"
+            :class="activeSportKeys.has(f.key) ? 'border-primary bg-primary/15 text-primary' : 'border-border text-muted-fg hover:text-foreground hover:border-primary/50'"
+            :title="`${f.key} — ${f.count} ride${f.count !== 1 ? 's' : ''}`"
+            @click="toggleSport(f.key)">
+            <component :is="sportIcon(f.key)" :size="11" />
+            <span class="tabular-nums opacity-80">{{ f.count }}</span>
+          </button>
+        </div>
 
         <!-- Grouped tree -->
-        <div v-if="resultsOpen" ref="resultsEl" class="flex-1 overflow-y-auto text-xs" @keydown="onResultsKeydown">
+        <div v-if="resultsOpen" ref="resultsEl" class="flex-1 overflow-y-auto text-xs" @keydown="onResultsKeydown" @click="groupMenuKey = null">
           <div v-for="g in grouped" :key="g.key">
-            <button class="w-full flex items-center justify-between gap-2 px-2 py-1 cursor-pointer
-                           hover:bg-muted/60 hover:text-foreground text-left border-b border-border
-                           transition-colors duration-100"
-              @click="toggle(g.key)">
-              <div class="flex items-center gap-1">
-                <component :is="expanded.has(g.key) ? ChevronDown : ChevronRight" :size="12" class="text-muted-fg" />
-                <span class="font-semibold">{{ g.label }}</span>
+            <div class="relative w-full flex items-stretch border-b border-border hover:bg-muted/60 transition-colors duration-100 group/row">
+              <button class="flex-1 min-w-0 flex items-center justify-between gap-2 px-2 py-1 cursor-pointer hover:text-foreground text-left"
+                :data-group-key="g.key" @click="onGroupToggle(g)">
+                <div class="flex items-center gap-1">
+                  <component :is="expanded.has(g.key) ? ChevronDown : ChevronRight" :size="12" class="text-muted-fg" />
+                  <span class="font-semibold">{{ g.label }}</span>
+                </div>
+                <span class="flex items-center gap-1.5 text-[10px] text-muted-fg">
+                  <span v-if="g.km" class="tabular-nums">{{ fmtGroupKm(g.km) }}</span>
+                  <span class="opacity-70">{{ g.count }}</span>
+                </span>
+              </button>
+              <!-- Per-group actions (matros-style ⋮ menu — not a filter). -->
+              <button v-if="g.children?.length" class="px-1.5 text-muted-fg hover:text-primary shrink-0 opacity-0 group-hover/row:opacity-100 focus:opacity-100 transition-opacity"
+                title="Group actions" @click.stop="groupMenuKey = groupMenuKey === g.key ? null : g.key">
+                <MoreVertical :size="13" />
+              </button>
+              <div v-if="groupMenuKey === g.key" class="absolute right-1 top-7 z-30 bg-background border border-border rounded shadow-lg text-[11px] py-0.5 min-w-[150px]" @click.stop>
+                <button class="w-full text-left px-2 py-1 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-default hover:enabled:bg-muted/60"
+                  :disabled="isSubtreeFullyExpanded(g)" @click="expandSubtree(g); groupMenuKey = null">
+                  <ChevronsUpDown :size="11" /> Expand subtree
+                </button>
+                <button class="w-full text-left px-2 py-1 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-default hover:enabled:bg-muted/60"
+                  :disabled="!isSubtreeAnyExpanded(g)" @click="collapseSubtree(g); groupMenuKey = null">
+                  <ChevronsDownUp :size="11" /> Collapse subtree
+                </button>
               </div>
-              <span class="flex items-center gap-1.5 text-[10px] text-muted-fg">
-                <span v-if="g.km" class="tabular-nums">{{ fmtGroupKm(g.km) }}</span>
-                <span class="opacity-70">{{ g.count }}</span>
-              </span>
-            </button>
+            </div>
 
             <div v-if="expanded.has(g.key)">
               <template v-if="g.children?.length">
@@ -776,7 +905,7 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
                   <button class="w-full flex items-center justify-between gap-2 pl-5 pr-2 py-0.5 cursor-pointer
                                  hover:bg-muted/60 hover:text-foreground text-left bg-muted/5
                                  transition-colors duration-100"
-                    @click="toggle(sg.key)">
+                    :data-group-key="sg.key" @click="onGroupToggle(sg)">
                     <div class="flex items-center gap-1">
                       <component :is="expanded.has(sg.key) ? ChevronDown : ChevronRight" :size="10" class="text-muted-fg" />
                       <span>{{ sg.label }}</span>
@@ -808,7 +937,7 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
                         <div class="text-[10px] text-muted-fg flex gap-1.5">
                           <span>{{ fmtDate(a.startTime) }}</span>
                           <span v-if="a.distanceKm" class="flex items-center gap-0.5"><Ruler :size="8" />{{ fmtDist(a.distanceKm) }}</span>
-                          <span v-if="a.movingTimeS" class="flex items-center gap-0.5"><Timer :size="8" />{{ fmtDuration(a.movingTimeS) }}</span>
+                          <span v-if="a.movingTimeS ?? a.durationS" class="flex items-center gap-0.5" :title="a.movingTimeS ? 'Moving time' : 'Elapsed time (no moving time in GPX)'"><Timer :size="8" />{{ fmtDuration(a.movingTimeS ?? a.durationS) }}</span>
                           <component v-if="a.weatherCondition" :is="weatherIcon(a.weatherCondition)" :size="9" :class="weatherColor(a.weatherCondition)" />
                           <span v-if="a.gearName" class="flex items-center gap-0.5"><Bike :size="8" />{{ a.gearName }}</span>
                         </div>
@@ -848,7 +977,7 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
                     <div class="text-[10px] text-muted-fg flex gap-1.5">
                       <span>{{ fmtDate(a.startTime) }}</span>
                       <span v-if="a.distanceKm" class="flex items-center gap-0.5"><Ruler :size="8" />{{ fmtDist(a.distanceKm) }}</span>
-                      <span v-if="a.movingTimeS" class="flex items-center gap-0.5"><Timer :size="8" />{{ fmtDuration(a.movingTimeS) }}</span>
+                      <span v-if="a.movingTimeS ?? a.durationS" class="flex items-center gap-0.5" :title="a.movingTimeS ? 'Moving time' : 'Elapsed time (no moving time in GPX)'"><Timer :size="8" />{{ fmtDuration(a.movingTimeS ?? a.durationS) }}</span>
                       <component v-if="a.weatherCondition" :is="weatherIcon(a.weatherCondition)" :size="9" :class="weatherColor(a.weatherCondition)" />
                       <span v-if="a.gearName" class="flex items-center gap-0.5"><Bike :size="8" />{{ a.gearName }}</span>
                     </div>

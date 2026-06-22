@@ -21,8 +21,8 @@ export type User = components['schemas']['UserDto']
 export type Tag = components['schemas']['TagDto']
 export type FilterPreset = components['schemas']['FilterPresetDto']
 export type InboxItem = components['schemas']['InboxItemDto']
-/** Sport / activity type union, generated from the backend ActivityType enum. */
-export type ActivityType = components['schemas']['ActivityType']
+/** Sport key (free string now — sports are user-managed masterdata; see Sport). */
+export type ActivityType = string
 /** Importable ride-file format union, generated from the backend SourceFormat enum. */
 export type SourceFormat = components['schemas']['SourceFormat']
 /** Every format the backend accepts for import — the single source of truth for
@@ -103,6 +103,18 @@ export async function getInbox(): Promise<InboxItem[]> {
   const { data, error } = await apiClient.GET('/api/inbox')
   if (error) throw new Error(JSON.stringify(error))
   return data as InboxItem[]
+}
+
+/** Recompute inbox proposals (gear/type/duplicate) from current history. */
+export async function refreshInbox(): Promise<void> {
+  const r = await fetch('/api/inbox/refresh', { method: 'POST' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+}
+
+/** Recompute proposals for a single inbox file. */
+export async function refreshInboxItem(filename: string): Promise<void> {
+  const r = await fetch(`/api/inbox/${encodeURIComponent(filename)}/refresh`, { method: 'POST' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
 
 export async function importInbox(filename: string, req: Partial<InboxImportRequest>): Promise<{ activityId: string }> {
@@ -556,6 +568,8 @@ export type Gear = {
   type?: string | null
   description?: string | null
   icon?: string | null
+  /** Motor-assisted (e-bike) — lets stats exclude/segment assisted rides. */
+  assisted?: boolean
   createdAt?: string | null
   retiredAt?: string | null
 }
@@ -589,6 +603,33 @@ export async function updateGear(id: string, dto: Gear): Promise<Gear> {
 
 export async function deleteGear(id: string): Promise<void> {
   const r = await fetch(`/api/gear/${id}`, { method: 'DELETE' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+}
+
+// ── Sports (user-managed activity types; Garmin-aligned seed) ────────────────
+export type Sport = components['schemas']['SportDto']
+
+export async function getSports(enabledOnly = false): Promise<Sport[]> {
+  const r = await fetch(`/api/sports${enabledOnly ? '?enabledOnly=true' : ''}`)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+export async function createSport(dto: Sport): Promise<Sport> {
+  const r = await fetch('/api/sports', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+export async function updateSport(id: string, dto: Sport): Promise<Sport> {
+  const r = await fetch(`/api/sports/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+export async function deleteSport(id: string): Promise<void> {
+  const r = await fetch(`/api/sports/${id}`, { method: 'DELETE' })
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
 
