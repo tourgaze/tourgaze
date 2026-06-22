@@ -6,13 +6,18 @@
 package io.github.tourgaze.service.mapper;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.github.tourgaze.dto.ActivitySummaryDto;
+import io.github.tourgaze.dto.RideEventDto;
 import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.entity.Tag;
 import io.github.tourgaze.parser.SourceFormat;
@@ -35,7 +40,21 @@ public interface ActivitySummaryMapper {
 	@Mapping(target = "gearId", source = "gear.id")
 	@Mapping(target = "gearName", source = "gear.name")
 	@Mapping(target = "riderName", source = "user", qualifiedByName = "toRiderName")
+	@Mapping(target = "events", source = "attributes", qualifiedByName = "toEvents")
 	ActivitySummaryDto toDto(Activity a);
+
+	@Named("toEvents")
+	static List<RideEventDto> toEvents(Map<String, Object> attributes) {
+		if (attributes == null)
+			return List.of();
+		Object raw = attributes.get(RideEventDto.ATTRIBUTES_KEY);
+		if (raw == null)
+			return List.of();
+		return EVENT_JSON.convertValue(raw, new TypeReference<List<RideEventDto>>() {
+		});
+	}
+
+	ObjectMapper EVENT_JSON = new ObjectMapper().findAndRegisterModules();
 
 	@Named("toRiderName")
 	static String toRiderName(io.github.tourgaze.entity.User u) {

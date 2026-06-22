@@ -6,6 +6,7 @@
 package io.github.tourgaze.dto;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Partial update payload for an activity. Any null/absent field is left untouched.
@@ -27,5 +28,8 @@ public record ActivityUpdateDto(
         String endCountry,
         List<String> tagIds,
         // Sport override (wire value, e.g. "hiking"). Null → leave unchanged.
-        String activityType
+        String activityType,
+        // Free-form annotations (weather, coordinates, notes, …). If non-null,
+        // REPLACES the activity's attribute map; null → leave unchanged.
+        Map<String, Object> attributes
 ) {}

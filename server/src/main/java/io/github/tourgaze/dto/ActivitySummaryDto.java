@@ -7,6 +7,7 @@ package io.github.tourgaze.dto;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import io.github.tourgaze.parser.SourceFormat;
 
@@ -56,5 +57,10 @@ public record ActivitySummaryDto(
         String gearName,
         // Owner of the ride (display name, or username; null if unassigned). Lets
         // the UI tell whose ride this is — relevant once compare spans riders.
-        String riderName
+        String riderName,
+        // Free-form user annotations (weather, coordinates, notes, …) as JSON.
+        Map<String, Object> attributes,
+        // Typed view of the notable events stored in attributes (rain showers, …),
+        // ready for the replay map to pin. Derived from attributes — read-only.
+        List<RideEventDto> events
 ) {}

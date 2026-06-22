@@ -6,11 +6,14 @@
 package io.github.tourgaze.entity;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import jakarta.persistence.*;
 
+import io.github.tourgaze.entity.converter.JsonMapConverter;
 import io.github.tourgaze.util.ShortId;
 
 /**
@@ -119,6 +122,18 @@ public class Activity extends BaseEntity {
 
 	private String name;
 	private String description;
+
+	/**
+	 * Free-form, user-annotated key/values (weather, coordinates, ad-hoc notes,
+	 * detected ride events) in a native {@code json} column — the matros document
+	 * pattern, queryable on PostgreSQL. Serialized by {@link JsonMapConverter}
+	 * (rather than Hibernate's native JSON type) so it round-trips on both the H2
+	 * dev DB and PostgreSQL. We store only plain JSON values (events carry ISO time
+	 * strings), so there are no Java-time serialization concerns.
+	 */
+	@Column(name = "attributes", columnDefinition = "json")
+	@Convert(converter = JsonMapConverter.class)
+	private Map<String, Object> attributes = new HashMap<>();
 
 	@Column(name = "start_time")
 	private Instant startTime;
@@ -324,6 +339,14 @@ public class Activity extends BaseEntity {
 
 	public void setDescription(String description) {
 		this.description = description;
+	}
+
+	public Map<String, Object> getAttributes() {
+		return attributes;
+	}
+
+	public void setAttributes(Map<String, Object> attributes) {
+		this.attributes = attributes == null ? new HashMap<>() : attributes;
 	}
 
 	public Instant getStartTime() {

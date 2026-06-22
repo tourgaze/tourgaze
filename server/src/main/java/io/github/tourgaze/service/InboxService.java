@@ -893,7 +893,8 @@ public class InboxService {
 		}
 
 		trackCache.prewarmAllAsync(a.getId(), a.getSourceFilename());
-		weatherService.fetchAndStoreAsync(a.getId());
+		// Weather + a rain shower or two along the route (pinned as ride events).
+		weatherService.fetchAndStoreAsync(a.getId(), trackPoints);
 		// Write the recovery sidecar after this import commits (async, off-thread).
 		events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(a.getId()));
 

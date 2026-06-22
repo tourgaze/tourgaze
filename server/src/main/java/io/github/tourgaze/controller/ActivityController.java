@@ -142,6 +142,8 @@ public class ActivityController {
 			a.setActivityType(dto.activityType().trim().toLowerCase());
 		if (dto.description() != null)
 			a.setDescription(dto.description());
+		if (dto.attributes() != null)
+			a.setAttributes(dto.attributes());
 		if (dto.gearId() != null) {
 			// Blank string = explicit "clear gear"; a real id assigns/changes it.
 			if (dto.gearId().isBlank()) {
@@ -187,6 +189,64 @@ public class ActivityController {
 		Activity saved = activityRepo.save(a);
 		events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(saved.getId()));
 		return ResponseEntity.ok(toSummary(saved));
+	}
+
+	// ── Attributes (free-form key/value JSON) ────────────────────────────────
+	// A ride carries an arbitrary attribute map (weather, coordinates, notes,
+	// detected events, …). These endpoints make the API attribute-aware without a
+	// schema change per key — send any JSON-shaped values.
+
+	/** The activity's full attribute map. */
+	@GetMapping("/{id}/attributes")
+	public ResponseEntity<java.util.Map<String, Object>> getAttributes(@PathVariable("id") String id) {
+		return activityRepo.findById(id)
+				.map(a -> ResponseEntity.ok(a.getAttributes()))
+				.orElseGet(() -> ResponseEntity.notFound().build());
+	}
+
+	/** Replace the whole attribute map (send any JSON object). */
+	@PutMapping("/{id}/attributes")
+	@Transactional
+	public ResponseEntity<java.util.Map<String, Object>> putAttributes(@PathVariable("id") String id,
+			@RequestBody java.util.Map<String, Object> attributes) {
+		Optional<Activity> opt = activityRepo.findById(id);
+		if (opt.isEmpty())
+			return ResponseEntity.notFound().build();
+		Activity a = opt.get();
+		a.setAttributes(attributes);
+		activityRepo.save(a);
+		events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(id));
+		return ResponseEntity.ok(a.getAttributes());
+	}
+
+	/** Set (or, with a null value, remove) a single attribute key, merging. */
+	@PutMapping("/{id}/attributes/{key}")
+	@Transactional
+	public ResponseEntity<java.util.Map<String, Object>> putAttribute(@PathVariable("id") String id,
+			@PathVariable("key") String key, @RequestBody(required = false) Object value) {
+		Optional<Activity> opt = activityRepo.findById(id);
+		if (opt.isEmpty())
+			return ResponseEntity.notFound().build();
+		Activity a = opt.get();
+		java.util.Map<String, Object> attrs = new java.util.HashMap<>(a.getAttributes());
+		if (value == null)
+			attrs.remove(key);
+		else
+			attrs.put(key, value);
+		a.setAttributes(attrs);
+		activityRepo.save(a);
+		events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(id));
+		return ResponseEntity.ok(a.getAttributes());
+	}
+
+	/**
+	 * Typed view of the notable events recorded for this ride (rain showers, …).
+	 */
+	@GetMapping("/{id}/events")
+	public ResponseEntity<List<io.github.tourgaze.dto.RideEventDto>> getEvents(@PathVariable("id") String id) {
+		return activityRepo.findById(id)
+				.map(a -> ResponseEntity.ok(toSummary(a).events()))
+				.orElseGet(() -> ResponseEntity.notFound().build());
 	}
 
 	/** This ride's photos, geo-matched to the track (media.json manifest). */

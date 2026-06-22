@@ -14,7 +14,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,7 +30,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 
+import io.github.tourgaze.domain.RideEventType;
+import io.github.tourgaze.dto.RideEventDto;
 import io.github.tourgaze.entity.Activity;
+import io.github.tourgaze.parser.TrackPoint;
 import io.github.tourgaze.repository.ActivityRepository;
 import io.github.tourgaze.repository.SettingRepository;
 
@@ -126,9 +132,16 @@ public class WeatherService {
 		}
 	}
 
+	/**
+	 * Populate an imported activity's weather AND scan the track for a rain shower
+	 * or two — all in ONE async transaction so the two writes can't race (the
+	 * entity is optimistically locked). {@code pts} are passed from the import so
+	 * we
+	 * don't re-parse; pass an empty list to skip the rain scan.
+	 */
 	@Async
 	@Transactional
-	public void fetchAndStoreAsync(String activityId) {
+	public void fetchAndStoreAsync(String activityId, List<TrackPoint> pts) {
 		try {
 			Activity a = activityRepo.findById(activityId).orElse(null);
 			if (a == null)
@@ -145,11 +158,26 @@ public class WeatherService {
 			a.getWeather().setWindKph(w.windKph());
 			a.getWeather().setCondition(w.condition());
 			a.getWeather().setFetchedAt(Instant.now());
+
+			// Look for a rain shower or two along the route and pin them as events.
+			// Store as plain JSON maps (ISO time via the Spring ObjectMapper) so the
+			// json column only ever holds primitive JSON values.
+			List<RideEventDto> rain = detectRainEvents(pts);
+			if (!rain.isEmpty()) {
+				Map<String, Object> attrs = new HashMap<>(a.getAttributes());
+				List<Object> eventJson = rain.stream()
+						.map(e -> (Object) json.convertValue(e, Map.class))
+						.toList();
+				attrs.put(RideEventDto.ATTRIBUTES_KEY, eventJson);
+				a.setAttributes(attrs);
+			}
+
 			activityRepo.save(a);
 			events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(activityId));
-			log.info("Weather populated for activity {} ({}°C, {})", activityId, w.tempC(), w.condition());
+			log.info("Weather populated for activity {} ({}°C, {}); {} rain event(s)",
+					activityId, w.tempC(), w.condition(), rain.size());
 		} catch (Exception e) {
-			log.warn("Weather fetch errored for {}: {}", activityId, e.getMessage());
+			log.warn("Weather/rain fetch errored for {}: {}", activityId, e.getMessage());
 		}
 	}
 
@@ -200,6 +228,56 @@ public class WeatherService {
 		if (!arr.isArray() || idx >= arr.size() || arr.get(idx).isNull())
 			return null;
 		return arr.get(idx).asInt();
+	}
+
+	// ── Rain events along the ride ────────────────────────────────────────────
+	// How many points along the track to probe the weather API for. The hour+~1km
+	// cache collapses most of these onto a handful of real calls; keeping it modest
+	// avoids hammering the free endpoint for a nicety.
+	private static final int RAIN_SAMPLES = 12;
+	// At most this many rain events per ride — "one or two are nice", not a log of
+	// every drizzle minute.
+	private static final int MAX_RAIN_EVENTS = 2;
+
+	/**
+	 * Did this WMO code mean rain/showers/thunder (anything wet enough to notice)?
+	 */
+	private static boolean isRain(Integer code) {
+		if (code == null)
+			return false;
+		return (code >= 51 && code <= 67) // drizzle + rain (incl. freezing)
+				|| (code >= 80 && code <= 82) // rain showers
+				|| code >= 95; // thunderstorm
+	}
+
+	/**
+	 * Probe the weather along the track and return up to {@link #MAX_RAIN_EVENTS}
+	 * "a shower hit you" events — each the START of a wet stretch (dry→rain, or
+	 * rain from the off). Point-in-space/time so the replay map can pin them.
+	 */
+	public List<RideEventDto> detectRainEvents(List<TrackPoint> pts) {
+		List<RideEventDto> out = new ArrayList<>();
+		if (!isEnabled() || pts == null || pts.size() < 2)
+			return out;
+		int n = pts.size();
+		int samples = Math.min(RAIN_SAMPLES, n);
+		boolean prevRain = false;
+		for (int s = 0; s < samples; s++) {
+			int i = (int) ((long) s * (n - 1) / (samples - 1));
+			TrackPoint p = pts.get(i);
+			if (p.time() == null)
+				continue;
+			WeatherResult w = fetchWeather(p.lat(), p.lon(), p.time());
+			boolean rain = isRain(w.wmoCode());
+			if (rain && !prevRain) { // onset: the shower starts here
+				String label = w.condition() != null ? w.condition() : "Rain shower";
+				out.add(new RideEventDto(RideEventType.EVENT_RAIN, label, p.lat(), p.lon(), p.time()));
+				if (out.size() >= MAX_RAIN_EVENTS)
+					break;
+			}
+			prevRain = rain;
+		}
+		return out;
 	}
 
 	/** Compact WMO weather-code → human label. Open-Meteo uses this code set. */

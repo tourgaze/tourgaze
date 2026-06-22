@@ -116,6 +116,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activities/{id}/attributes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getAttributes"];
+        put: operations["putAttributes"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activities/{id}/attributes/{key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["putAttribute"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/users": {
         parameters: {
             query?: never;
@@ -212,6 +244,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inbox/{filename}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["refreshOne"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inbox/{filename}/processed": {
         parameters: {
             query?: never;
@@ -270,6 +318,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["scanWatchFolders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/inbox/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["refresh"];
         delete?: never;
         options?: never;
         head?: never;
@@ -856,6 +920,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activities/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inbox/{filename}": {
         parameters: {
             query?: never;
@@ -1041,6 +1121,9 @@ export interface components {
             endCountry?: string;
             tagIds?: string[];
             activityType?: string;
+            attributes?: {
+                [key: string]: Record<string, never>;
+            };
         };
         ActivitySummaryDto: {
             id?: string;
@@ -1103,6 +1186,35 @@ export interface components {
             gearId?: string;
             gearName?: string;
             riderName?: string;
+            attributes?: {
+                [key: string]: Record<string, never>;
+            };
+            events?: components["schemas"]["RideEvent"][];
+        };
+        /** @description A notable point-in-time event along a ride (e.g. a rain shower). */
+        RideEvent: {
+            /**
+             * @description What happened.
+             * @enum {string}
+             */
+            type?: "EVENT_RAIN";
+            /** @description Short human label, e.g. 'Rain shower'. */
+            label?: string;
+            /**
+             * Format: double
+             * @description Latitude where it occurred.
+             */
+            lat?: number;
+            /**
+             * Format: double
+             * @description Longitude where it occurred.
+             */
+            lon?: number;
+            /**
+             * Format: date-time
+             * @description When it occurred (UTC).
+             */
+            time?: string;
         };
         /**
          * @description Supported ride-file formats for import.
@@ -1688,6 +1800,89 @@ export interface operations {
             };
         };
     };
+    getAttributes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: Record<string, never>;
+                    };
+                };
+            };
+        };
+    };
+    putAttributes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: Record<string, never>;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: Record<string, never>;
+                    };
+                };
+            };
+        };
+    };
+    putAttribute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+                key: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: Record<string, never>;
+                    };
+                };
+            };
+        };
+    };
     getAll: {
         parameters: {
             query?: never;
@@ -1959,6 +2154,26 @@ export interface operations {
             };
         };
     };
+    refreshOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                filename: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     moveToProcessed: {
         parameters: {
             query?: never;
@@ -2070,6 +2285,24 @@ export interface operations {
                         [key: string]: number;
                     };
                 };
+            };
+        };
+    };
+    refresh: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3044,6 +3277,28 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["HighlightsDto"];
+                };
+            };
+        };
+    };
+    getEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RideEvent"][];
                 };
             };
         };
