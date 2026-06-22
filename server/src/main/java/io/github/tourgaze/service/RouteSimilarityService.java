@@ -36,6 +36,15 @@ public class RouteSimilarityService {
 	private static final Logger log = LoggerFactory.getLogger(RouteSimilarityService.class);
 	private static final int PRECISION = 7; // ≈ 150 m cells
 	private static final double GPS_THRESHOLD = 0.25;
+	// A shared tag only counts if the rides ALSO overlap geographically by at least
+	// this much — otherwise "both tagged holiday" would match a Mallorca ride to a
+	// Sweden one. Lower than GPS_THRESHOLD so a tag still helps a near-but-not-quite
+	// route qualify, but never a far-away one.
+	private static final double TAG_MIN_OVERLAP = 0.05;
+	// Comparable length: keep only candidates whose distance is within 0.5×–2× of
+	// the opened ride. A 30 km ride shouldn't list a 120 km one to "race".
+	private static final double MIN_DIST_RATIO = 0.5;
+	private static final double MAX_DIST_RATIO = 2.0;
 	private static final int MAX_RESULTS = 12;
 
 	private final ActivityRepository activityRepo;
@@ -93,8 +102,16 @@ public class RouteSimilarityService {
 				? Set.of()
 				: activityRepo.findIdsSharingAnyTag(targetTags);
 
+		Double targetDist = target.getDistanceKm();
 		List<SimilarRideDto> out = new ArrayList<>();
 		for (RouteCandidate a : activityRepo.findRouteCandidates(activityId)) {
+			// Distance gate: only comparable-length rides (not too far apart).
+			if (targetDist != null && targetDist > 0 && a.distanceKm() != null) {
+				double ratio = a.distanceKm() / targetDist;
+				if (ratio < MIN_DIST_RATIO || ratio > MAX_DIST_RATIO)
+					continue;
+			}
+
 			double jac = 0;
 			if (!tc.isEmpty()) {
 				Set<String> ac = cellsOf(a.routeGeocells());
@@ -105,7 +122,9 @@ public class RouteSimilarityService {
 					jac = union == 0 ? 0 : (double) inter.size() / union;
 				}
 			}
-			boolean sharedTag = ridesSharingTag.contains(a.id());
+			// A shared tag only counts when the routes also overlap on the ground —
+			// no cross-location matches just because they share a label.
+			boolean sharedTag = ridesSharingTag.contains(a.id()) && jac >= TAG_MIN_OVERLAP;
 
 			if (jac >= GPS_THRESHOLD || sharedTag) {
 				boolean gps = jac >= GPS_THRESHOLD;
