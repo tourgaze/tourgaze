@@ -22,5 +22,8 @@ public record RouteCandidate(
         Double distanceKm,
         Integer durationS,
         String startLocation,
-        String routeGeocells
+        String routeGeocells,
+        // Display name of the ride's owner (null if unassigned) — lets the compare
+        // picker label cross-user rides, since compare spans all riders.
+        String riderName
 ) {}

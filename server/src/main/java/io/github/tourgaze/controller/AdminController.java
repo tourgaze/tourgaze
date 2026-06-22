@@ -126,13 +126,19 @@ public class AdminController {
      * name + content) alongside its metadata sidecar. Handy as a plaintext escape
      * hatch — especially with storage encryption on, since the bytes are read
      * back out through the store decrypted. Re-importable: unzip into the inbox.
+     *
+     * @param includeMedia when true, each ride's photos/videos (decrypted) and its
+     *                     {@code media.json} manifest are bundled under a per-ride
+     *                     {@code <base>_media/} folder. Off by default — the export
+     *                     stays small/fast unless you want the full library.
      */
     @org.springframework.web.bind.annotation.GetMapping("/export")
     @org.springframework.transaction.annotation.Transactional(readOnly = true)
-    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> exportAll() {
+    public ResponseEntity<org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody> exportAll(
+            @org.springframework.web.bind.annotation.RequestParam(name = "media", defaultValue = "false") boolean includeMedia) {
         // Materialise everything inside the tx (DTOs resolve lazy gear/rider/tags
         // to plain strings) so the post-return streaming never touches a closed session.
-        record Item(String name, String sf, byte[] meta) {}
+        record Item(String name, String sf, byte[] meta, java.util.List<String> mediaNames) {}
         java.util.List<Item> items = new java.util.ArrayList<>();
         java.util.Set<String> used = new java.util.HashSet<>();
         for (var a : activityRepo.findAll()) {
@@ -146,21 +152,35 @@ public class AdminController {
                 meta = objectMapper.writerWithDefaultPrettyPrinter()
                         .writeValueAsBytes(metadataMapper.toDto(a, java.time.Instant.now()));
             } catch (Exception e) { meta = new byte[0]; }
-            items.add(new Item(name, sf, meta));
+            java.util.List<String> mediaNames = java.util.List.of();
+            if (includeMedia) {
+                try {
+                    mediaNames = storage.listLogicalNames(storage.activityMediaDir(sf));
+                } catch (Exception e) { /* no media dir → none */ }
+            }
+            items.add(new Item(name, sf, meta, mediaNames));
         }
 
         org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody body = out -> {
             try (var zip = new java.util.zip.ZipOutputStream(out)) {
                 for (Item it : items) {
+                    int dot = it.name().lastIndexOf('.');
+                    String base = dot > 0 ? it.name().substring(0, dot) : it.name();
                     zip.putNextEntry(new java.util.zip.ZipEntry(it.name()));
                     try (var in = storage.openStore(it.sf())) { in.transferTo(zip); }
                     zip.closeEntry();
                     if (it.meta().length > 0) {
-                        int dot = it.name().lastIndexOf('.');
-                        String base = dot > 0 ? it.name().substring(0, dot) : it.name();
                         zip.putNextEntry(new java.util.zip.ZipEntry(base + ".metadata.json"));
                         zip.write(it.meta());
                         zip.closeEntry();
+                    }
+                    if (!it.mediaNames().isEmpty()) {
+                        java.nio.file.Path mediaDir = storage.activityMediaDir(it.sf());
+                        for (String mn : it.mediaNames()) {
+                            zip.putNextEntry(new java.util.zip.ZipEntry(base + "_media/" + mn));
+                            try (var in = storage.openEncrypted(mediaDir.resolve(mn))) { in.transferTo(zip); }
+                            zip.closeEntry();
+                        }
                     }
                 }
             }

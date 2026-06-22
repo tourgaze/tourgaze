@@ -980,7 +980,16 @@ const activeColorLabel = computed(() =>
             </span>
             <!-- Idle: title + date so you can choose what to race. -->
             <span v-else class="flex-1 min-w-0 flex items-baseline justify-between gap-2">
-              <span class="truncate text-[12px] font-medium text-foreground" :title="s.name">{{ s.name }}</span>
+              <span class="min-w-0 flex items-baseline gap-1.5">
+                <span class="truncate text-[12px] font-medium text-foreground" :title="s.name">{{ s.name }}</span>
+                <!-- Rider chip — only when this ride belongs to someone other than
+                     the open ride's rider (compare spans all users). -->
+                <span v-if="s.riderName && s.riderName !== activity?.riderName"
+                  class="shrink-0 inline-flex items-center gap-0.5 text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary"
+                  :title="`Ridden by ${s.riderName}`">
+                  <UserRound :size="9" />{{ s.riderName }}
+                </span>
+              </span>
               <span class="shrink-0 text-[10px] text-muted-fg">
                 {{ s.startTime ? new Date(s.startTime).toLocaleDateString() : '' }}
                 <template v-if="s.distanceKm"> · {{ s.distanceKm.toFixed(1) }} km</template>

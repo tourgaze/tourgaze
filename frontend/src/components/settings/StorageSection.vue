@@ -46,8 +46,9 @@ const purgeMut = useMutation({
 // Download a ZIP recreating every ride's original dropped file (name + content)
 // + its metadata sidecar — a plaintext escape hatch (handy with encryption) and
 // a re-importable backup (unzip into the inbox).
+const exportMedia = ref(false)
 function exportRides() {
-  window.location.href = '/api/admin/export'
+  window.location.href = '/api/admin/export' + (exportMedia.value ? '?media=true' : '')
 }
 
 // DB ↔ filesystem integrity check (missing files, bit-rot, orphan folders).
@@ -154,6 +155,10 @@ function fmtBytes(b: number | undefined): string {
           <code>.metadata.json</code> sidecar. A plaintext backup you can re-import
           by dropping into the inbox — handy if storage encryption is on.
         </p>
+        <label class="flex items-center gap-1.5 mt-1.5 text-[11px] text-muted-fg cursor-pointer select-none">
+          <input type="checkbox" v-model="exportMedia" class="accent-primary" />
+          Include media (photos &amp; videos), decrypted, under each ride's <code>_media/</code> folder
+        </label>
       </div>
       <button class="px-3 py-1.5 text-sm font-medium rounded border border-border hover:border-primary hover:text-primary transition-colors shrink-0"
         @click="exportRides">

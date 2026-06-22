@@ -383,6 +383,8 @@ export type SimilarRide = {
   /** GPS route overlap (Jaccard 0–1); tag-only matches get a small base score. */
   score: number
   matchType: 'gps' | 'tag' | 'both'
+  /** Owner of the ride (null if unassigned) — labels cross-user rides in the picker. */
+  riderName: string | null
 }
 /** Rides that look like the same route as this one (GPS overlap or shared tag). */
 export async function getSimilarRides(id: string): Promise<SimilarRide[]> {

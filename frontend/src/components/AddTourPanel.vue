@@ -4,7 +4,7 @@ import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Archive, Check, Heart, Zap, Gauge } from 'lucide-vue-next'
+import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Archive, Heart, Zap, Gauge } from 'lucide-vue-next'
 import {
   importInbox, discardInbox, moveInboxToProcessed, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
   getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile,
@@ -99,15 +99,6 @@ const weightKg = ref<number | null>(null)
 // coming from nowhere.
 const prediction = ref<Prediction | null>(null)
 const predictionLoading = ref(false)
-// Region/country proposed as NEW tags (don't exist yet) — pre-accepted; created
-// on import. Existing nearby-ride tags are handled separately via selectedTags.
-const proposedNameTags = ref<string[]>([])
-const acceptedNames = ref<Set<string>>(new Set())
-function toggleProposed(n: string) {
-  const s = new Set(acceptedNames.value)
-  if (s.has(n)) s.delete(n); else s.add(n)
-  acceptedNames.value = s
-}
 
 watch(() => props.item, async (it) => {
   name.value = it.suggestedName ?? ''
@@ -125,8 +116,6 @@ watch(() => props.item, async (it) => {
   weatherCondition.value = ''
   weatherAutofilled.value = false
   prediction.value = null
-  proposedNameTags.value = []
-  acceptedNames.value = new Set()
   startLocation.value = ''
   startCountry.value = ''
   endLocation.value = ''
@@ -154,9 +143,6 @@ watch(() => props.item, async (it) => {
     predictionLoading.value = false
     if (pred) {
       prediction.value = pred
-      // Region + country offered as new tag chips, pre-accepted (created on import).
-      proposedNameTags.value = [pred.region, pred.country].filter((x): x is string => !!x && !!x.trim())
-      acceptedNames.value = new Set(proposedNameTags.value)
       if (!name.value.trim() && pred.suggestedName) name.value = pred.suggestedName
       if (pred.suggestedTagIds && pred.suggestedTagIds.length) {
         selectedTags.value = new Set(pred.suggestedTagIds)
@@ -185,7 +171,6 @@ const importMut = useMutation({
     gearId: gearId.value || undefined,
     userId: userId.value || undefined,
     tagIds: Array.from(selectedTags.value),
-    tagNames: Array.from(acceptedNames.value),
     weatherTempC: weather.value.tempC,
     weatherHumidityPct: weather.value.humidityPct,
     weatherWindKph: weather.value.windKph,
@@ -428,18 +413,6 @@ const processedMut = useMutation({
       <div>
         <span class="text-xs font-medium text-muted-fg flex items-center gap-1 mb-1"><TagIcon :size="11" /> Tags</span>
         <TagCombobox v-model="selectedTags" />
-        <!-- Region / country proposed from the location — accepted ones are created
-             as tags on import. Click to toggle. -->
-        <div v-if="proposedNameTags.length" class="flex flex-wrap items-center gap-1 mt-1.5">
-          <span class="text-[10px] text-muted-fg mr-0.5">Suggested:</span>
-          <button v-for="n in proposedNameTags" :key="n" type="button"
-            class="text-[10px] px-1.5 py-0.5 rounded-full border inline-flex items-center gap-1 transition-colors"
-            :class="acceptedNames.has(n) ? 'border-primary bg-primary/10 text-primary' : 'border-border text-muted-fg hover:text-foreground'"
-            :title="acceptedNames.has(n) ? 'Will be added as a tag on import' : 'Click to add this tag on import'"
-            @click="toggleProposed(n)">
-            <component :is="acceptedNames.has(n) ? Check : Plus" :size="10" /> {{ n }}
-          </button>
-        </div>
       </div>
 
       <!-- Photos — dropped here now, moved to the ride's media folder on import -->

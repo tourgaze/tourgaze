@@ -25,5 +25,7 @@ public record SimilarRideDto(
         String startLocation,
         @Schema(description = "Route overlap (Jaccard 0–1); tag-only matches get a base score.")
         double score,
-        @Schema(description = "gps | tag | both") String matchType
+        @Schema(description = "gps | tag | both") String matchType,
+        @Schema(description = "Owner of the ride (null if unassigned). Lets the picker label cross-user rides — compare spans all riders.")
+        String riderName
 ) {}

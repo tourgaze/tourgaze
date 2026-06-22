@@ -114,7 +114,7 @@ public class RouteSimilarityService {
 				out.add(new SimilarRideDto(
 						a.id(), a.name(), a.activityType(), a.startTime(),
 						a.distanceKm(), a.durationS(), a.startLocation(),
-						Math.round(score * 1000) / 1000.0, type));
+						Math.round(score * 1000) / 1000.0, type, a.riderName()));
 			}
 		}
 		out.sort((x, y) -> Double.compare(y.score(), x.score()));

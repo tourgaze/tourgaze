@@ -5,13 +5,23 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { push } from 'notivue'
-import { getAllMarkers, updateMarker, deleteMarker, type Marker } from '@/api/client'
+import { getAllMarkers, getActivities, createMarker, updateMarker, deleteMarker, type Marker } from '@/api/client'
 import { MARKER_CATEGORIES, markerCategory, markerIconSvg } from '@/markerCategories'
 import { rasterStyle } from '@/lib/mapStyle'
 import { Trash2, Pencil, MapPin } from 'lucide-vue-next'
 
 const qc = useQueryClient()
 const { data: markers } = useQuery({ queryKey: ['markers', 'all'], queryFn: getAllMarkers })
+// Resolve a ride-scoped marker's activityId → ride name + link.
+const { data: activities } = useQuery({ queryKey: ['activities'], queryFn: getActivities })
+const activityById = computed(() => {
+  const m = new Map<string, string>()
+  for (const a of activities.value ?? []) if (a.id) m.set(a.id, a.name || 'Untitled ride')
+  return m
+})
+function activityName(id: string | null): string | null {
+  return id ? (activityById.value.get(id) ?? null) : null
+}
 const markerCat = markerCategory
 const categories = MARKER_CATEGORIES
 
@@ -81,19 +91,57 @@ const selectedId = ref<string | null>(null)
 function select(m: Marker) { selectedId.value = m.id; flyTo(m) }
 
 // ── Editor ──────────────────────────────────────────────────────────────────
+// `editing` holds either an existing marker (has id) or a NEW draft (id === '',
+// created by clicking the map). save() branches on the id.
 const editing = ref<Marker | null>(null)
-onKeyStroke('Escape', (e) => { if (editing.value) { e.preventDefault(); editing.value = null } })
-function editMarker(m: Marker) { editing.value = { ...m }; flyTo(m) }
+const isNew = computed(() => editing.value?.id === '')
+// A draggable preview pin shown while placing a new marker, so the user sees
+// (and can fine-tune) where it will land before saving.
+let draftPin: maplibregl.Marker | null = null
+function clearDraft() { draftPin?.remove(); draftPin = null }
+function cancelEdit() { editing.value = null; clearDraft() }
+onKeyStroke('Escape', (e) => { if (editing.value) { e.preventDefault(); cancelEdit() } })
+function editMarker(m: Marker) { clearDraft(); editing.value = { ...m }; flyTo(m) }
+
+// Click an empty spot on the map → start a new general marker there.
+function startCreate(lng: number, lat: number) {
+  clearDraft()
+  editing.value = { id: '', activityId: null, lat, lon: lng, label: '', description: '', category: categories[0].key }
+  if (!map) return
+  const el = document.createElement('div')
+  el.className = 'map-marker-pin map-marker-pin--general'
+  el.style.background = markerCat(categories[0].key).color
+  el.style.outline = '3px solid hsl(var(--primary))'
+  el.style.outlineOffset = '1px'
+  el.innerHTML = markerIconSvg(markerCat(categories[0].key))
+  draftPin = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: true }).setLngLat([lng, lat]).addTo(map)
+  draftPin.on('dragend', () => {
+    const ll = draftPin!.getLngLat()
+    if (editing.value) { editing.value.lat = ll.lat; editing.value.lon = ll.lng }
+  })
+}
+// Keep the draft pin's colour/icon in sync with the category chosen in the editor.
+watch(() => editing.value?.category, (cat) => {
+  if (!isNew.value || !draftPin || !cat) return
+  const el = draftPin.getElement()
+  el.style.background = markerCat(cat).color
+  el.innerHTML = markerIconSvg(markerCat(cat))
+})
+
 function refresh() { return qc.invalidateQueries({ queryKey: ['markers'] }) }
 async function save() {
   const m = editing.value; if (!m) return
   try {
-    await updateMarker(m.id, { label: m.label, description: m.description, category: m.category })
-    await refresh(); editing.value = null
+    if (m.id === '') {
+      await createMarker({ activityId: null, lat: m.lat, lon: m.lon, label: m.label, description: m.description, category: m.category })
+    } else {
+      await updateMarker(m.id, { label: m.label, description: m.description, category: m.category })
+    }
+    await refresh(); cancelEdit()
   } catch { push.error('Could not save marker') }
 }
 async function remove(id: string) {
-  try { await deleteMarker(id); await refresh(); if (editing.value?.id === id) editing.value = null }
+  try { await deleteMarker(id); await refresh(); if (editing.value?.id === id) cancelEdit() }
   catch { push.error('Could not delete marker') }
 }
 
@@ -106,10 +154,32 @@ onMounted(() => {
   })
   map.addControl(new maplibregl.NavigationControl(), 'top-right')
   map.on('load', renderPins)
+  // Three ways to drop a new general marker, mirroring the ride map's gestures
+  // so the muscle memory is consistent:
+  //  • left-click empty map  (discoverable on this dedicated page; pin clicks
+  //    stopPropagation so they don't trigger it)
+  //  • middle-click          (places immediately)
+  //  • right double-click    (single right-click just suppresses the menu)
+  map.on('click', (e) => startCreate(e.lngLat.lng, e.lngLat.lat))
+  map.on('mousedown', (e) => {
+    if (e.originalEvent.button === 1) {
+      e.preventDefault()
+      e.originalEvent.preventDefault()       // stop browser autoscroll
+      startCreate(e.lngLat.lng, e.lngLat.lat)
+    }
+  })
+  let lastRightClick = 0
+  map.on('contextmenu', (e) => {
+    e.preventDefault()                        // suppress the browser context menu
+    const now = performance.now()
+    if (now - lastRightClick < 450) { lastRightClick = 0; startCreate(e.lngLat.lng, e.lngLat.lat) }
+    else lastRightClick = now
+  })
+  map.getCanvas().style.cursor = 'crosshair'
 })
 watch(markers, () => renderPins())
 watch(selectedId, () => renderPins(false))   // re-highlight without re-fitting bounds
-onUnmounted(() => { pins.forEach(p => p.remove()); map?.remove(); map = null })
+onUnmounted(() => { clearDraft(); pins.forEach(p => p.remove()); map?.remove(); map = null })
 </script>
 
 <template>
@@ -141,6 +211,12 @@ onUnmounted(() => { pins.forEach(p => p.remove()); map?.remove(); map = null })
                   <span class="min-w-0">
                     <span class="block font-medium text-foreground truncate">{{ m.label || markerCat(m.category).label }}</span>
                     <span v-if="m.description" class="block text-[10px] text-muted-fg truncate">{{ m.description }}</span>
+                    <!-- Ride-scoped marker → link to its ride. -->
+                    <router-link v-if="m.activityId" :to="`/tour/${m.activityId}`" @click.stop
+                      class="block text-[10px] text-primary hover:underline truncate"
+                      :title="`Open ride: ${activityName(m.activityId) || m.activityId}`">
+                      ↳ {{ activityName(m.activityId) || 'open ride' }}
+                    </router-link>
                   </span>
                 </div>
               </td>
@@ -157,7 +233,7 @@ onUnmounted(() => { pins.forEach(p => p.remove()); map?.remove(); map = null })
         </table>
         <div v-else class="h-full flex flex-col items-center justify-center text-center text-[11px] text-muted-fg gap-1 py-8">
           <MapPin :size="22" class="opacity-50" />
-          <span>No markers yet. Add them from a ride's map (middle-click or right-double-click).</span>
+          <span>No markers yet. Click anywhere on the map to add one, or add them from a ride's map (middle-click or right-double-click).</span>
         </div>
       </div>
     </div>
@@ -170,13 +246,24 @@ onUnmounted(() => { pins.forEach(p => p.remove()); map?.remove(); map = null })
     <div class="relative flex-1 min-h-0">
       <div ref="mapEl" class="h-full w-full" />
 
+      <!-- Discoverability hint (hidden while the editor is open). -->
+      <div v-if="!editing"
+        class="absolute bottom-3 left-1/2 -translate-x-1/2 z-[500] px-2.5 py-1 rounded-full bg-background/90 backdrop-blur-sm border border-border text-[11px] text-muted-fg shadow flex items-center gap-1.5 pointer-events-none">
+        <MapPin :size="12" /> Click the map to add a marker
+      </div>
+
       <!-- Editor -->
       <div v-if="editing"
         class="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] w-72 max-w-[92%] bg-background/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl p-3 space-y-2.5">
         <div class="flex items-center justify-between">
-          <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">{{ editing.activityId ? 'Marker · on a ride' : 'Marker · general' }}</span>
-          <button class="btn-icon" title="Close" @click="editing = null">✕</button>
+          <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">{{ isNew ? 'New marker · drag pin to adjust' : (editing.activityId ? 'Marker · on a ride' : 'Marker · general') }}</span>
+          <button class="btn-icon" title="Close" @click="cancelEdit">✕</button>
         </div>
+        <router-link v-if="!isNew && editing.activityId" :to="`/tour/${editing.activityId}`"
+          class="block text-[11px] text-primary hover:underline truncate -mt-1"
+          :title="`Open ride: ${activityName(editing.activityId) || editing.activityId}`">
+          ↳ {{ activityName(editing.activityId) || 'open ride' }}
+        </router-link>
         <input v-model="editing.label" type="text" placeholder="Label"
           class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:border-primary" />
         <div class="flex flex-wrap gap-1">
@@ -188,8 +275,11 @@ onUnmounted(() => { pins.forEach(p => p.remove()); map?.remove(); map = null })
         <textarea v-model="editing.description" rows="3" placeholder="Description…"
           class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground resize-none focus:outline-none focus:border-primary"></textarea>
         <div class="flex items-center justify-between pt-0.5">
-          <button class="px-2 py-1 text-[11px] font-medium rounded border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="remove(editing.id)">Delete</button>
-          <button class="px-3 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:opacity-90 transition-opacity" @click="save">Save</button>
+          <div class="flex items-center gap-1.5">
+            <button v-if="!isNew" class="px-2 py-1 text-[11px] font-medium rounded border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" @click="remove(editing.id)">Delete</button>
+            <button class="px-2 py-1 text-[11px] font-medium rounded border border-border text-muted-fg hover:text-foreground transition-colors" @click="cancelEdit">{{ isNew ? 'Cancel' : 'Close' }}</button>
+          </div>
+          <button class="px-3 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:opacity-90 transition-opacity" @click="save">{{ isNew ? 'Add marker' : 'Save' }}</button>
         </div>
       </div>
     </div>

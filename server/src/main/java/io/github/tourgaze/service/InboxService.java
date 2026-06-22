@@ -913,7 +913,8 @@ public class InboxService {
 	/**
 	 * Display names for the card's suggested-tag chips: existing nearby-ride tags
 	 * only. Region/country are NOT proposed as tags — they're saved as first-class
-	 * activity fields ({@code startLocation}/{@code startCountry}/{@code endLocation}
+	 * activity fields
+	 * ({@code startLocation}/{@code startCountry}/{@code endLocation}
 	 * /{@code endCountry}), so turning them into tags too would just be redundant
 	 * noise mixed into the user's hand-made tag space.
 	 */

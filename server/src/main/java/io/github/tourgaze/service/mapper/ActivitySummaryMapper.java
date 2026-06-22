@@ -36,7 +36,17 @@ public interface ActivitySummaryMapper {
 	@Mapping(target = "tagIds", source = "tags", qualifiedByName = "toTagIds")
 	@Mapping(target = "gearId", source = "gear.id")
 	@Mapping(target = "gearName", source = "gear.name")
+	@Mapping(target = "riderName", source = "user", qualifiedByName = "toRiderName")
 	ActivitySummaryDto toDto(Activity a);
+
+	@Named("toRiderName")
+	static String toRiderName(io.github.tourgaze.entity.User u) {
+		if (u == null)
+			return null;
+		return u.getDisplayName() != null && !u.getDisplayName().isBlank()
+				? u.getDisplayName()
+				: u.getUsername();
+	}
 
 	@Named("toActivityType")
 	static ActivityType toActivityType(String s) {

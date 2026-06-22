@@ -150,6 +150,12 @@
                      off every `mvn spring-boot:run`. -->
                 <configuration>
                     <jvmArguments>-XX:TieredStopAtLevel=1 -XX:+UseParallelGC -Dspring.jmx.enabled=false</jvmArguments>
+                    <!-- Run with the dev profile so the actuator shutdown endpoint is
+                         available (POST /actuator/shutdown) for a graceful stop — no
+                         SIGKILL, so H2 always releases its lock cleanly. -->
+                    <profiles>
+                        <profile>dev</profile>
+                    </profiles>
                 </configuration>
                 <executions>
                     <execution>

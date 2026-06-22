@@ -51,5 +51,8 @@ public record ActivitySummaryDto(
         Double startLon,
         List<String> tagIds,
         String gearId,
-        String gearName
+        String gearName,
+        // Owner of the ride (display name, or username; null if unassigned). Lets
+        // the UI tell whose ride this is — relevant once compare spans riders.
+        String riderName
 ) {}

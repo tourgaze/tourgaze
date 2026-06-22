@@ -37,8 +37,9 @@ public interface ActivityRepository extends JpaRepository<Activity, String> {
 	 * no lazy tag collections — so /similar doesn't do a full findAll + N+1.
 	 */
 	@Query("select new io.github.tourgaze.dto.RouteCandidate("
-			+ "a.id, a.name, a.activityType, a.startTime, a.distanceKm, a.durationS, a.startLocation, a.routeGeocells) "
-			+ "from Activity a where a.id <> :excludeId")
+			+ "a.id, a.name, a.activityType, a.startTime, a.distanceKm, a.durationS, a.startLocation, a.routeGeocells, "
+			+ "coalesce(u.displayName, u.username)) "
+			+ "from Activity a left join a.user u where a.id <> :excludeId")
 	List<RouteCandidate> findRouteCandidates(@Param("excludeId") String excludeId);
 
 	/** Ids of rides sharing at least one of the given tags — one query, no N+1. */

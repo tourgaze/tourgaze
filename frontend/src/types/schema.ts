@@ -1038,6 +1038,7 @@ export interface components {
             tagIds?: string[];
             gearId?: string;
             gearName?: string;
+            riderName?: string;
         };
         /**
          * @description Sport / activity type of a ride. Unknown or unsupported sports map to 'other'.
@@ -1199,6 +1200,8 @@ export interface components {
             score?: number;
             /** @description gps | tag | both */
             matchType?: string;
+            /** @description Owner of the ride (null if unassigned). Lets the picker label cross-user rides — compare spans all riders. */
+            riderName?: string;
         };
         RideGearRef: {
             id?: string;
@@ -2656,7 +2659,9 @@ export interface operations {
     };
     exportAll: {
         parameters: {
-            query?: never;
+            query?: {
+                media?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;

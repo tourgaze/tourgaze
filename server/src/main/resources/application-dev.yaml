@@ -1,0 +1,29 @@
+# Dev-only profile — activated automatically by `mvn spring-boot:run` (see the
+# spring-boot-maven-plugin <profiles> config in pom.xml). The packaged fat JAR
+# (production / Docker) never runs with this profile, so its actuator surface
+# stays health+info only.
+#
+# Exposes the actuator shutdown endpoint so the dev backend can be stopped
+# GRACEFULLY — `curl -X POST http://localhost:8085/actuator/shutdown` — instead
+# of force-killed. A clean context close lets H2 release its file lock, so the
+# next start doesn't pay the lock-recovery stall (~4s) that a SIGKILL leaves
+# behind. (Ctrl-C in a foreground run already does this via the JVM shutdown
+# hook; this is for detached/tooling restarts that can't deliver SIGINT.)
+
+# Drop AUTO_SERVER in dev: it starts an H2 TCP server (hostname resolution +
+# socket bind) on every open, which costs several seconds on the first
+# connection — pure overhead in dev, where nothing else attaches to the DB.
+# Production keeps AUTO_SERVER (application.yaml) so an external tool can peek at
+# the live DB. Same file, same MODE — only the auto-server is off.
+spring:
+  datasource:
+    url: jdbc:h2:file:${tourgaze.data-dir}/db/tourgaze;MODE=PostgreSQL
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info,shutdown"
+  endpoint:
+    shutdown:
+      access: unrestricted
