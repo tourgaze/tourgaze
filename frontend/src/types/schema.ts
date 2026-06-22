@@ -1476,6 +1476,10 @@ export interface components {
             rider?: components["schemas"]["RideRiderRef"];
             /** @description Applied tags, resolved by name. */
             tags?: components["schemas"]["RideTagRef"][];
+            /** @description Free-form attributes incl. ride events (attributes.events) — user data not derivable from the source file, so it must live in the sidecar. */
+            attributes?: {
+                [key: string]: Record<string, never>;
+            };
         };
         RideRiderRef: {
             id?: string;

@@ -22,7 +22,7 @@ import io.github.tourgaze.entity.User;
 @Component
 public class RideMetadataMapper {
 
-	public static final int SCHEMA_VERSION = 1;
+	public static final int SCHEMA_VERSION = 2; // v2: added free-form attributes (incl. events)
 
 	/**
 	 * Must be called within an open session — walks the lazy gear/user/tags
@@ -51,6 +51,6 @@ public class RideMetadataMapper {
 						io.github.tourgaze.parser.SourceFormat.from(a.getSourceFormat()), a.getSourceHash()),
 				g == null ? null : new RideMetadataDto.GearRef(g.getId(), g.getName(), g.getType()),
 				u == null ? null : new RideMetadataDto.RiderRef(u.getId(), u.getUsername(), u.getDisplayName()),
-				tags);
+				tags, a.getAttributes());
 	}
 }

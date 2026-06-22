@@ -65,7 +65,10 @@ public record RideMetadataDto(
         @Schema(description = "Rider, resolved by name (null if unassigned).", nullable = true)
         RiderRef rider,
         @Schema(description = "Applied tags, resolved by name.")
-        List<TagRef> tags
+        List<TagRef> tags,
+        @Schema(description = "Free-form attributes incl. ride events (attributes.events) — "
+                + "user data not derivable from the source file, so it must live in the sidecar.")
+        java.util.Map<String, Object> attributes
 ) {
     @Schema(name = "RideSourceRef", description = "Original ride-file provenance. sourceFilename is the on-disk store name; originalFilename is what the user dropped.")
     public record SourceRef(String sourceFilename, String originalFilename, SourceFormat sourceFormat, String sourceHash) {}
