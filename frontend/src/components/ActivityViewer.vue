@@ -843,7 +843,7 @@ const activeColorLabel = computed(() =>
             <button class="px-2 py-0.5 border-l border-border transition-colors inline-flex items-center gap-1"
               :class="bottomView === 'attributes' ? 'bg-primary/15 text-primary' : 'text-muted-fg hover:bg-muted/40'"
               @click="bottomView = 'attributes'">
-              <Tags :size="10" /> Attributes
+              <Tags :size="10" /> Events
             </button>
           </div>
           <button class="btn-icon" title="Hide panel" @click="toggleChart">

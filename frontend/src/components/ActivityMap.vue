@@ -10,7 +10,7 @@ import { MARKER_CATEGORIES, markerCategory, markerIconSvg } from '@/markerCatego
 import { gearIconSvg } from '@/gearIcons'
 import { onKeyStroke } from '@vueuse/core'
 import { tileUrl } from '@/lib/mapStyle'
-import { bboxOf, inBBox } from '@/lib/geo'
+import { bboxOf, inBBox, distanceM } from '@/lib/geo'
 import type { HrZone } from '@/composables/useHrZones'
 import {
   precomputeSmoothedBearings,
@@ -310,6 +310,20 @@ const eventTypeByKey = computed(() => {
   for (const t of eventTypes.value ?? []) if (t.key) m.set(t.key, t)
   return m
 })
+
+// ── Rain effect — a little fun: animated downpour while replay passes near a
+// WEATHER_RAIN event. ───────────────────────────────────────────────────────
+const RAIN_RADIUS_M = 400
+const raining = ref(false)
+const rainEvents = computed(() =>
+  (rideEvents.value ?? []).filter(e => e.type === 'WEATHER_RAIN' && e.lat != null && e.lon != null))
+function updateRain(coords: [number, number] | null | undefined) {
+  if (!props.isPlaying || !coords || !rainEvents.value.length) { raining.value = false; return }
+  const [lon, lat] = coords
+  raining.value = rainEvents.value.some(e => distanceM(lat, lon, e.lat!, e.lon!) < RAIN_RADIUS_M)
+}
+watch(() => props.hoverCoords, c => updateRain(c))
+watch(() => props.isPlaying, p => { if (!p) raining.value = false })
 let eventEls: maplibregl.Marker[] = []
 // Editor for one event. _idx = position in the list (-1 = new draft).
 const editingEvent = ref<(RideEvent & { _idx: number }) | null>(null)
@@ -1653,6 +1667,13 @@ function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
 <template>
   <div class="relative h-full w-full">
     <div ref="mapEl" class="h-full w-full" />
+
+    <!-- Rain: a little fun — animated downpour while replay passes a rain event. -->
+    <Transition name="rain-fade">
+      <div v-if="raining" class="map-rain-overlay" aria-hidden="true">
+        <span class="map-rain-badge">🌧️ Rain</span>
+      </div>
+    </Transition>
 
     <!-- Loading overlay -->
     <div
