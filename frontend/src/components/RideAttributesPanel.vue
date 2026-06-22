@@ -75,6 +75,11 @@ function asText(v: unknown): string { return typeof v === 'string' ? v : JSON.st
 
 const newKey = ref('')
 const newValue = ref('')
+// Same read → pencil → check edit flow as events: edit one key at a time.
+const editingKey = ref<string | null>(null)
+const editValue = ref('')
+function startEditAttr(k: string, v: unknown) { editingKey.value = k; editValue.value = asText(v) }
+async function saveEditAttr(k: string) { await setAttr(k, editValue.value); editingKey.value = null }
 async function setAttr(key: string, value: unknown) {
   try {
     await setActivityAttribute(props.activityId, key, value)
@@ -132,9 +137,21 @@ async function addAttr() {
       <h3 class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Custom Attributes</h3>
       <div v-for="[k, v] in attrRows" :key="k" class="flex items-center gap-1.5">
         <code class="shrink-0 w-28 truncate text-[11px] text-muted-fg" :title="k">{{ k }}</code>
-        <input v-if="isEditable(v)" :value="asText(v)" @change="setAttr(k, ($event.target as HTMLInputElement).value)"
-          class="flex-1 min-w-0 px-1.5 py-1 rounded border border-border bg-background text-foreground focus:outline-none focus:border-primary" />
-        <code v-else class="flex-1 min-w-0 truncate text-[10px] text-muted-fg" :title="asText(v)">{{ asText(v) }}</code>
+
+        <!-- Edit mode: value field, confirm with the check. -->
+        <template v-if="editingKey === k">
+          <input v-model="editValue"
+            class="flex-1 min-w-0 px-1.5 py-1 rounded border border-border bg-background text-foreground focus:outline-none focus:border-primary" />
+          <button class="btn-icon btn-icon-primary shrink-0" title="Done" @click="saveEditAttr(k)"><Check :size="14" /></button>
+        </template>
+
+        <!-- Read mode: value text, pencil to edit (editable scalars only). -->
+        <template v-else>
+          <span v-if="isEditable(v)" class="flex-1 min-w-0 truncate">{{ asText(v) }}</span>
+          <code v-else class="flex-1 min-w-0 truncate text-[10px] text-muted-fg" :title="asText(v)">{{ asText(v) }}</code>
+          <button v-if="isEditable(v)" class="btn-icon btn-icon-primary shrink-0" title="Edit" @click="startEditAttr(k, v)"><Pencil :size="13" /></button>
+        </template>
+
         <button class="btn-icon btn-icon-danger shrink-0" title="Remove" @click="setAttr(k, null)"><Trash2 :size="13" /></button>
       </div>
       <form class="flex items-center gap-1.5 pt-1" @submit.prevent="addAttr">
