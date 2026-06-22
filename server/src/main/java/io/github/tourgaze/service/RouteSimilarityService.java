@@ -38,7 +38,8 @@ public class RouteSimilarityService {
 	private static final double GPS_THRESHOLD = 0.25;
 	// A shared tag only counts if the rides ALSO overlap geographically by at least
 	// this much — otherwise "both tagged holiday" would match a Mallorca ride to a
-	// Sweden one. Lower than GPS_THRESHOLD so a tag still helps a near-but-not-quite
+	// Sweden one. Lower than GPS_THRESHOLD so a tag still helps a
+	// near-but-not-quite
 	// route qualify, but never a far-away one.
 	private static final double TAG_MIN_OVERLAP = 0.05;
 	// Comparable length: keep only candidates whose distance is within 0.5×–2× of

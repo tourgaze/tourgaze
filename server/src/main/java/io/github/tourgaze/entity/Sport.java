@@ -54,7 +54,8 @@ public class Sport extends BaseEntity {
 
 	/**
 	 * Seeded default — protected from deletion (the shared Garmin-aligned baseline;
-	 * the importer maps onto these keys). Can still be renamed / re-iconed / hidden.
+	 * the importer maps onto these keys). Can still be renamed / re-iconed /
+	 * hidden.
 	 */
 	@Column(nullable = false)
 	private boolean builtin = false;

@@ -12,16 +12,20 @@ import jakarta.persistence.*;
 import io.github.tourgaze.util.ShortId;
 
 /**
- * User-managed ride-event TYPE (masterdata, like {@link Sport}). Gives each event
- * kind a display name, icon and colour for the GUI, and lets a user define their
- * own kinds (drink break, puncture, …). The {@code key} is the stable wire value
+ * User-managed ride-event TYPE (masterdata, like {@link Sport}). Gives each
+ * event
+ * kind a display name, icon and colour for the GUI, and lets a user define
+ * their
+ * own kinds (drink break, puncture, …). The {@code key} is the stable wire
+ * value
  * stored on a ride event ({@code RideEventDto.type}, e.g. "WEATHER_RAIN"); the
  * system emits the seeded ones, the rest are whatever the user adds.
  */
 @Entity
 @Table(name = "event_type", indexes = {
 		// id (PK) and event_key (unique) are auto-indexed; this composite serves the
-		// hot lookup: enabled types in display order (GET /api/event-types?enabledOnly).
+		// hot lookup: enabled types in display order (GET
+		// /api/event-types?enabledOnly).
 		@Index(name = "idx_event_type_enabled_ordinal", columnList = "enabled, ordinal"),
 })
 public class EventType extends BaseEntity {
@@ -49,7 +53,9 @@ public class EventType extends BaseEntity {
 	@Column(nullable = false)
 	private int ordinal;
 
-	/** Hidden (not offered in pickers) without deleting — keeps old events valid. */
+	/**
+	 * Hidden (not offered in pickers) without deleting — keeps old events valid.
+	 */
 	@Column(nullable = false)
 	private boolean enabled = true;
 

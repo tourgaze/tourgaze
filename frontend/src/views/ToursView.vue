@@ -314,8 +314,9 @@ function onResultsKeydown(e: KeyboardEvent) {
     if (!key) return
     e.preventDefault()
     const node = findGroup(key)
-    if (e.key === 'ArrowRight') { node ? expandSubtree(node) : toggle(key) }
-    else { node ? collapseSubtree(node) : (expanded.value.has(key) && toggle(key)) }
+    if (e.key === 'ArrowRight') { if (node) expandSubtree(node); else toggle(key) }
+    else if (node) collapseSubtree(node)
+    else if (expanded.value.has(key)) toggle(key)
     return
   }
   if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return

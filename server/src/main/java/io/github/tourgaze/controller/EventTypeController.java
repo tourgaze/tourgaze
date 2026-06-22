@@ -17,8 +17,10 @@ import io.github.tourgaze.entity.EventType;
 import io.github.tourgaze.repository.EventTypeRepository;
 
 /**
- * Ride-event type lookup + masterdata service (mirrors {@code SportController}).
- * {@code GET} is the lookup the GUI reads to render an event's label/icon and to
+ * Ride-event type lookup + masterdata service (mirrors
+ * {@code SportController}).
+ * {@code GET} is the lookup the GUI reads to render an event's label/icon and
+ * to
  * populate the "add event" picker; the rest is CRUD so each install curates its
  * own kinds (seeded with the built-ins on first run).
  */
@@ -32,7 +34,9 @@ public class EventTypeController {
 		this.repo = repo;
 	}
 
-	/** Lookup: all event types (ordered). {@code ?enabledOnly=true} hides disabled. */
+	/**
+	 * Lookup: all event types (ordered). {@code ?enabledOnly=true} hides disabled.
+	 */
 	@GetMapping
 	public List<EventTypeDto> list(@RequestParam(value = "enabledOnly", defaultValue = "false") boolean enabledOnly) {
 		List<EventType> types = enabledOnly
