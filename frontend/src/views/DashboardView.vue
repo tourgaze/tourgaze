@@ -30,20 +30,23 @@ function sumSec(items: ActivitySummary[]): number {
   return items.reduce((s, a) => s + (a.movingTimeS ?? 0), 0)
 }
 
-const lifetime = computed(() => ({
-  count: list.value.length,
-  km: sumKm(list.value),
-  elev: sumElev(list.value),
-  sec: sumSec(list.value),
-}))
+// Assisted (e-bike) rides are motor-helped — "a little fake" for speed/distance
+// records — so the headline totals are HUMAN-POWERED, and assisted is reported
+// separately as an extra. A ride is assisted if its gear is flagged assisted.
+const assistedGearIds = computed(() => new Set((gearList.value ?? []).filter(g => g.assisted).map(g => g.id)))
+function isAssisted(a: ActivitySummary): boolean { return !!a.gearId && assistedGearIds.value.has(a.gearId) }
+const humanList = computed(() => list.value.filter(a => !isAssisted(a)))
+const assistedList = computed(() => list.value.filter(a => isAssisted(a)))
+const hasAssisted = computed(() => assistedList.value.length > 0)
+const stats = (items: ActivitySummary[]) => ({ count: items.length, km: sumKm(items), elev: sumElev(items), sec: sumSec(items) })
 
-const yearItems = computed(() => list.value.filter(a => a.startTime && new Date(a.startTime).getFullYear() === thisYear))
-const yearStats = computed(() => ({
-  count: yearItems.value.length,
-  km: sumKm(yearItems.value),
-  elev: sumElev(yearItems.value),
-  sec: sumSec(yearItems.value),
-}))
+const lifetime = computed(() => stats(humanList.value))
+const lifetimeAssisted = computed(() => stats(assistedList.value))
+
+const inThisYear = (a: ActivitySummary) => !!a.startTime && new Date(a.startTime).getFullYear() === thisYear
+const yearItems = computed(() => humanList.value.filter(inThisYear))
+const yearStats = computed(() => stats(yearItems.value))
+const yearAssisted = computed(() => stats(assistedList.value.filter(inThisYear)))
 
 const avgHr = computed(() => {
   const arr = list.value.map(a => a.avgHr).filter((n): n is number => n != null)
@@ -172,21 +175,25 @@ function fmtElev(v: number) { return Math.round(v).toLocaleString() + ' m' }
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><Ruler :size="11" />Distance · {{ thisYear }}</div>
         <div class="text-xl font-bold mt-0.5">{{ fmtKm(yearStats.km) }}</div>
         <div class="text-[10px] text-muted-fg mt-0.5">lifetime {{ fmtKm(lifetime.km) }}</div>
+        <div v-if="hasAssisted" class="text-[10px] text-amber-500 mt-0.5" title="Motor-assisted e-bike rides, kept separate">+ e-bike {{ fmtKm(yearAssisted.km) }} · life {{ fmtKm(lifetimeAssisted.km) }}</div>
       </div>
       <div class="p-3 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><Mountain :size="11" />Elevation · {{ thisYear }}</div>
         <div class="text-xl font-bold mt-0.5">{{ fmtElev(yearStats.elev) }}</div>
         <div class="text-[10px] text-muted-fg mt-0.5">lifetime {{ fmtElev(lifetime.elev) }}</div>
+        <div v-if="hasAssisted" class="text-[10px] text-amber-500 mt-0.5" title="Motor-assisted e-bike rides, kept separate">+ e-bike {{ fmtElev(yearAssisted.elev) }} · life {{ fmtElev(lifetimeAssisted.elev) }}</div>
       </div>
       <div class="p-3 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><Timer :size="11" />Moving · {{ thisYear }}</div>
         <div class="text-xl font-bold mt-0.5">{{ fmtDuration(yearStats.sec) }}</div>
         <div class="text-[10px] text-muted-fg mt-0.5">lifetime {{ fmtDuration(lifetime.sec) }}</div>
+        <div v-if="hasAssisted" class="text-[10px] text-amber-500 mt-0.5" title="Motor-assisted e-bike rides, kept separate">+ e-bike {{ fmtDuration(yearAssisted.sec) }} · life {{ fmtDuration(lifetimeAssisted.sec) }}</div>
       </div>
       <div class="p-3 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><ActivityIcon :size="11" />Tours · {{ thisYear }}</div>
         <div class="text-xl font-bold mt-0.5">{{ yearStats.count }}</div>
         <div class="text-[10px] text-muted-fg mt-0.5">lifetime {{ lifetime.count }}</div>
+        <div v-if="hasAssisted" class="text-[10px] text-amber-500 mt-0.5" title="Motor-assisted e-bike rides, kept separate">+ e-bike {{ yearAssisted.count }} · life {{ lifetimeAssisted.count }}</div>
       </div>
     </div>
 
