@@ -13,9 +13,11 @@ import {
   getEventTypes, type RideEvent, type EventType,
 } from '@/api/client'
 import DynamicIcon from '@/components/DynamicIcon.vue'
-import { Trash2, Plus, MapPin } from 'lucide-vue-next'
+import { Trash2, Plus, MapPin, Pencil, Check } from 'lucide-vue-next'
 
 const props = defineProps<{ activityId: string }>()
+// Emitted when the user clicks an event's location → parent flies the map there.
+const emit = defineEmits<{ jump: [lon: number, lat: number] }>()
 const qc = useQueryClient()
 
 const { data: serverEvents } = useQuery({
@@ -50,8 +52,11 @@ async function persistEvents() {
   } catch { push.error('Could not save events') }
 }
 // Events are added on the ride map (so they get a location); here you edit the
-// type/label of existing ones or delete them.
-function removeEvent(i: number) { events.value.splice(i, 1); persistEvents() }
+// type/label of existing ones (pencil → edit, check → save) or delete them.
+const editingIdx = ref(-1)
+function startEdit(i: number) { editingIdx.value = i }
+async function saveEdit() { editingIdx.value = -1; await persistEvents() }
+function removeEvent(i: number) { events.value.splice(i, 1); editingIdx.value = -1; persistEvents() }
 
 // Type options for a row — include the row's own type even if it's been deleted
 // from the masterdata, so a custom/legacy kind isn't silently dropped.
@@ -96,13 +101,28 @@ async function addAttr() {
           :style="{ background: typeMeta(ev.type ?? '').color || '#64748b' }">
           <DynamicIcon :name="typeMeta(ev.type ?? '').icon" :size="12" />
         </span>
-        <select :value="ev.type ?? ''" @change="ev.type = ($event.target as HTMLSelectElement).value; persistEvents()"
-          class="shrink-0 w-32 px-1.5 py-1 rounded border border-border bg-background text-foreground focus:outline-none focus:border-primary">
-          <option v-for="t in typeOptions(ev.type ?? '')" :key="t.key" :value="t.key">{{ t.name }}</option>
-        </select>
-        <input :value="ev.label ?? ''" placeholder="Label…" @change="ev.label = ($event.target as HTMLInputElement).value; persistEvents()"
-          class="flex-1 min-w-0 px-1.5 py-1 rounded border border-border bg-background text-foreground focus:outline-none focus:border-primary" />
-        <span v-if="ev.lat != null && ev.lon != null" class="shrink-0 text-[10px] text-muted-fg inline-flex items-center gap-0.5" :title="`${ev.lat?.toFixed(5)}, ${ev.lon?.toFixed(5)}`"><MapPin :size="10" /></span>
+
+        <!-- Edit mode: type + label, confirm with the check. -->
+        <template v-if="editingIdx === i">
+          <select v-model="ev.type"
+            class="shrink-0 w-32 px-1.5 py-1 rounded border border-border bg-background text-foreground focus:outline-none focus:border-primary">
+            <option v-for="t in typeOptions(ev.type ?? '')" :key="t.key" :value="t.key">{{ t.name }}</option>
+          </select>
+          <input v-model="ev.label" placeholder="Label…"
+            class="flex-1 min-w-0 px-1.5 py-1 rounded border border-border bg-background text-foreground focus:outline-none focus:border-primary" />
+          <button class="btn-icon btn-icon-primary shrink-0" title="Done" @click="saveEdit"><Check :size="14" /></button>
+        </template>
+
+        <!-- Read mode: name + label, click the pin to fly there, pencil to edit. -->
+        <template v-else>
+          <span class="shrink-0 w-32 truncate">{{ typeMeta(ev.type ?? '').name }}</span>
+          <span class="flex-1 min-w-0 truncate text-muted-fg">{{ ev.label }}</span>
+          <button v-if="ev.lat != null && ev.lon != null" class="btn-icon shrink-0"
+            :title="`Go to ${ev.lat?.toFixed(5)}, ${ev.lon?.toFixed(5)}`"
+            @click="emit('jump', ev.lon!, ev.lat!)"><MapPin :size="13" /></button>
+          <button class="btn-icon btn-icon-primary shrink-0" title="Edit" @click="startEdit(i)"><Pencil :size="13" /></button>
+        </template>
+
         <button class="btn-icon btn-icon-danger shrink-0" title="Delete event" @click="removeEvent(i)"><Trash2 :size="13" /></button>
       </div>
     </section>

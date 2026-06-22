@@ -1062,7 +1062,7 @@ const activeColorLabel = computed(() =>
       <!-- Attributes view — ride events + free-form key/values. -->
       <div v-else-if="!chartCollapsed && bottomView === 'attributes' && activityId"
         class="flex-1 min-h-0 overflow-y-auto p-3 custom-scrollbar">
-        <RideAttributesPanel :activity-id="activityId" />
+        <RideAttributesPanel :activity-id="activityId" @jump="(lon, lat) => mapRef?.flyToCoords?.(lon, lat)" />
       </div>
 
       <!-- Gallery lightbox (native popover). -->
