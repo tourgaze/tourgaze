@@ -101,6 +101,12 @@ const selReadout = computed(() => {
 })
 
 function clearSelection() { selStart.value = null; selEnd.value = null }
+
+// Grid split-line colour — a faint slate in dark mode (the old near-white
+// #f3f4f6 read as harsh dotted lines on the dark chart), light grey otherwise.
+function gridLineColor(): string {
+  return document.documentElement.classList.contains('dark') ? 'rgba(148,163,184,0.10)' : '#f3f4f6'
+}
 // Reset the measurement when the underlying track changes.
 watch(() => props.points, clearSelection)
 
@@ -167,7 +173,7 @@ const option = computed(() => {
         min: (v: any) => Math.floor(v.min - Math.max(10, (v.max - v.min) * 0.1)),
         max: (v: any) => Math.ceil(v.max + Math.max(10, (v.max - v.min) * 0.1)),
         axisLabel: { fontSize: 10, color: '#9ca3af', formatter: '{value}m', margin: 8 },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: gridLineColor(), type: 'dashed' } },
       },
     }
     if (key === 'hr') return {
@@ -179,7 +185,7 @@ const option = computed(() => {
         min: (v: any) => Math.max(0, Math.floor(v.min - 5)),
         max: (v: any) => Math.ceil(v.max + 5),
         axisLabel: { fontSize: 10, color: '#ef4444', margin: 8, formatter: '{value}' },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: gridLineColor(), type: 'dashed' } },
       },
     }
     if (key === 'power') return {
@@ -191,7 +197,7 @@ const option = computed(() => {
         min: () => 0,
         max: (v: any) => Math.ceil(v.max + 10),
         axisLabel: { fontSize: 10, color: '#a855f7', margin: 8, formatter: '{value}' },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: gridLineColor(), type: 'dashed' } },
       },
     }
     if (key === 'cadence') return {
@@ -203,7 +209,7 @@ const option = computed(() => {
         min: () => 0,
         max: (v: any) => Math.ceil(v.max + 5),
         axisLabel: { fontSize: 10, color: '#06b6d4', margin: 8, formatter: '{value}' },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: gridLineColor(), type: 'dashed' } },
       },
     }
     return {
@@ -215,7 +221,7 @@ const option = computed(() => {
         min: (v: any) => Math.max(0, Math.floor(v.min - 2)),
         max: (v: any) => Math.ceil(v.max + 2),
         axisLabel: { fontSize: 10, color: '#f59e0b', margin: 8, formatter: '{value}' },
-        splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { lineStyle: { color: gridLineColor(), type: 'dashed' } },
       },
     }
   }
@@ -282,7 +288,7 @@ const option = computed(() => {
         axisLine: { show: true, lineStyle: { color: c.color } },
         // Colour-coded label on a theme chip so the overlaid lines can't wash it out.
         axisLabel: { ...(c.yAxis.axisLabel as any), fontSize: 9, color: c.color, margin: 4, ...labelChip },
-        splitLine: { show: i === 0, lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+        splitLine: { show: i === 0, lineStyle: { color: gridLineColor(), type: 'dashed' } },
       })
       series.push({
         name: c.name, type: 'line', xAxisIndex: 0, yAxisIndex: i,
