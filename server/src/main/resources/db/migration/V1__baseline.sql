@@ -62,5 +62,5 @@ create index idx_geo_feature_type on geo_feature (type);
 -- string key in activity.activity_type; this table gives each key a display
 -- name, icon and colour, and lets each install curate its list. Seeded
 -- Garmin-aligned by SportSeeder on first run.
-create table sport (ordinal integer not null, enabled boolean not null, created_at timestamp(6) with time zone not null, id varchar(26) not null, sport_key varchar(64) not null unique, color varchar(20), icon varchar(60), name varchar(120) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id));
+create table sport (ordinal integer not null, enabled boolean not null, builtin boolean not null, created_at timestamp(6) with time zone not null, id varchar(26) not null, sport_key varchar(64) not null unique, color varchar(20), icon varchar(60), name varchar(120) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id));
 create table event_type (ordinal integer not null, enabled boolean not null, builtin boolean not null, created_at timestamp(6) with time zone not null, id varchar(26) not null, event_key varchar(64) not null unique, color varchar(20), icon varchar(60), name varchar(120) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id));

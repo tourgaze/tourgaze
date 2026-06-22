@@ -61,6 +61,11 @@ const deleteMut = useMutation({
 })
 
 function toggleEnabled(t: EventType) { saveMut.mutate({ ...t, enabled: !t.enabled }) }
+
+// System types whose visibility the app manages — PHOTO is intentionally hidden
+// (photos are the media feature, not a manual event), so its hide/show is locked.
+const SYSTEM_KEYS = new Set(['PHOTO'])
+function isLocked(t: EventType): boolean { return !!t.key && SYSTEM_KEYS.has(t.key) }
 </script>
 
 <template>
@@ -85,13 +90,14 @@ function toggleEnabled(t: EventType) { saveMut.mutate({ ...t, enabled: !t.enable
         <div class="w-36 shrink-0"><IconPicker :model-value="t.icon ?? ''" @update:model-value="saveMut.mutate({ ...t, icon: $event || undefined })" /></div>
         <input type="color" :value="t.color || '#64748b'" @change="saveMut.mutate({ ...t, color: ($event.target as HTMLInputElement).value })"
           class="w-7 h-7 rounded border border-border bg-transparent cursor-pointer shrink-0" title="Colour" />
-        <button class="btn-icon shrink-0" :title="t.enabled ? 'Hide' : 'Show'" @click="toggleEnabled(t)">
+        <button class="btn-icon shrink-0" :disabled="isLocked(t)"
+          :title="isLocked(t) ? 'System type — managed by the app' : (t.enabled ? 'Hide' : 'Show')"
+          :class="isLocked(t) ? 'opacity-30 cursor-not-allowed' : ''"
+          @click="!isLocked(t) && toggleEnabled(t)">
           <component :is="t.enabled ? Eye : EyeOff" :size="14" />
         </button>
-        <button class="btn-icon btn-icon-danger shrink-0" :disabled="t.builtin"
-          :title="t.builtin ? 'Built-in (used by import) — can\'t delete' : 'Delete'"
-          :class="t.builtin ? 'opacity-30 cursor-not-allowed' : ''"
-          @click="!t.builtin && deleteMut.mutate(t.id!)"><Trash2 :size="14" /></button>
+        <button v-if="!t.builtin" class="btn-icon btn-icon-danger shrink-0" title="Delete"
+          @click="deleteMut.mutate(t.id!)"><Trash2 :size="14" /></button>
       </div>
     </div>
 

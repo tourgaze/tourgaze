@@ -21,11 +21,13 @@ create index idx_sport_enabled_ordinal on sport (enabled, ordinal);
 -- `sport:cycling` matches every ride and `gear:` narrows to a discipline. The
 -- finer Garmin sub-sport names are still offered as hints (sport_proposals.json)
 -- if an install wants them.
-insert into sport (id, sport_key, name, icon, color, ordinal, enabled, created_at, version) values
-  ('cycling',        'cycling',        'Cycling',        'Bike',       '#10b981', 0, true, current_timestamp, 0),
-  ('running',        'running',        'Running',        'Footprints', '#ef4444', 1, true, current_timestamp, 0),
-  ('walking',        'walking',        'Walking',        'Footprints', '#84cc16', 2, true, current_timestamp, 0),
-  ('hiking',         'hiking',         'Hiking',         'Mountain',   '#7c3aed', 3, true, current_timestamp, 0),
-  ('swimming',       'swimming',       'Swimming',       'Waves',      '#06b6d4', 4, true, current_timestamp, 0),
-  ('inline_skating', 'inline_skating', 'Inline skating', 'Disc3',      '#d946ef', 5, true, current_timestamp, 0),
-  ('generic',        'generic',        'Generic',        'Activity',   '#64748b', 6, true, current_timestamp, 0);
+-- builtin=true: seeded defaults are protected from deletion (the importer maps
+-- onto these keys). They can still be renamed / re-iconed / hidden.
+insert into sport (id, sport_key, name, icon, color, ordinal, enabled, builtin, created_at, version) values
+  ('cycling',        'cycling',        'Cycling',        'Bike',       '#10b981', 0, true, true, current_timestamp, 0),
+  ('running',        'running',        'Running',        'Footprints', '#ef4444', 1, true, true, current_timestamp, 0),
+  ('walking',        'walking',        'Walking',        'Footprints', '#84cc16', 2, true, true, current_timestamp, 0),
+  ('hiking',         'hiking',         'Hiking',         'Mountain',   '#7c3aed', 3, true, true, current_timestamp, 0),
+  ('swimming',       'swimming',       'Swimming',       'Waves',      '#06b6d4', 4, true, true, current_timestamp, 0),
+  ('inline_skating', 'inline_skating', 'Inline skating', 'Disc3',      '#d946ef', 5, true, true, current_timestamp, 0),
+  ('generic',        'generic',        'Generic',        'Activity',   '#64748b', 6, true, true, current_timestamp, 0);

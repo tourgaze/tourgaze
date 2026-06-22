@@ -10,6 +10,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import io.github.tourgaze.dto.EventTypeDto;
 import io.github.tourgaze.entity.EventType;
@@ -80,7 +81,8 @@ public class EventTypeController {
 		if (t == null)
 			return ResponseEntity.noContent().build();
 		if (t.isBuiltin())
-			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+					"'" + t.getName() + "' is a built-in event type and can't be deleted — hide it instead.");
 		repo.delete(t);
 		return ResponseEntity.noContent().build();
 	}

@@ -88,7 +88,8 @@ function toggleEnabled(s: Sport) { saveMut.mutate({ ...s, enabled: !s.enabled })
         <button class="btn-icon shrink-0" :title="s.enabled ? 'Hide' : 'Show'" @click="toggleEnabled(s)">
           <component :is="s.enabled ? Eye : EyeOff" :size="14" />
         </button>
-        <button class="btn-icon btn-icon-danger shrink-0" title="Delete" @click="deleteMut.mutate(s.id!)"><Trash2 :size="14" /></button>
+        <button v-if="!s.builtin" class="btn-icon btn-icon-danger shrink-0" title="Delete"
+          @click="deleteMut.mutate(s.id!)"><Trash2 :size="14" /></button>
       </div>
     </div>
 

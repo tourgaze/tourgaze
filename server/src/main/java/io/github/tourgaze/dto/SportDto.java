@@ -17,5 +17,7 @@ public record SportDto(
         String icon,
         String color,
         int ordinal,
-        boolean enabled
+        boolean enabled,
+        /** Seeded default — protected from deletion. */
+        boolean builtin
 ) {}

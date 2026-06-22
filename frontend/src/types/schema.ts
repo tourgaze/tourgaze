@@ -1022,6 +1022,7 @@ export interface components {
             /** Format: int32 */
             ordinal?: number;
             enabled?: boolean;
+            builtin?: boolean;
         };
         SettingDto: {
             key?: string;

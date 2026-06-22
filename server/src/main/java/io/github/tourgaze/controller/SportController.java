@@ -10,6 +10,7 @@ import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import io.github.tourgaze.dto.SportDto;
 import io.github.tourgaze.entity.Sport;
@@ -73,11 +74,18 @@ public class SportController {
 	}
 
 	/**
-	 * Delete a sport. Rides keep their stored key (it just renders as the raw key).
+	 * Delete a sport. Seeded defaults (builtin) are protected → 409. Rides keep
+	 * their stored key regardless (it just renders as the raw key).
 	 */
 	@DeleteMapping("/{id}")
 	public ResponseEntity<Void> delete(@PathVariable("id") String id) {
-		repo.deleteById(id);
+		Sport s = repo.findById(id).orElse(null);
+		if (s == null)
+			return ResponseEntity.noContent().build();
+		if (s.isBuiltin())
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+					"'" + s.getName() + "' is a built-in sport and can't be deleted — hide it instead.");
+		repo.delete(s);
 		return ResponseEntity.noContent().build();
 	}
 
@@ -92,7 +100,7 @@ public class SportController {
 
 	private static SportDto toDto(Sport s) {
 		return new SportDto(s.getId(), s.getKey(), s.getName(), s.getIcon(), s.getColor(), s.getOrdinal(),
-				s.isEnabled());
+				s.isEnabled(), s.isBuiltin());
 	}
 
 	/** Lowercase, non-alphanumerics → underscore, for a stable key. */

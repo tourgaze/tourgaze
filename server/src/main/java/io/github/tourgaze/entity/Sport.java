@@ -52,6 +52,13 @@ public class Sport extends BaseEntity {
 	@Column(nullable = false)
 	private boolean enabled = true;
 
+	/**
+	 * Seeded default — protected from deletion (the shared Garmin-aligned baseline;
+	 * the importer maps onto these keys). Can still be renamed / re-iconed / hidden.
+	 */
+	@Column(nullable = false)
+	private boolean builtin = false;
+
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
@@ -117,6 +124,14 @@ public class Sport extends BaseEntity {
 
 	public void setEnabled(boolean enabled) {
 		this.enabled = enabled;
+	}
+
+	public boolean isBuiltin() {
+		return builtin;
+	}
+
+	public void setBuiltin(boolean builtin) {
+		this.builtin = builtin;
 	}
 
 	public Instant getCreatedAt() {
