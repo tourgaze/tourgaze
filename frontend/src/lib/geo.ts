@@ -19,3 +19,34 @@ export function distanceM(aLat: number, aLon: number, bLat: number, bLon: number
 export function distanceKm(aLat: number, aLon: number, bLat: number, bLon: number): number {
   return distanceM(aLat, aLon, bLat, bLon) / 1000
 }
+
+export type BBox = { minLat: number; maxLat: number; minLon: number; maxLon: number }
+
+/**
+ * Axis-aligned bounding box of a set of points, optionally grown by `bufferKm`
+ * on every side (km → degrees; longitude scaled by latitude). Null for empty
+ * input. Used to keep ride-local lists (markers) relevant — a Sweden ride
+ * shouldn't list a Mallorca marker.
+ */
+export function bboxOf(points: { lat: number; lon: number }[], bufferKm = 0): BBox | null {
+  if (!points.length) return null
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity
+  for (const p of points) {
+    if (p.lat < minLat) minLat = p.lat
+    if (p.lat > maxLat) maxLat = p.lat
+    if (p.lon < minLon) minLon = p.lon
+    if (p.lon > maxLon) maxLon = p.lon
+  }
+  if (bufferKm > 0) {
+    const dLat = bufferKm / 111.32
+    const midLat = (minLat + maxLat) / 2
+    const dLon = bufferKm / (111.32 * Math.max(0.05, Math.cos((midLat * Math.PI) / 180)))
+    minLat -= dLat; maxLat += dLat; minLon -= dLon; maxLon += dLon
+  }
+  return { minLat, maxLat, minLon, maxLon }
+}
+
+/** True if the point is inside the box. A null box (no track) matches everything. */
+export function inBBox(lat: number, lon: number, b: BBox | null): boolean {
+  return !b || (lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon)
+}

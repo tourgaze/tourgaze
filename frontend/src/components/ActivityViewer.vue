@@ -16,7 +16,7 @@ import { onClickOutside } from '@vueuse/core'
 import { REPLAY_STRATEGIES, type ReplayStrategy } from '@/composables/replayStrategies'
 import { useTrackData, activeIndex } from '@/composables/useTrackData'
 import { useCurrentUser } from '@/composables/useCurrentUser'
-import { distanceM } from '@/lib/geo'
+import { distanceM, bboxOf, inBBox } from '@/lib/geo'
 import { useHrZones } from '@/composables/useHrZones'
 import { useRaceCompare } from '@/composables/useRaceCompare'
 import { VIEWER_LAYOUT_SLOT, autoLayoutRef } from '@/composables/useLayoutState'
@@ -56,13 +56,16 @@ function setSort(key: 'label' | 'category') {
   else markerSort.value = { key, dir: 'asc' }
 }
 const filteredMarkers = computed(() => {
+  // Only markers near THIS ride (track bbox + 5 km) — a Sweden ride shouldn't
+  // list a Mallorca marker. Then the text filter.
+  const box = bboxOf((withDist.value ?? []).map(p => ({ lat: p.lat, lon: p.lon })), 5)
+  let list = (markers.value ?? []).filter(m => inBBox(m.lat, m.lon, box))
   const q = markerFilter.value.trim().toLowerCase()
-  const list = markers.value ?? []
-  if (!q) return list
-  return list.filter(m =>
+  if (q) list = list.filter(m =>
     (m.label || '').toLowerCase().includes(q) ||
     m.category.toLowerCase().includes(q) ||
     (m.description || '').toLowerCase().includes(q))
+  return list
 })
 const sortedMarkers = computed(() => {
   const { key, dir } = markerSort.value

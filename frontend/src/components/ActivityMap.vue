@@ -10,6 +10,7 @@ import { MARKER_CATEGORIES, markerCategory, markerIconSvg } from '@/markerCatego
 import { gearIconSvg } from '@/gearIcons'
 import { onKeyStroke } from '@vueuse/core'
 import { tileUrl } from '@/lib/mapStyle'
+import { bboxOf, inBBox } from '@/lib/geo'
 import type { HrZone } from '@/composables/useHrZones'
 import {
   precomputeSmoothedBearings,
@@ -384,7 +385,10 @@ function renderMarkers() {
   if (!isMapReady()) return
   markerEls.forEach(m => m.remove())
   markerEls = []
-  for (const mk of markers.value ?? []) {
+  // Only global markers near this ride (track bbox + 5 km) — don't litter a
+  // Sweden ride's map with a Mallorca POI.
+  const box = bboxOf((points.value ?? []).map(p => ({ lat: p.lat, lon: p.lon })), 5)
+  for (const mk of (markers.value ?? []).filter(mk => inBBox(mk.lat, mk.lon, box))) {
     const cat = markerCategory(mk.category)
     const el = document.createElement('div')
     el.className = 'map-marker-pin'
@@ -1219,7 +1223,7 @@ watch(() => props.isPlaying, (playing) => {
 // or the show-photos toggle flips.
 watch(mediaItems, () => renderPhotoMarkers())
 watch(() => props.showPhotos, () => renderPhotoMarkers())
-watch(markers, () => renderMarkers())
+watch([markers, points], () => renderMarkers())
 watch([rideEvents, eventTypes], () => renderEvents())
 
 watch(points, (pts) => {
