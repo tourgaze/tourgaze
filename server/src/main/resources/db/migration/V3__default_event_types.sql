@@ -18,6 +18,9 @@ insert into event_type (id, event_key, name, icon, color, ordinal, enabled, buil
   ('FOOD',         'FOOD',         'Food stop',   'Utensils',   '#84cc16', 2, true, false, current_timestamp, 0),
   ('PUNCTURE',     'PUNCTURE',     'Puncture',    'Disc',       '#ef4444', 3, true, false, current_timestamp, 0),
   ('MECHANICAL',   'MECHANICAL',   'Mechanical',  'Wrench',     '#6b7280', 4, true, false, current_timestamp, 0),
-  ('VIEWPOINT',    'VIEWPOINT',    'Viewpoint',   'Binoculars', '#06b6d4', 5, true, false, current_timestamp, 0),
-  ('PHOTO',        'PHOTO',        'Photo',       'Camera',     '#a855f7', 6, true, false, current_timestamp, 0),
-  ('REST',         'REST',         'Rest',        'TreePalm',   '#14b8a6', 7, true, false, current_timestamp, 0);
+  ('VIEWPOINT',    'VIEWPOINT',    'Viewpoint',   'Binoculars', '#06b6d4', 5, true,  false, current_timestamp, 0),
+  -- PHOTO is disabled: photos are their own feature (media), not a manually-added
+  -- event. Kept (disabled) so photo-import could still tag one and it renders;
+  -- enabled=false hides it from the "add event" picker.
+  ('PHOTO',        'PHOTO',        'Photo',       'Camera',     '#a855f7', 6, false, false, current_timestamp, 0),
+  ('REST',         'REST',         'Rest',        'TreePalm',   '#14b8a6', 7, true,  false, current_timestamp, 0);
