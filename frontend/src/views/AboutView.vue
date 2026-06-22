@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Github, HeartHandshake, Lock, Map as MapIcon, CloudSun, Database, Code2 } from 'lucide-vue-next'
+import { Github, HeartHandshake, Lock, Map as MapIcon, CloudSun, Database, Code2, FileWarning } from 'lucide-vue-next'
 import { useQuery } from '@tanstack/vue-query'
 import GoatLogo from '@/components/GoatLogo.vue'
 import { getVersion } from '@/api/client'
@@ -84,6 +84,18 @@ const data: { name: string; what: string; href: string }[] = [
             database and file store — nothing is uploaded to a cloud service. Map tiles are
             fetched once and cached locally.
           </p>
+        </section>
+
+        <section class="p-4 rounded-lg border border-border bg-muted/10 space-y-2">
+          <div class="flex items-center gap-2 text-primary"><FileWarning :size="18" /><h2 class="text-sm font-semibold text-foreground">Trouble importing a file?</h2></div>
+          <p class="text-[13px] text-muted-fg leading-relaxed">
+            If a FIT/GPX file won't import or looks wrong, drop a copy in the test-data
+            repository so we can reproduce and fix it.
+          </p>
+          <a href="https://github.com/tourgaze/tourgaze-testdata" target="_blank" rel="noopener"
+            class="inline-flex items-center gap-1.5 text-[13px] font-medium text-primary hover:underline">
+            <Github :size="14" /> tourgaze/tourgaze-testdata
+          </a>
         </section>
       </div>
 

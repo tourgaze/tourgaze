@@ -147,6 +147,10 @@ Open-Meteo; reverse geocoding from Nominatim. Full credits on the in-app **About
 Developer guide: **[README-dev.md](README-dev.md)**. See also
 [CONTRIBUTING.md](CONTRIBUTING.md) and [CHANGELOG.md](CHANGELOG.md).
 
+**A file won't import or looks wrong?** Drop a copy in
+**[tourgaze/tourgaze-testdata](https://github.com/tourgaze/tourgaze-testdata)** so
+we can reproduce and fix it.
+
 ## License
 
 [GNU AGPL-3.0](LICENSE) © TourGaze contributors. If you run a modified version as a
