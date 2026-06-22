@@ -1,0 +1,24 @@
+# Real PostgreSQL backend — opt-in profile. First add the JDBC driver dependency
+# (commented in server/pom.xml), then run with
+#   --spring.profiles.active=postgres
+# (or SPRING_PROFILES_ACTIVE=postgres). The default (no profile) stays on the H2
+# file DB in PostgreSQL-compatibility mode; this just swaps the datasource.
+#
+# The schema is identical: Flyway's V1+ migrations are written in
+# PostgreSQL-valid SQL (text not clob, json, timestamptz, float(53)), so the same
+# baseline applies cleanly here. Hibernate still only VALIDATES on boot.
+#
+# IMPORTANT: stringtype=unspecified. The free-form `attributes` json column is
+# written via a String AttributeConverter; without this, the PG JDBC driver
+# rejects binding a varchar to a json column ("column is of type json but
+# expression is of type character varying"). `unspecified` lets PG cast it.
+spring:
+  datasource:
+    url: ${TOURGAZE_DB_URL:jdbc:postgresql://localhost:5432/tourgaze?stringtype=unspecified}
+    driver-class-name: org.postgresql.Driver
+    username: ${TOURGAZE_DB_USER:tourgaze}
+    password: ${TOURGAZE_DB_PASSWORD:tourgaze}
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: validate

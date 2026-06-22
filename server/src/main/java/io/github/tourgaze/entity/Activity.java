@@ -59,7 +59,7 @@ public class Activity extends BaseEntity {
 	 * old rides). Two rides' Jaccard overlap on these cell sets = "same route"
 	 * similarity, used by the ghost-chase compare picker.
 	 */
-	@Column(name = "route_geocells", columnDefinition = "clob")
+	@Column(name = "route_geocells", columnDefinition = "text")
 	private String routeGeocells;
 
 	/**

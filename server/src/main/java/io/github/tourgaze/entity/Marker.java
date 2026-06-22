@@ -36,7 +36,7 @@ public class Marker extends BaseEntity {
 	@Column(nullable = false)
 	private String label;
 
-	@Column(columnDefinition = "clob")
+	@Column(columnDefinition = "text")
 	private String description;
 
 	/** Icon category: food, peak, viewpoint, water, repair, star, … */
