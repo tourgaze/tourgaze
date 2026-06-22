@@ -1,0 +1,15 @@
+[
+  { "key": "WEATHER_RAIN", "name": "Rainfall", "icon": "CloudRain" },
+  { "key": "WEATHER_WIND", "name": "Strong wind", "icon": "Wind" },
+  { "key": "WEATHER_HEAT", "name": "Heat", "icon": "Sun" },
+  { "key": "DRINK_BREAK", "name": "Drink break", "icon": "CupSoda" },
+  { "key": "FOOD", "name": "Food stop", "icon": "Utensils" },
+  { "key": "PUNCTURE", "name": "Puncture", "icon": "Disc" },
+  { "key": "MECHANICAL", "name": "Mechanical", "icon": "Wrench" },
+  { "key": "CRASH", "name": "Crash", "icon": "TriangleAlert" },
+  { "key": "VIEWPOINT", "name": "Viewpoint", "icon": "Binoculars" },
+  { "key": "PHOTO", "name": "Photo", "icon": "Camera" },
+  { "key": "WILDLIFE", "name": "Wildlife", "icon": "Bird" },
+  { "key": "REST", "name": "Rest", "icon": "TreePalm" },
+  { "key": "SUMMIT", "name": "Summit", "icon": "Mountain" }
+]

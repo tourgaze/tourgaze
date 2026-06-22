@@ -619,6 +619,33 @@ export async function deleteSport(id: string): Promise<void> {
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
 
+// ── Ride-event types (masterdata: key → label/icon/colour) ──────────────────
+export type EventType = components['schemas']['EventTypeDto']
+
+export async function getEventTypes(enabledOnly = false): Promise<EventType[]> {
+  const r = await fetch(`/api/event-types${enabledOnly ? '?enabledOnly=true' : ''}`)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+export async function createEventType(dto: EventType): Promise<EventType> {
+  const r = await fetch('/api/event-types', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+export async function updateEventType(id: string, dto: EventType): Promise<EventType> {
+  const r = await fetch(`/api/event-types/${id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+export async function deleteEventType(id: string): Promise<void> {
+  const r = await fetch(`/api/event-types/${id}`, { method: 'DELETE' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+}
+
 /**
  * Bulk-assign (or clear) gear on many rides at once — backfill helper. Pass
  * gearId = '' (or null) to clear gear on every listed activity. Returns the

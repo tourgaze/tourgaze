@@ -5,7 +5,7 @@ import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
 import {
   UserCog, Tag as TagIcon, Users, HardDrive, Sliders, Globe, Bike, Map as MapIcon,
-  Inbox as InboxIcon, PanelLeftClose, PanelLeftOpen, Medal,
+  Inbox as InboxIcon, PanelLeftClose, PanelLeftOpen, Medal, MapPinned,
 } from 'lucide-vue-next'
 
 import ProfileSection from '@/components/settings/ProfileSection.vue'
@@ -14,6 +14,7 @@ import TagTree from '@/components/TagTree.vue'
 import UsersSection from '@/components/settings/UsersSection.vue'
 import GearSection from '@/components/settings/GearSection.vue'
 import SportsSection from '@/components/settings/SportsSection.vue'
+import EventTypesSection from '@/components/settings/EventTypesSection.vue'
 import MapProvidersSection from '@/components/settings/MapProvidersSection.vue'
 import StorageSection from '@/components/settings/StorageSection.vue'
 import LocaleSection from '@/components/settings/LocaleSection.vue'
@@ -21,7 +22,7 @@ import AdvancedSection from '@/components/settings/AdvancedSection.vue'
 
 import { SETTINGS_LAYOUT_SLOT, layoutRef, autoLayoutRef, registerLayoutSaver } from '@/composables/useLayoutState'
 
-type CategoryId = 'profile' | 'inbox' | 'tags' | 'users' | 'gear' | 'sports' | 'maps' | 'locale' | 'storage' | 'advanced'
+type CategoryId = 'profile' | 'inbox' | 'tags' | 'users' | 'gear' | 'sports' | 'events' | 'maps' | 'locale' | 'storage' | 'advanced'
 type Category = { id: CategoryId; label: string; icon: any; component: any; description: string }
 
 const CATEGORIES: Category[] = [
@@ -31,6 +32,7 @@ const CATEGORIES: Category[] = [
   { id: 'users',    label: 'Users',          icon: Users,     component: markRaw(UsersSection),    description: 'Riders sharing this install. Activities link to one.' },
   { id: 'gear',     label: 'Gear',           icon: Bike,      component: markRaw(GearSection),     description: 'Bikes, shoes and other gear you can attach to a tour.' },
   { id: 'sports',   label: 'Sports',         icon: Medal,     component: markRaw(SportsSection),   description: 'Activity types (Garmin-aligned). Add the sports you do, hide the rest.' },
+  { id: 'events',   label: 'Event types',    icon: MapPinned, component: markRaw(EventTypesSection), description: 'Ride-event kinds (rain, drink break, …) pinned on the replay map. Add your own.' },
   { id: 'maps',     label: 'Map providers',  icon: MapIcon,   component: markRaw(MapProvidersSection), description: 'Custom basemaps (raster XYZ or vector style) shown in the map picker.' },
   { id: 'locale',   label: 'Language',       icon: Globe,     component: markRaw(LocaleSection),   description: 'Reverse-geocoding language for place names, plus your timezone.' },
   { id: 'storage',  label: 'Storage',        icon: HardDrive, component: markRaw(StorageSection),  description: 'Disk usage breakdown + cache maintenance.' },
