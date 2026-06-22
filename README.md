@@ -24,21 +24,30 @@ machine; your data never leaves it.
   `sport:cycling year:2014..2018 gear:"Race Bike" tag:alpine dist:>50`.
 - **Hierarchical tags** (a parent matches all descendants), drag-to-apply, recursive filtering.
 - **Gear** (bikes / shoes / …) with per-gear stats and bulk-assign across filtered rides.
-- **Cinematic replay** — drone / helicopter / follow / top-down cameras (smooth,
-  anti-jitter), with a rider marker, HR/slope-coloured track, and photo fades.
+- **Cinematic replay** — drone / helicopter / follow / top-down cameras
+  (precomputed, buttery-smooth path; the drone steers by your general direction),
+  with a rider marker, HR/slope-coloured track, photo fades — and a little
+  **rain animation** when you ride through a detected shower.
+- **Ride events** — typed moments pinned on the replay map: **rain showers are
+  auto-detected on import** from the weather along your track, and you add your
+  own (drink break, puncture, viewpoint, …) by clicking the map. Event kinds are
+  user-managed masterdata (name + icon + colour) in Settings.
+- **Custom attributes** — annotate any ride with free-form key/values (stored as
+  JSON), editable in an Events tab on the ride.
 - **Elite stats** — best efforts, climbing & VAM, gradient distribution, HR zones,
   training load (TRIMP), aerobic decoupling, and estimated cycling power (NP / VI).
-- **Compare (ghost-chase)** — finds rides on the *same route* (GPS overlap or shared
-  tag) and races two of them: a live HUD (distance / time / HR gap) and a
-  Mario-Kart off-screen arrow when the ghost leaves the viewport.
-- **Markers** — drop points of interest (food, viewpoint, peak, …) with categories
-  and an editable description; per-ride or general (shown on every map); a
-  filterable list with click-to-jump.
+- **Compare (ghost-chase)** — finds rides on the *same route* (GPS overlap, of a
+  comparable length) and races them: a live HUD (distance / time / HR gap) and a
+  Mario-Kart off-screen arrow when a ghost leaves the viewport.
+- **Markers** — global points of interest (food, viewpoint, peak, …) with
+  categories and an editable description, shown on the map and a filterable
+  list with click-to-jump (a ride only shows the markers near its route).
 - **Photos & video** — drop your own (geo-matched by EXIF, shown as map pins, faded
   in during replay, in a gallery), or **auto-discover** Creative-Commons photos
   along the route from Wikimedia Commons. Public vs personal are clearly labelled;
   big uploads are downscaled (EXIF preserved).
-- **Dashboard** — distance / elevation / time by year, sport and gear.
+- **Dashboard** — distance / elevation / time by year, sport and gear, with
+  motor-assisted (e-bike) rides kept separate from your human-powered totals.
 - **Custom basemaps** — raster XYZ or vector styles, managed in Settings.
 - **Backup & recovery** — everything is local; per-ride `*.metadata.json` sidecars
   are written on every change, and a one-click ZIP export recreates the original
