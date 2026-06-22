@@ -8,8 +8,9 @@ import MapRenderer from '@/components/MapRenderer.vue'
 import ElevationChart from '@/components/ElevationChart.vue'
 import TimeInZone from '@/components/TimeInZone.vue'
 import RideStats from '@/components/RideStats.vue'
+import RideAttributesPanel from '@/components/RideAttributesPanel.vue'
 import { useRideStats } from '@/composables/useRideStats'
-import { Layers, Play, Pause, Check, Camera, ChevronDown, ChevronUp, Crosshair, LockOpen, ImagePlus, Globe, UserRound, Gauge, Swords, MapPin, Trash2, Pencil, X } from 'lucide-vue-next'
+import { Layers, Play, Pause, Check, Camera, ChevronDown, ChevronUp, Crosshair, LockOpen, ImagePlus, Globe, UserRound, Gauge, Swords, MapPin, Tags, Trash2, Pencil, X } from 'lucide-vue-next'
 import { push } from 'notivue'
 import { onClickOutside } from '@vueuse/core'
 import { REPLAY_STRATEGIES, type ReplayStrategy } from '@/composables/replayStrategies'
@@ -142,7 +143,7 @@ const hasHighlights = computed(() => ((highlights.value?.passes.length ?? 0) + (
 const discovering = ref(false)
 
 // Bottom pane: switch between the elevation graph and the photo gallery.
-const bottomView = autoLayoutRef<'graph' | 'photos' | 'stats' | 'compare' | 'markers'>(VIEWER_LAYOUT_SLOT, 'bottomView', 'graph')
+const bottomView = autoLayoutRef<'graph' | 'photos' | 'stats' | 'compare' | 'markers' | 'attributes'>(VIEWER_LAYOUT_SLOT, 'bottomView', 'graph')
 // Gallery lightbox (native popover, like the map's).
 const galleryPhoto = ref<{ url: string; name: string } | null>(null)
 const galleryPopoverEl = ref<HTMLElement | null>(null)
@@ -836,6 +837,11 @@ const activeColorLabel = computed(() =>
               @click="bottomView = 'markers'">
               <MapPin :size="10" /> Markers<span v-if="markers && markers.length" class="opacity-60">· {{ markers.length }}</span>
             </button>
+            <button class="px-2 py-0.5 border-l border-border transition-colors inline-flex items-center gap-1"
+              :class="bottomView === 'attributes' ? 'bg-primary/15 text-primary' : 'text-muted-fg hover:bg-muted/40'"
+              @click="bottomView = 'attributes'">
+              <Tags :size="10" /> Attributes
+            </button>
           </div>
           <button class="btn-icon" title="Hide panel" @click="toggleChart">
             <ChevronDown :size="13" />
@@ -1051,6 +1057,12 @@ const activeColorLabel = computed(() =>
             <span>{{ (markers && markers.length) ? 'No markers match the filter.' : 'No markers yet. Middle-click or right-double-click the map to add one.' }}</span>
           </div>
         </div>
+      </div>
+
+      <!-- Attributes view — ride events + free-form key/values. -->
+      <div v-else-if="!chartCollapsed && bottomView === 'attributes' && activityId"
+        class="flex-1 min-h-0 overflow-y-auto p-3 custom-scrollbar">
+        <RideAttributesPanel :activity-id="activityId" />
       </div>
 
       <!-- Gallery lightbox (native popover). -->

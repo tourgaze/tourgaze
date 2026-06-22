@@ -592,6 +592,40 @@ export async function deleteGear(id: string): Promise<void> {
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
 
+// ── Ride events (things that happened on a ride; pinned on the replay map) ───
+export type RideEvent = components['schemas']['RideEvent']
+
+/** This ride's events (typed; resolved from attributes.events). */
+export async function getActivityEvents(id: string): Promise<RideEvent[]> {
+  const r = await fetch(`/api/activities/${id}/events`)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+/** Replace this ride's event list (stored under attributes.events). */
+export async function setActivityEvents(id: string, events: RideEvent[]): Promise<Record<string, unknown>> {
+  const r = await fetch(`/api/activities/${id}/attributes/events`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(events),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+
+// ── Free-form activity attributes (arbitrary key/value JSON) ─────────────────
+export async function getActivityAttributes(id: string): Promise<Record<string, unknown>> {
+  const r = await fetch(`/api/activities/${id}/attributes`)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+/** Set (value) or remove (value === null) a single attribute key, merging. */
+export async function setActivityAttribute(id: string, key: string, value: unknown): Promise<Record<string, unknown>> {
+  const r = await fetch(`/api/activities/${id}/attributes/${encodeURIComponent(key)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: value === null ? 'null' : JSON.stringify(value),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+
 // ── Sports (user-managed activity types; Garmin-aligned seed) ────────────────
 export type Sport = components['schemas']['SportDto']
 

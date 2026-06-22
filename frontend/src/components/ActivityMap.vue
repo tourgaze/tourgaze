@@ -3,7 +3,9 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getTrack, getActivityMedia, activityMediaUrl, isVideoFile,
-  getAllMarkers, createMarker, updateMarker, deleteMarker, type Marker, type Highlight } from '@/api/client'
+  getAllMarkers, createMarker, updateMarker, deleteMarker,
+  getActivityEvents, setActivityEvents, getEventTypes, type RideEvent, type EventType,
+  type Marker, type Highlight } from '@/api/client'
 import { MARKER_CATEGORIES, markerCategory, markerIconSvg } from '@/markerCategories'
 import { gearIconSvg } from '@/gearIcons'
 import { onKeyStroke } from '@vueuse/core'
@@ -295,6 +297,89 @@ onKeyStroke('Escape', (e) => {
 })
 const categories = MARKER_CATEGORIES
 
+// ── Ride events (typed annotations pinned on THIS ride) ─────────────────────
+const { data: rideEvents } = useQuery({
+  queryKey: computed(() => ['events', props.activityId]),
+  queryFn: () => getActivityEvents(props.activityId),
+  staleTime: 60 * 1000,
+})
+const { data: eventTypes } = useQuery({ queryKey: ['event-types', 'enabled'], queryFn: () => getEventTypes(true) })
+const eventTypeByKey = computed(() => {
+  const m = new Map<string, EventType>()
+  for (const t of eventTypes.value ?? []) if (t.key) m.set(t.key, t)
+  return m
+})
+let eventEls: maplibregl.Marker[] = []
+// Editor for one event. _idx = position in the list (-1 = new draft).
+const editingEvent = ref<(RideEvent & { _idx: number }) | null>(null)
+// "Add here" chooser (marker vs event) shown at a clicked point.
+const addChooser = ref<{ lng: number; lat: number } | null>(null)
+onKeyStroke('Escape', () => { editingEvent.value = null; addChooser.value = null })
+
+function renderEvents() {
+  if (!isMapReady()) return
+  eventEls.forEach(m => m.remove())
+  eventEls = []
+  const list = rideEvents.value ?? []
+  for (let i = 0; i < list.length; i++) {
+    const ev = list[i]
+    if (ev.lat == null || ev.lon == null) continue   // non-spatial annotation
+    const t = eventTypeByKey.value.get(ev.type ?? '')
+    const el = document.createElement('div')
+    el.className = 'map-event-pin'
+    el.style.background = t?.color || '#3b82f6'
+    el.title = ev.label || t?.name || ev.type || 'Event'
+    el.innerHTML = gearIconSvg(t?.icon || 'MapPin', 13, '#fff')
+    el.addEventListener('click', (e) => { e.stopPropagation(); editingEvent.value = { ...ev, _idx: i } })
+    eventEls.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([ev.lon, ev.lat]).addTo(map!))
+  }
+}
+
+// Open the marker/event chooser at a clicked point (middle / right-double).
+function openAddChooser(lngLat: maplibregl.LngLat) {
+  addChooser.value = { lng: lngLat.lng, lat: lngLat.lat }
+}
+// Chooser → new event draft at that point (label/type from the first enabled type).
+function placeEventAt() {
+  const c = addChooser.value
+  if (!c) return
+  const first = (eventTypes.value ?? [])[0]
+  editingEvent.value = {
+    _idx: -1, type: first?.key ?? 'WEATHER_RAIN', label: '',
+    lat: c.lat, lon: c.lng, time: undefined,
+  }
+  addChooser.value = null
+}
+function chooseMarker() {
+  const c = addChooser.value
+  if (!c) return
+  placeMarkerAt({ lng: c.lng, lat: c.lat } as maplibregl.LngLat)
+  addChooser.value = null
+}
+
+async function persistEvents(list: RideEvent[]) {
+  await setActivityEvents(props.activityId, list)
+  await qc.invalidateQueries({ queryKey: ['events', props.activityId] })
+  await qc.invalidateQueries({ queryKey: ['activities'] })
+}
+async function saveEditingEvent() {
+  const e = editingEvent.value
+  if (!e) return
+  const { _idx, ...ev } = e
+  const list = (rideEvents.value ?? []).map(x => ({ ...x }))
+  if (_idx >= 0 && _idx < list.length) list[_idx] = ev
+  else list.push(ev)
+  try { await persistEvents(list) } finally { editingEvent.value = null }
+}
+async function deleteEditingEvent() {
+  const e = editingEvent.value
+  if (!e) return
+  if (e._idx < 0) { editingEvent.value = null; return }   // unsaved draft
+  const list = (rideEvents.value ?? []).map(x => ({ ...x }))
+  list.splice(e._idx, 1)
+  try { await persistEvents(list) } finally { editingEvent.value = null }
+}
+
 function renderMarkers() {
   if (!isMapReady()) return
   markerEls.forEach(m => m.remove())
@@ -326,23 +411,23 @@ function placeMarkerAt(lngLat: maplibregl.LngLat) {
     label: '', description: '', category: 'star',
   } as Marker
 }
-// Middle mouse button → place immediately.
+// Middle mouse button → open the marker/event chooser at that point.
 function onMapMouseDown(e: maplibregl.MapMouseEvent) {
   if (e.originalEvent.button === 1) {
     e.preventDefault()                 // stop map pan / browser autoscroll
     e.originalEvent.preventDefault()
-    placeMarkerAt(e.lngLat)
+    openAddChooser(e.lngLat)
   }
 }
-// Right double-click → place. We debounce two contextmenu events; the single
-// right-click only suppresses the browser menu.
+// Right double-click → open the chooser. We debounce two contextmenu events; the
+// single right-click only suppresses the browser menu.
 let lastRightClick = 0
 function onMapContextMenu(e: maplibregl.MapMouseEvent) {
   e.preventDefault()                   // suppress the browser context menu
   const now = performance.now()
   if (now - lastRightClick < 450) {
     lastRightClick = 0
-    placeMarkerAt(e.lngLat)
+    openAddChooser(e.lngLat)
   } else {
     lastRightClick = now
   }
@@ -660,6 +745,7 @@ function initMap(provider: string) {
     if (props.isPlaying) nextTick(() => transitionToStrategy(props.hoverIndex ?? 0))
     renderPhotoMarkers()
     renderMarkers()
+    renderEvents()
     renderHighlightMarkers()
     renderNearbyTours()
     renderGhostLines()
@@ -1081,6 +1167,8 @@ onUnmounted(() => {
   clearNearbyTours()
   markerEls.forEach(m => m.remove())
   markerEls = []
+  eventEls.forEach(m => m.remove())
+  eventEls = []
   resizeObserver?.disconnect()
   cursorMarker?.remove()
   map?.remove()
@@ -1132,6 +1220,7 @@ watch(() => props.isPlaying, (playing) => {
 watch(mediaItems, () => renderPhotoMarkers())
 watch(() => props.showPhotos, () => renderPhotoMarkers())
 watch(markers, () => renderMarkers())
+watch([rideEvents, eventTypes], () => renderEvents())
 
 watch(points, (pts) => {
   // Reset every piece of per-track state so nothing leaks across the switch.
@@ -1619,6 +1708,39 @@ function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
           @click="deleteEditingMarker">{{ editingMarker.id ? 'Delete' : 'Discard' }}</button>
         <button class="px-3 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:opacity-90 transition-opacity"
           @click="saveEditingMarker">Save</button>
+      </div>
+    </div>
+
+    <!-- Add chooser — middle / right-double-click on the map asks what to drop:
+         a global Marker (a place) or a ride Event (on this ride's timeline). -->
+    <div v-if="addChooser"
+      class="absolute top-3 left-1/2 -translate-x-1/2 z-[1600] flex items-center gap-2
+             bg-background/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl px-3 py-2">
+      <span class="text-[11px] text-muted-fg">Add here:</span>
+      <button class="px-2.5 py-1 text-[11px] font-medium rounded border border-border hover:bg-muted/40" @click="chooseMarker">Marker</button>
+      <button class="px-2.5 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:opacity-90" @click="placeEventAt">Event</button>
+      <button class="btn-icon" title="Cancel" @click="addChooser = null">✕</button>
+    </div>
+
+    <!-- Ride-event editor — pin a typed event (rain, drink break, …) on this ride. -->
+    <div v-if="editingEvent"
+      class="absolute top-3 left-1/2 -translate-x-1/2 z-[1600] w-72 max-w-[92%]
+             bg-background/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl p-3 space-y-2.5">
+      <div class="flex items-center justify-between">
+        <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Ride event</span>
+        <button class="btn-icon" title="Close" @click="editingEvent = null">✕</button>
+      </div>
+      <select v-model="editingEvent.type"
+        class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:border-primary">
+        <option v-for="t in eventTypes ?? []" :key="t.key" :value="t.key">{{ t.name }}</option>
+      </select>
+      <input v-model="editingEvent.label" type="text" placeholder="Label (optional)…"
+        class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:border-primary" />
+      <div class="flex items-center justify-between pt-0.5">
+        <button class="px-2 py-1 text-[11px] font-medium rounded border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+          @click="deleteEditingEvent">{{ editingEvent._idx >= 0 ? 'Delete' : 'Discard' }}</button>
+        <button class="px-3 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:opacity-90 transition-opacity"
+          @click="saveEditingEvent">Save</button>
       </div>
     </div>
 

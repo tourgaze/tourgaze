@@ -159,6 +159,22 @@ select optgroup {
   box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85), 0 1px 6px rgba(0, 0, 0, 0.45);
 }
 
+/* Ride events: a round badge (distinct from the teardrop place-markers) pinned
+   on the ride's timeline — rain, drink break, etc. */
+.map-event-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  color: #ffffff;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+.map-event-pin:hover { filter: brightness(1.08); }
+
 /* Photo lightbox — native Popover API in the top layer, with @starting-style
    entry transitions (latest CSS standard) and a dimmed ::backdrop. */
 .photo-popover {

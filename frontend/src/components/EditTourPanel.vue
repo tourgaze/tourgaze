@@ -6,7 +6,7 @@ import { push } from 'notivue'
 import {
   Bike, Tag as TagIcon, Save, CloudSun, X as XIcon, ImagePlus,
   MapPin, Timer, Ruler, Mountain, Activity as ActivityIcon, Gauge, FileText, Hash, Copy, Scale,
-  Globe, UserRound, Zap, RotateCw,
+  Globe, UserRound, Zap, RotateCw, ChevronRight, ChevronDown, Tags,
 } from 'lucide-vue-next'
 import {
   getActivities, getWeatherConditions, getGear, getSports, updateActivity,
@@ -17,6 +17,7 @@ import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
 import TagCombobox from '@/components/TagCombobox.vue'
 import StartLocationMap from '@/components/StartLocationMap.vue'
 import LocationAutocomplete from '@/components/LocationAutocomplete.vue'
+import RideAttributesPanel from '@/components/RideAttributesPanel.vue'
 
 const props = defineProps<{ activityId: string }>()
 const emit = defineEmits<{ done: []; cancel: [] }>()
@@ -167,6 +168,9 @@ const sourcePath = computed(() => {
   const fn = activity.value?.sourceFilename
   return fn ? `~/.tourgaze/store/${fn}` : null
 })
+
+// Source-file provenance is reference info → collapsed by default.
+const srcOpen = ref(false)
 
 async function copyToClipboard(text: string | null | undefined) {
   if (!text) return
@@ -388,12 +392,22 @@ async function copyToClipboard(text: string | null | undefined) {
         </div>
       </div>
 
-      <!-- ── Source provenance (read-only) ──────────────────────────────────── -->
-      <div v-if="activity" class="text-[11px] border-t border-border pt-3 space-y-1.5">
-        <div class="text-xs font-medium text-muted-fg flex items-center gap-1">
-          <FileText :size="11" /> Source file
+      <!-- ── Events & attributes ───────────────────────────────────────────── -->
+      <div v-if="activity" class="border-t border-border pt-3">
+        <div class="text-xs font-medium text-muted-fg flex items-center gap-1 mb-2">
+          <Tags :size="11" /> Events &amp; attributes
         </div>
-        <div class="grid grid-cols-[100px_1fr_auto] gap-x-2 gap-y-1 items-center">
+        <RideAttributesPanel :activity-id="activityId" />
+      </div>
+
+      <!-- ── Source provenance (read-only, collapsible) ─────────────────────── -->
+      <div v-if="activity" class="text-[11px] border-t border-border pt-3 space-y-1.5">
+        <button type="button" class="w-full text-xs font-medium text-muted-fg flex items-center gap-1 hover:text-foreground"
+          @click="srcOpen = !srcOpen">
+          <component :is="srcOpen ? ChevronDown : ChevronRight" :size="12" />
+          <FileText :size="11" /> Source file
+        </button>
+        <div v-if="srcOpen" class="grid grid-cols-[100px_1fr_auto] gap-x-2 gap-y-1 items-center">
           <div class="text-muted-fg">Format</div>
           <div class="font-mono">{{ activity.sourceFormat?.toUpperCase() ?? '—' }}</div>
           <div />
