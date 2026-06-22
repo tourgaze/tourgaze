@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
-import { getActivities, getSettings, saveSetting, getTrack, getChartTrack, getTileProviders, getActivityMedia, activityMediaUrl, deleteActivityMedia, discoverPhotos, makePhotoPersonal, isVideoFile, getMarkersForActivity, deleteMarker, updateMarker, getSections, getActivityHighlights, getGear, type ActivitySummary, type RideMedia, type Marker } from '@/api/client'
+import { getActivities, getSettings, saveSetting, getTrack, getChartTrack, getTileProviders, getActivityMedia, activityMediaUrl, deleteActivityMedia, discoverPhotos, makePhotoPersonal, isVideoFile, getAllMarkers, deleteMarker, getSections, getActivityHighlights, getGear, type ActivitySummary, type RideMedia, type Marker } from '@/api/client'
 import { markerCategory, markerIconSvg } from '@/markerCategories'
 import MapRenderer from '@/components/MapRenderer.vue'
 import ElevationChart from '@/components/ElevationChart.vue'
@@ -32,9 +32,8 @@ const activityId = computed(() => props.activityId)
 
 // Markers list (filterable table; click → jump on map, delete inline).
 const { data: markers } = useQuery({
-  queryKey: computed(() => ['markers', activityId.value]),
-  queryFn: () => getMarkersForActivity(activityId.value!),
-  enabled: computed(() => activityId.value != null),
+  queryKey: ['markers'],
+  queryFn: getAllMarkers,
   staleTime: 5 * 60 * 1000,
 })
 // Curated sections (read-only, from the global section.json.gz) → the elevation
@@ -50,8 +49,8 @@ const { data: highlights } = useQuery({
 })
 
 const markerFilter = ref('')
-const markerSort = ref<{ key: 'label' | 'category' | 'global'; dir: 'asc' | 'desc' }>({ key: 'label', dir: 'asc' })
-function setSort(key: 'label' | 'category' | 'global') {
+const markerSort = ref<{ key: 'label' | 'category'; dir: 'asc' | 'desc' }>({ key: 'label', dir: 'asc' })
+function setSort(key: 'label' | 'category') {
   if (markerSort.value.key === key) markerSort.value.dir = markerSort.value.dir === 'asc' ? 'desc' : 'asc'
   else markerSort.value = { key, dir: 'asc' }
 }
@@ -69,8 +68,7 @@ const sortedMarkers = computed(() => {
   const sign = dir === 'asc' ? 1 : -1
   return [...filteredMarkers.value].sort((a, b) => {
     let av: string | number, bv: string | number
-    if (key === 'global') { av = a.activityId ? 0 : 1; bv = b.activityId ? 0 : 1 }
-    else if (key === 'category') { av = markerCategory(a.category).label; bv = markerCategory(b.category).label }
+    if (key === 'category') { av = markerCategory(a.category).label; bv = markerCategory(b.category).label }
     else { av = (a.label || markerCategory(a.category).label).toLowerCase(); bv = (b.label || markerCategory(b.category).label).toLowerCase() }
     return av < bv ? -sign : av > bv ? sign : 0
   })
@@ -82,17 +80,10 @@ function editMarker(m: Marker) {
   mapRef.value?.flyToCoords?.(m.lon, m.lat)
   mapRef.value?.openMarkerEditor?.(m)
 }
-async function toggleMarkerGlobal(m: Marker) {
-  try {
-    // Global = not tied to a ride (activityId null); local = this ride.
-    await updateMarker(m.id, { activityId: m.activityId ? null : activityId.value })
-    await qc.invalidateQueries({ queryKey: ['markers', activityId.value] })
-  } catch { push.error('Could not update marker') }
-}
 async function removeMarker(id: string) {
   try {
     await deleteMarker(id)
-    await qc.invalidateQueries({ queryKey: ['markers', activityId.value] })
+    await qc.invalidateQueries({ queryKey: ['markers'] })
   } catch { push.error('Could not delete marker') }
 }
 const markerCat = markerCategory
@@ -1026,7 +1017,6 @@ const activeColorLabel = computed(() =>
               <tr class="text-[10px] uppercase tracking-wide text-muted-fg border-b border-border">
                 <th class="py-1 pr-2 text-left font-semibold cursor-pointer select-none" @click="setSort('label')">Name<span v-if="markerSort.key === 'label'">{{ markerSort.dir === 'asc' ? ' ▲' : ' ▼' }}</span></th>
                 <th class="py-1 pr-2 text-left font-semibold cursor-pointer select-none w-20" @click="setSort('category')">Type<span v-if="markerSort.key === 'category'">{{ markerSort.dir === 'asc' ? ' ▲' : ' ▼' }}</span></th>
-                <th class="py-1 pr-2 text-center font-semibold cursor-pointer select-none w-14" @click="setSort('global')" title="Global = shown on every ride">Global<span v-if="markerSort.key === 'global'">{{ markerSort.dir === 'asc' ? ' ▲' : ' ▼' }}</span></th>
                 <th class="py-1 w-14"></th>
               </tr>
             </thead>
@@ -1045,10 +1035,6 @@ const activeColorLabel = computed(() =>
                   </div>
                 </td>
                 <td class="py-1.5 pr-2 text-muted-fg">{{ markerCat(m.category).label }}</td>
-                <td class="py-1.5 pr-2 text-center">
-                  <input type="checkbox" class="accent-primary cursor-pointer" :checked="!m.activityId"
-                    title="Global — shown on every ride" @click.stop @change="toggleMarkerGlobal(m)" />
-                </td>
                 <td class="py-1.5 text-right whitespace-nowrap">
                   <button class="btn-icon btn-icon-primary" title="Edit marker" @click.stop="editMarker(m)">
                     <Pencil :size="13" />

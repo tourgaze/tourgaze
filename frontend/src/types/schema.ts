@@ -644,38 +644,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/markers/general": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["general"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/markers/activity/{activityId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: operations["forActivity"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/inbox/{filename}/track": {
         parameters: {
             query?: never;
@@ -1045,8 +1013,6 @@ export interface components {
         };
         MarkerDto: {
             id?: string;
-            /** @description Ride this marker belongs to, or null for a general (always-shown) marker. */
-            activityId?: string;
             /** Format: double */
             lat?: number;
             /** Format: double */
@@ -2863,48 +2829,6 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["SettingDto"][];
-                };
-            };
-        };
-    };
-    general: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["MarkerDto"][];
-                };
-            };
-        };
-    };
-    forActivity: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                activityId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "*/*": components["schemas"]["MarkerDto"][];
                 };
             };
         };

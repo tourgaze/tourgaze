@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getTrack, getActivityMedia, activityMediaUrl, isVideoFile,
-  getMarkersForActivity, createMarker, updateMarker, deleteMarker, type Marker, type Highlight } from '@/api/client'
+  getAllMarkers, createMarker, updateMarker, deleteMarker, type Marker, type Highlight } from '@/api/client'
 import { MARKER_CATEGORIES, markerCategory, markerIconSvg } from '@/markerCategories'
 import { gearIconSvg } from '@/gearIcons'
 import { onKeyStroke } from '@vueuse/core'
@@ -280,8 +280,8 @@ function renderPhotoMarkers() {
 // ── User-placed markers (POIs) ──────────────────────────────────────────────
 const qc = useQueryClient()
 const { data: markers } = useQuery({
-  queryKey: computed(() => ['markers', props.activityId]),
-  queryFn: () => getMarkersForActivity(props.activityId),
+  queryKey: ['markers'],
+  queryFn: getAllMarkers,
   staleTime: 5 * 60 * 1000,
 })
 let markerEls: maplibregl.Marker[] = []
@@ -302,11 +302,9 @@ function renderMarkers() {
   for (const mk of markers.value ?? []) {
     const cat = markerCategory(mk.category)
     const el = document.createElement('div')
-    // General markers (no ride) get a distinct dashed ring so they read as
-    // "shown on every ride", vs this ride's own solid-bordered pins.
-    el.className = mk.activityId ? 'map-marker-pin' : 'map-marker-pin map-marker-pin--general'
+    el.className = 'map-marker-pin'
     el.style.background = cat.color
-    el.title = (mk.activityId ? '' : 'General · ') + (mk.label || cat.label)
+    el.title = mk.label || cat.label
     el.innerHTML = markerIconSvg(cat)
     el.addEventListener('click', (e) => {
       e.stopPropagation()
@@ -324,7 +322,6 @@ function renderMarkers() {
 function placeMarkerAt(lngLat: maplibregl.LngLat) {
   editingMarker.value = {
     id: '',
-    activityId: props.activityId ?? null,
     lat: lngLat.lat, lon: lngLat.lng,
     label: '', description: '', category: 'star',
   } as Marker
@@ -358,24 +355,18 @@ async function saveEditingMarker() {
     if (m.id) {
       await updateMarker(m.id, {
         label: m.label, description: m.description, category: m.category,
-        activityId: m.activityId,   // null = general (every map), ride id = this ride only
       })
     } else {
       // Draft → first persistence happens here, on Save.
       await createMarker({
-        activityId: m.activityId, lat: m.lat, lon: m.lon,
+        lat: m.lat, lon: m.lon,
         label: m.label, description: m.description, category: m.category,
       })
     }
-    await qc.invalidateQueries({ queryKey: ['markers', props.activityId] })
+    await qc.invalidateQueries({ queryKey: ['markers'] })
   } finally {
     editingMarker.value = null
   }
-}
-// Flip a marker between "this ride only" and "general / all rides".
-function toggleMarkerScope() {
-  if (!editingMarker.value) return
-  editingMarker.value.activityId = editingMarker.value.activityId ? null : props.activityId
 }
 async function deleteEditingMarker() {
   const m = editingMarker.value
@@ -384,7 +375,7 @@ async function deleteEditingMarker() {
   if (!m.id) { editingMarker.value = null; return }
   try {
     await deleteMarker(m.id)
-    await qc.invalidateQueries({ queryKey: ['markers', props.activityId] })
+    await qc.invalidateQueries({ queryKey: ['markers'] })
   } finally {
     editingMarker.value = null
   }
@@ -1606,9 +1597,7 @@ function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
       class="absolute top-3 left-1/2 -translate-x-1/2 z-[1600] w-72 max-w-[92%]
              bg-background/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl p-3 space-y-2.5">
       <div class="flex items-center justify-between">
-        <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">
-          {{ editingMarker.activityId ? 'Marker · on this ride' : 'Marker · general' }}
-        </span>
+        <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Marker</span>
         <button class="btn-icon" title="Close" @click="editingMarker = null">✕</button>
       </div>
       <input v-model="editingMarker.label" type="text" placeholder="Label (e.g. Nice restaurant)"
@@ -1625,11 +1614,6 @@ function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
       <textarea v-model="editingMarker.description" rows="3" placeholder="Description…"
         class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground
                resize-none focus:outline-none focus:border-primary"></textarea>
-      <label class="flex items-center gap-2 text-[11px] text-muted-fg cursor-pointer select-none"
-        title="General markers (e.g. Home) show on every ride's map, not just this one">
-        <input type="checkbox" class="accent-primary" :checked="!editingMarker.activityId" @change="toggleMarkerScope" />
-        <span>General — show on all rides (e.g. Home)</span>
-      </label>
       <div class="flex items-center justify-between pt-0.5">
         <button class="px-2 py-1 text-[11px] font-medium rounded border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
           @click="deleteEditingMarker">{{ editingMarker.id ? 'Delete' : 'Discard' }}</button>

@@ -5,8 +5,6 @@
  */
 package io.github.tourgaze.repository;
 
-import java.util.List;
-
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -14,10 +12,4 @@ import io.github.tourgaze.entity.Marker;
 
 @Repository
 public interface MarkerRepository extends JpaRepository<Marker, String> {
-
-	/** Markers tied to one ride. */
-	List<Marker> findByActivityId(String activityId);
-
-	/** General markers (not tied to any ride) — shown on every map. */
-	List<Marker> findByActivityIdIsNull();
 }

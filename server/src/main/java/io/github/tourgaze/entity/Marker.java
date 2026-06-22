@@ -12,25 +12,20 @@ import jakarta.persistence.*;
 import io.github.tourgaze.util.ShortId;
 
 /**
- * A user-placed point of interest. Has its own geo position and an optional
- * association to a ride: {@code activityId == null} means a "general" marker
- * (e.g. Everest) shown on every map; a non-null id ties it to one ride (e.g. a
- * nice restaurant on that route). Carries an editable label/description and a
- * category that drives its map icon.
+ * A user-placed, GLOBAL point of interest — a place that exists independent of
+ * any ride (a café, a trailhead, a summit), shown on every map. On-ride
+ * annotations ("a shower hit here", "drink break") are not markers — they're
+ * {@link io.github.tourgaze.dto.RideEventDto ride events} carried in the
+ * activity's attributes. Carries a geo position, an editable label/description
+ * and a category that drives its map icon.
  */
 @Entity
-@Table(name = "marker", indexes = {
-		@Index(name = "idx_marker_activity", columnList = "activity_id"),
-})
+@Table(name = "marker")
 public class Marker extends BaseEntity {
 
 	@Id
 	@Column(length = 26)
 	private String id;
-
-	/** Ride this marker belongs to, or null for a general (always-shown) marker. */
-	@Column(name = "activity_id", length = 26)
-	private String activityId;
 
 	@Column(nullable = false)
 	private double lat;
@@ -69,14 +64,6 @@ public class Marker extends BaseEntity {
 
 	public void setId(String id) {
 		this.id = id;
-	}
-
-	public String getActivityId() {
-		return activityId;
-	}
-
-	public void setActivityId(String activityId) {
-		this.activityId = activityId;
 	}
 
 	public double getLat() {

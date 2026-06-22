@@ -261,11 +261,11 @@ export async function makePhotoPersonal(id: string, name: string): Promise<RideM
   return r.json()
 }
 
-// ── Map markers (user-placed points of interest) ────────────────────────────
+// ── Map markers (user-placed GLOBAL points of interest) ─────────────────────
+// A marker is a place, shown on every map. On-ride annotations are ride events
+// on the activity (attributes.events), not markers.
 export type Marker = {
   id: string
-  /** Ride this marker belongs to, or null for a general (always-shown) marker. */
-  activityId: string | null
   lat: number
   lon: number
   label: string
@@ -274,7 +274,6 @@ export type Marker = {
   createdAt?: string
 }
 export type MarkerCreate = {
-  activityId?: string | null
   lat: number
   lon: number
   label?: string
@@ -307,13 +306,6 @@ export async function getSections(): Promise<Section[]> {
     return []
   }
 }
-/** A ride's own markers + all general markers. */
-export async function getMarkersForActivity(activityId: string): Promise<Marker[]> {
-  const r = await fetch(`/api/markers/activity/${activityId}`)
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
-  return r.json()
-}
-
 // ── Auto-detected ride highlights (OSM peaks/passes) ────────────────────────
 /** A mountain pass crossed or a named peak near the ride; name is localized. */
 export type Highlight = {
@@ -352,13 +344,7 @@ export async function getVersion(): Promise<VersionInfo> {
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   return r.json()
 }
-/** General markers only (not tied to any ride). */
-export async function getGeneralMarkers(): Promise<Marker[]> {
-  const r = await fetch('/api/markers/general')
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
-  return r.json()
-}
-/** Every marker (for the global overview/management view). */
+/** Every marker (global places, shown on every map). */
 export async function getAllMarkers(): Promise<Marker[]> {
   const r = await fetch('/api/markers')
   if (!r.ok) throw new Error(`HTTP ${r.status}`)

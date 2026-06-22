@@ -23,7 +23,7 @@ create table app_user (date_of_birth date, height_cm integer, max_hr integer, re
 create table filter_preset (created_at timestamp(6) with time zone not null, group_tag_id varchar(26), id varchar(26) not null, group_by varchar(40), name varchar(120) not null, query varchar(500), version bigint, updated_at timestamp(6) with time zone, primary key (id));
 create table gear (assisted boolean not null, created_at timestamp(6) with time zone not null, retired_at timestamp(6) with time zone, id varchar(26) not null, user_id varchar(26), description varchar(255), name varchar(255) not null, type varchar(255), icon varchar(32), version bigint, updated_at timestamp(6) with time zone, primary key (id));
 create table map_provider (is_dark boolean not null, max_zoom integer, created_at timestamp(6) with time zone not null, type varchar(20) not null, id varchar(26) not null, style_url varchar(1000), url_template varchar(1000), attribution varchar(2000), description varchar(255), name varchar(255) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id));
-create table marker (lat float(53) not null, lon float(53) not null, created_at timestamp(6) with time zone not null, activity_id varchar(26), id varchar(26) not null, category varchar(64) not null, description clob, label varchar(255) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id));
+create table marker (lat float(53) not null, lon float(53) not null, created_at timestamp(6) with time zone not null, id varchar(26) not null, category varchar(64) not null, description clob, label varchar(255) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id));
 create table setting (setting_key varchar(255) not null, setting_value varchar(4000), primary key (setting_key));
 create table tag (created_at timestamp(6) with time zone not null, color varchar(20), id varchar(26) not null, parent_id varchar(26), icon varchar(60), name varchar(120) not null, version bigint, updated_at timestamp(6) with time zone, primary key (id), constraint UQ_TAG_PARENT_NAME unique (parent_id, name));
 create index idx_activity_start on activity (start_time desc);
@@ -33,7 +33,6 @@ create index idx_activity_gear on activity (gear_id);
 create index idx_activity_tag_activity on activity_tag (activity_id);
 create index idx_activity_tag_tag on activity_tag (tag_id);
 create index idx_gear_user on gear (user_id);
-create index idx_marker_activity on marker (activity_id);
 create index idx_tag_parent on tag (parent_id);
 -- Readable, stable constraint names (matros convention) — Hibernate validate
 -- ignores FK names, so naming them is free and far easier to reason about than
@@ -49,7 +48,6 @@ alter table if exists tag add constraint FK_TAG_PARENT foreign key (parent_id) r
 -- Soft references in the entities (plain String columns, not @ManyToOne) get a
 -- real FK here so the DB enforces them: marker→ride (drop ride markers with the
 -- ride), preset→group tag (clear the grouping when that tag is deleted).
-alter table if exists marker add constraint FK_MARKER_ACTIVITY foreign key (activity_id) references activity on delete cascade;
 alter table if exists filter_preset add constraint FK_FILTER_PRESET_GROUP_TAG foreign key (group_tag_id) references tag on delete set null;
 
 -- Cached OSM peaks/passes for auto-detected ride highlights, plus the geohash
