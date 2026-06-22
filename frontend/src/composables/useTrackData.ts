@@ -29,36 +29,54 @@ const BREAK_SPEED_THRESHOLD_MS = 0.6   // ≈ 2 km/h — distinguishes stops fro
 // 300 points ≈ 5 min wall clock; sparser sample rates would over-count but
 // that's a rounding error we accept.
 const MIN_BREAK_POINTS = 300
+// A real stop (coffee, summit, regroup) is rarely dead-still on the GPS: the
+// rider shuffles, the bike is repositioned, the unit jitters — so the speed
+// trace flickers above the threshold for a sample or two every so often. Without
+// debounce each flicker splits one long pause into many short runs, none of
+// which reaches MIN_BREAK_POINTS, and the break is never detected (the km 35-36
+// "stopped for 12 min but never skipped" bug). So the break only ENDS once the
+// rider has been moving for this many CONSECUTIVE points — a sustained
+// resumption, not a blip. ~12 s at 1 Hz FIT.
+const RESUME_HOLD_POINTS = 12
 
 export function detectBreaks(points: TrackPoint[]): BreakSpan[] {
   const breaks: BreakSpan[] = []
   if (!points.length) return breaks
-  let inBreak = false
-  let breakStart = 0
-  for (let i = 0; i < points.length; i++) {
+
+  const isSlow = (i: number): boolean => {
     const speedAvailable = points[i].speedMs != null
-    const slow = speedAvailable
+    return speedAvailable
       ? (points[i].speedMs as number) < BREAK_SPEED_THRESHOLD_MS
       // Fallback when the FIT didn't record speed (older devices): use
       // sub-metre haversine to the previous point as a proxy.
       : i > 0 && distanceM(points[i - 1].lat, points[i - 1].lon, points[i].lat, points[i].lon) < 1.0
-    if (slow && !inBreak) { inBreak = true; breakStart = i }
-    if (!slow && inBreak) {
-      const span = i - breakStart
-      if (span >= MIN_BREAK_POINTS) {
-        breaks.push({ fromIdx: breakStart, toIdx: i, points: span })
-      }
-      inBreak = false
+  }
+
+  let inBreak = false
+  let breakStart = 0
+  let movingRun = 0   // consecutive moving points while inside a break
+  const close = (endIdx: number) => {
+    const span = endIdx - breakStart
+    if (span >= MIN_BREAK_POINTS) breaks.push({ fromIdx: breakStart, toIdx: endIdx, points: span })
+    inBreak = false
+    movingRun = 0
+  }
+
+  for (let i = 0; i < points.length; i++) {
+    const slow = isSlow(i)
+    if (!inBreak) {
+      if (slow) { inBreak = true; breakStart = i; movingRun = 0 }
+      continue
     }
+    // Inside a break: a single slow sample resets the resume counter, so brief
+    // movement blips are absorbed. Only a sustained moving run ends the break —
+    // and it ends at the FIRST point of that run (where the rider really left).
+    if (slow) { movingRun = 0 }
+    else if (++movingRun >= RESUME_HOLD_POINTS) { close(i - movingRun + 1) }
   }
   // A break that runs to the very end of the recording is usually the rider
   // forgetting to stop the recording in the parking lot — surface it too.
-  if (inBreak) {
-    const span = points.length - breakStart
-    if (span >= MIN_BREAK_POINTS) {
-      breaks.push({ fromIdx: breakStart, toIdx: points.length - 1, points: span })
-    }
-  }
+  if (inBreak) close(points.length - 1)
   return breaks
 }
 

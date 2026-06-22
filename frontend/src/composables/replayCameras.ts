@@ -26,6 +26,7 @@ import {
   type ReplayStrategy, type ReplayStrategyConfig,
   type SmoothedBearings, type HeliShot,
 } from '@/composables/replayStrategies'
+import { Momentum, DEFAULT_TUNING, type MotionTuning } from '@/composables/replayPhysics'
 
 // ── Public types ───────────────────────────────────────────────────────────
 
@@ -98,6 +99,8 @@ export function lerpAngleDeg(from: number, to: number, alpha: number): number {
   const delta = normalizeDeg(to - from)
   return normalizeDeg(from + delta * alpha)
 }
+/** Shortest signed angular gap `to - from`, in (-180, 180]. Exported for the sim. */
+export { normalizeDeg }
 
 // ── Per-frame follow (chase, drone, hollywood, follow, topdown) ────────────
 
@@ -126,10 +129,6 @@ const HOLD_RELEASE_M = 150
  */
 const DEADZONE_VIEWPORT_FRAC = 0.08
 const DEADZONE_MIN_M = 10
-// Per-frame easing of the camera centre toward its target — inertia, so the map
-// glides rather than teleporting (a drone can't move instantly). Lower = heavier.
-const CENTER_EASE = 0.16
-
 
 export class PerFrameFollowCamera implements ReplayCamera {
   private lastHoldAnchor = -1
@@ -140,8 +139,23 @@ export class PerFrameFollowCamera implements ReplayCamera {
   private holdReleased = false
   // Last committed camera centre, for the deadzone follow below.
   private lastCenter: [number, number] | null = null
+  // Momentum smoothers — one per centre axis + one for the bearing — so the pan
+  // and the rotation both carry speed (accelerate in, coast, settle) instead of
+  // snapping to each tick's eased target. Built from the injected tuning so the
+  // simulator/optimizer can vary the feel; defaults reproduce the shipped feel.
+  private readonly mx: Momentum
+  private readonly my: Momentum
+  private readonly mBearing: Momentum
 
-  constructor(public readonly id: ReplayStrategy, public readonly config: ReplayStrategyConfig) {}
+  constructor(
+    public readonly id: ReplayStrategy,
+    public readonly config: ReplayStrategyConfig,
+    tuning: MotionTuning = DEFAULT_TUNING,
+  ) {
+    this.mx = new Momentum(tuning.centerEase, tuning.centerAccel)
+    this.my = new Momentum(tuning.centerEase, tuning.centerAccel)
+    this.mBearing = new Momentum(tuning.bearingEase, tuning.bearingAccel)
+  }
 
   onActivate(ctx: StepContext): CameraStep | null {
     // One-shot ease into the strategy's pose so play-start doesn't snap.
@@ -154,7 +168,10 @@ export class PerFrameFollowCamera implements ReplayCamera {
       pt.lat * (1 - this.config.centerBias) + aheadPt.lat * this.config.centerBias,
     ]
     const pitch = ctx.is3D ? this.config.pitch : this.config.pitchFlat
-    const zoom = Math.max(ctx.currentZoom, this.config.minZoom)
+    // Ease to THIS strategy's own zoom on (re)entry — including zooming OUT when
+    // switching from a tighter strategy (e.g. drone 15.5 → a wider one). Using
+    // Math.max here would pin the old, closer zoom and the map would never widen.
+    const zoom = this.config.minZoom
     const offsetY = Math.round(ctx.viewportPxH * this.config.offsetY)
     // ALWAYS set bearing explicitly. MapLibre's easeTo treats an undefined
     // bearing as "interpolate from current to current" — and combined with
@@ -165,6 +182,7 @@ export class PerFrameFollowCamera implements ReplayCamera {
     // new lngLat. Explicit bearing avoids the entire undefined codepath.
     const bearing = ctx.is3D ? ctx.currentBearing : 0
     this.lastCenter = center   // seed the deadzone from the eased-in pose
+    this.mx.reset(); this.my.reset(); this.mBearing.reset()   // start at rest
     return {
       kind: 'ease',
       center, zoom, pitch, bearing,
@@ -173,7 +191,10 @@ export class PerFrameFollowCamera implements ReplayCamera {
     }
   }
 
-  onDeactivate(): void { this.lastHoldAnchor = -1; this.holdReleased = false; this.lastCenter = null }
+  onDeactivate(): void {
+    this.lastHoldAnchor = -1; this.holdReleased = false; this.lastCenter = null
+    this.mx.reset(); this.my.reset(); this.mBearing.reset()
+  }
 
   step(ctx: StepContext): CameraStep | null {
     const pt = ctx.points[ctx.idx]
@@ -227,12 +248,10 @@ export class PerFrameFollowCamera implements ReplayCamera {
     const deadzoneM = deadzoneFrac <= 0 ? 0
       : Math.max(DEADZONE_MIN_M, deadzoneFrac * Math.min(ctx.viewportPxW, ctx.viewportPxH) * mpp)
     let target = desired
-    let held = false
     if (this.lastCenter) {
       const d = distanceM(this.lastCenter[1], this.lastCenter[0], desired[1], desired[0])
       if (d < deadzoneM) {
         target = this.lastCenter
-        held = true
       } else {
         const f = (d - deadzoneM) / d   // pull only to the zone edge
         target = [
@@ -241,29 +260,32 @@ export class PerFrameFollowCamera implements ReplayCamera {
         ]
       }
     }
-    // Inertia: glide the committed centre toward the target instead of snapping to
-    // it — a real drone can't teleport. Critically-damped-ish exponential ease.
+    // Momentum glide toward the target: the centre carries speed, so it
+    // accelerates into a move and eases out of it — a drone with mass, not a
+    // constant-rate slide or a teleport. (See {@link Momentum}.)
     const center: [number, number] = this.lastCenter
       ? [
-          this.lastCenter[0] + (target[0] - this.lastCenter[0]) * CENTER_EASE,
-          this.lastCenter[1] + (target[1] - this.lastCenter[1]) * CENTER_EASE,
+          this.mx.advance(this.lastCenter[0], target[0] - this.lastCenter[0]),
+          this.my.advance(this.lastCenter[1], target[1] - this.lastCenter[1]),
         ]
       : target
     this.lastCenter = center
 
-    // Smoothed-bearing strategies (drone/helicopter) rotate the map to the travel
-    // heading so the rider is always followed from the rear — in EVERY direction,
-    // on flat basemaps too (west/east/south → the map turns so travel is "up").
-    // EMA per-frame toward the pre-baked target keeps the rotation buttery. Fixed
-    // strategies (follow/top-down) stay north-up. While held (rider inside the
-    // deadzone) the bearing is frozen so a roundabout doesn't spin the map.
+    // Bearing: the drone steers by the GENERAL travel direction — the heading to
+    // a point ~1 km down the track (see SmoothedBearings.general), NOT the tight
+    // per-curve heading. The long baseline is the whole trick: sub-kilometre
+    // wiggles, roundabouts and switchbacks barely move it, so the map holds a
+    // steady orientation through them (minimal, low-stress rotation); only a
+    // sustained change in overall direction swings it. We then momentum-ease the
+    // shown bearing toward that general heading, so it settles into long
+    // direction changes (rider followed from the rear on each leg) and banks
+    // smoothly in/out rather than snapping. This also keeps the old "south just
+    // pans, never turns" bug dead — every direction is steered the same way.
     let bearing = ctx.currentBearing
-    if (held) {
-      bearing = ctx.currentBearing
-    } else if (this.config.bearingMode === 'smoothed') {
-      const arr = ctx.bearings?.byStrategy[this.config.id]
-      const target = arr ? arr[Math.min(aheadIdx, arr.length - 1)] : 0
-      bearing = lerpAngleDeg(bearing, target, 0.18)
+    if (this.config.bearingMode === 'smoothed') {
+      const gen = ctx.bearings?.general
+      const general = gen && gen.length ? gen[Math.min(ctx.idx, gen.length - 1)] : ctx.currentBearing
+      bearing = normalizeDeg(this.mBearing.advance(bearing, normalizeDeg(general - bearing)))
     } else {
       bearing = 0   // fixed-bearing strategies stay north-up
     }
@@ -347,7 +369,7 @@ export class HelicopterSceneCamera implements ReplayCamera {
  * Single point of registration — adding a new strategy means adding one
  * branch here. Returns the camera instance the dispatcher will drive.
  */
-export function createCamera(id: ReplayStrategy): ReplayCamera {
+export function createCamera(id: ReplayStrategy, tuning: MotionTuning = DEFAULT_TUNING): ReplayCamera {
   const config = REPLAY_STRATEGY_MAP[id]
   switch (id) {
     case 'helicopter':
@@ -356,6 +378,6 @@ export function createCamera(id: ReplayStrategy): ReplayCamera {
     case 'follow':
     case 'topdown':
     default:
-      return new PerFrameFollowCamera(id, config)
+      return new PerFrameFollowCamera(id, config, tuning)
   }
 }

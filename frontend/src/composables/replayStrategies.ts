@@ -74,7 +74,11 @@ export const REPLAY_STRATEGIES: ReplayStrategyConfig[] = [
     centerBias: 0.5,      // look-at well ahead → down the trench
     offsetY: 0.16,        // rider lower → road ahead fills the frame
     duration: 320,
-    deadzoneFrac: 0.1,    // gentle give → smooth, no flicker
+    // No position deadzone: a box made the camera hold then lurch to the edge
+    // ("move 50 m, stop, repeat", with a pixel of recoil). Continuous follow +
+    // heavy momentum (below) gives a smooth inertial glide instead. Dead-ends
+    // are still parked by holdHint, roundabouts by the 1 km bearing baseline.
+    deadzoneFrac: 0,
   },
   {
     id: 'helicopter',
@@ -149,6 +153,16 @@ export type SmoothedBearings = {
    * street rather than chase the wiggle.
    */
   holdHint: Uint8Array
+  /**
+   * "General direction" heading (degrees) — the bearing from each point to one
+   * ~{@link GENERAL_HEADING_M} down the track, lightly smoothed. Unlike
+   * {@link byStrategy} (a tight ~30 m heading that tracks every curve) this is
+   * deliberately coarse: it only swings when the route's overall direction
+   * changes over a long distance. The drone steers by this (with hysteresis) so
+   * the map holds a steady orientation through wiggles and only re-orients on a
+   * sustained heading change — minimising stressful map rotation.
+   */
+  general: Float32Array
 }
 
 /**
@@ -332,8 +346,25 @@ export function findHeliShotIdx(shots: HeliShot[], idx: number): number {
   return Math.max(0, Math.min(shots.length - 1, lo))
 }
 
-const HOLD_LOOKAHEAD_POINTS = 30   // ~30s at 1 Hz FIT sample rate
-const HOLD_RETURN_RADIUS_M = 120
+// Dead-end / out-and-back detection. The camera should FLOW continuously while
+// the rider is making progress and only park for a true out-and-back (ride into
+// a cul-de-sac, turn around, come back). The old "is the rider still within R
+// over the next N points" test also fired on any slow/dense stretch (climbs,
+// switchbacks, technical bits) and stopped the map mid-ride — the opposite of
+// what we want. So a hold now requires the path to genuinely go OUT and return:
+// it must reach at least HOLD_EXCURSION_M away and then come back within
+// HOLD_RETURN_RADIUS_M of the start, inside the lookahead window. A steady climb
+// never returns close after leaving, so it keeps flowing.
+const HOLD_LOOKAHEAD_POINTS = 40
+const HOLD_RETURN_RADIUS_M = 30
+const HOLD_EXCURSION_M = 60
+// Baseline for the "general direction" heading: the bearing is taken to a point
+// this far down the track, so sub-kilometre wiggles average out and only a
+// sustained change in overall direction moves it. ~1 km per the UX brief
+// (minimise map rotation; only turn on a real, lasting direction shift).
+const GENERAL_HEADING_M = 1000
+// Light EMA on top of the long baseline, just to take the last edges off.
+const GENERAL_HEADING_ALPHA = 0.05
 
 
 /**
@@ -349,6 +380,7 @@ export function precomputeSmoothedBearings(points: TrackPoint[]): SmoothedBearin
       raw,
       byStrategy: Object.fromEntries(REPLAY_STRATEGIES.map(s => [s.id, new Float32Array(0)])) as Record<ReplayStrategy, Float32Array>,
       holdHint: new Uint8Array(0),
+      general: new Float32Array(0),
     }
   }
   // Heading from a point ~LOOKAHEAD_M AHEAD, not the next sample. Consecutive GPS
@@ -384,14 +416,35 @@ export function precomputeSmoothedBearings(points: TrackPoint[]): SmoothedBearin
   const holdHint = new Uint8Array(N)
   for (let i = 0; i < N; i++) {
     const lastJ = Math.min(N - 1, i + HOLD_LOOKAHEAD_POINTS)
-    let returns = false
-    for (let j = i + 5; j <= lastJ; j++) {
-      if (distanceM(points[i].lat, points[i].lon, points[j].lat, points[j].lon) < HOLD_RETURN_RADIUS_M) {
-        returns = true; break
-      }
+    let maxOut = 0
+    let outAndBack = false
+    for (let j = i + 3; j <= lastJ; j++) {
+      const d = distanceM(points[i].lat, points[i].lon, points[j].lat, points[j].lon)
+      if (d > maxOut) maxOut = d
+      // Went meaningfully far out, then returned close to where it started.
+      if (maxOut >= HOLD_EXCURSION_M && d < HOLD_RETURN_RADIUS_M) { outAndBack = true; break }
     }
-    holdHint[i] = returns ? 1 : 0
+    holdHint[i] = outAndBack ? 1 : 0
   }
 
-  return { raw, byStrategy, holdHint }
+  // "General direction": heading to a point ~GENERAL_HEADING_M down the track.
+  // Long baseline → sub-km wiggles cancel and only the route's overall heading
+  // shows through. Near the end the baseline shrinks (no point a full km ahead);
+  // that tail is noisier but the drone's hysteresis deadband absorbs it.
+  const generalRaw = new Float32Array(N)
+  for (let i = 0; i < N; i++) {
+    let j = i + 1
+    while (j < N - 1 && distanceM(points[i].lat, points[i].lon, points[j].lat, points[j].lon) < GENERAL_HEADING_M)
+      j++
+    const a = points[i]
+    const b = points[Math.min(j, N - 1)]
+    const dLon = b.lon - a.lon
+    const dLat = b.lat - a.lat
+    generalRaw[i] = (Math.abs(dLon) + Math.abs(dLat) > 1e-9)
+      ? Math.atan2(dLon, dLat) * 180 / Math.PI
+      : (i > 0 ? generalRaw[i - 1] : 0)
+  }
+  const general = emaCircularBearings(Array.from(generalRaw), GENERAL_HEADING_ALPHA)
+
+  return { raw, byStrategy, holdHint, general }
 }

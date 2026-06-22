@@ -32,6 +32,7 @@ const props = defineProps<{
   isPlaying?: boolean
   replayStrategy?: ReplayStrategy
   hoverCoords?: [number, number] | null
+  playFrac?: number | null
   isFollowing?: boolean
   showHillshade?: boolean
   showPhotos?: boolean
@@ -95,6 +96,7 @@ defineExpose({
     :is-playing="isPlaying"
     :replay-strategy="replayStrategy"
     :hover-coords="hoverCoords"
+    :play-frac="playFrac"
     :active-provider="activeProvider"
     :is-following="isFollowing"
     :show-hillshade="showHillshade"

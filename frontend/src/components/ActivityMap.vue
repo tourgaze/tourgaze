@@ -13,10 +13,11 @@ import {
   precomputeSmoothedBearings,
   type ReplayStrategy, type SmoothedBearings,
 } from '@/composables/replayStrategies'
+import { lerpAngleDeg } from '@/composables/replayCameras'
 import {
-  createCamera, lerpAngleDeg,
-  type ReplayCamera, type CameraStep, type StepContext, type TrackContext,
-} from '@/composables/replayCameras'
+  simulateReplayPath, samplePath,
+  type ReplayPose,
+} from '@/composables/replaySimulator'
 import type { TileProvider } from '@/api/client'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -36,6 +37,13 @@ const props = defineProps<{
    * to point. ActivityViewer fills this in via rAF + linear interp.
    */
   hoverCoords?: [number, number] | null
+  /**
+   * Exact fractional track index of the playhead (ActivityViewer's playback
+   * clock). Drives the replay camera: sampling the precomputed path at this
+   * fractional index lets the camera glide continuously between points rather
+   * than stepping per integer index. Null when not playing.
+   */
+  playFrac?: number | null
   /**
    * Catalog entry for the current basemap. When set, lets us pick raster vs
    * vector style switching paths without hardcoding ids here. Falls back to
@@ -131,12 +139,11 @@ let savedView: { center: [number, number]; zoom: number; bearing: number; pitch:
 // changes; per-point reads in followPoint are O(1).
 let bearingData: SmoothedBearings | null = null
 
-// Active replay camera. One instance per strategy, swapped via the strategy
-// watcher below. The camera class owns its own per-track state (helicopter
-// shots, dead-end anchors) — ActivityMap is just the dispatcher that calls
-// camera.step() each frame and translates the returned CameraStep into
-// MapLibre calls. See {@link createCamera}.
-let camera: ReplayCamera | null = null
+// The whole replay camera path, precomputed once per (strategy, track, viewport,
+// 3D) and then merely SAMPLED during playback — no per-frame camera state. This
+// is the same headless model the simulator/tests assert on, so what plays is what
+// is tested. Rebuilt by {@link rebuildReplayPath}; sampled in {@link followPoint}.
+let replayPath: ReplayPose[] | null = null
 
 /**
  * Single gate for every map-mutating operation (setData, setPaintProperty,
@@ -655,12 +662,11 @@ function initMap(provider: string) {
     mapLoaded = true
     applyProvider(provider)
     addTrackOverlays()
-    // Seed the initial replay camera here — by now the MapLibre transform
-    // matrices exist and onTrackChange / step calls are safe. The strategy
-    // watcher (non-immediate) handles subsequent changes.
-    camera = createCamera(props.replayStrategy ?? 'helicopter')
-    pushTrackContextToCamera()
-    if (props.isPlaying) activateCameraForPlay()
+    // Seed the initial replay path here — by now the MapLibre transform
+    // matrices exist and project()/unproject() are safe. The strategy watcher
+    // (non-immediate) handles subsequent changes.
+    rebuildReplayPath()
+    if (props.isPlaying) nextTick(() => transitionToStrategy(props.hoverIndex ?? 0))
     renderPhotoMarkers()
     renderMarkers()
     renderHighlightMarkers()
@@ -914,92 +920,82 @@ function applyColorMode(mode: string) {
 // (Angle helpers moved to composables/replayCameras.ts — exported lerpAngleDeg
 //  is reused here for the hover/scrub mode below.)
 
-// ── The camera (dispatcher) ────────────────────────────────────────────────
+// ── The camera (precompute + sample) ───────────────────────────────────────
 //
-// Everything strategy-specific lives in `composables/replayCameras.ts`.
-// ActivityMap is the thin translation layer: it builds a StepContext from
-// MapLibre + props, calls camera.step(ctx), then applies the returned
-// CameraStep via jumpTo / easeTo / no-op. To add a new replay strategy,
-// implement ReplayCamera and register it in createCamera — nothing in this
-// file needs to change.
+// Everything strategy-specific lives in the cameras/simulator composables. The
+// whole camera trajectory is computed up front by `simulateReplayPath` (the same
+// model the unit tests assert on), and ActivityMap is the thin layer that
+// rebuilds that path on change, samples it per tick during playback, and bakes
+// the screen offset into MapLibre. No per-frame camera state lives here.
 
-/** Build the StepContext for the active camera. Pure assembly, no logic. */
-function makeStepCtx(idx: number): StepContext | null {
-  if (!isMapReady() || !points.value?.length) return null
+/**
+ * Precompute the whole camera path for the active strategy. Cheap (a few trig
+ * ops per point) and idempotent — call it whenever an input changes (track,
+ * strategy, viewport, 3D). Sampling it in followPoint is then O(1) per tick.
+ */
+function rebuildReplayPath(): void {
+  if (!isMapReady() || !points.value?.length || !bearingData) { replayPath = null; return }
   const m = map!
-  return {
-    idx,
-    points: points.value,
+  replayPath = simulateReplayPath(props.replayStrategy ?? 'helicopter', points.value, {
     bearings: bearingData,
-    hoverCoords: props.hoverCoords ?? null,
-    is3D: (props.tileProvider ?? 'osm') === 'terrain',
     viewportPxW: m.getCanvas().clientWidth,
     viewportPxH: m.getCanvas().clientHeight,
-    currentBearing: m.getBearing(),
-    currentZoom: m.getZoom(),
-  }
-}
-
-/** Translate a CameraStep into MapLibre calls. The only place we touch the renderer. */
-function applyCameraStep(step: CameraStep | null): void {
-  if (!map || !step || step.kind === 'hold') return
-
-  if (step.kind === 'jump') {
-    // jumpTo has no offset param, so bake the pixel offset into the LngLat
-    // via project / shift / unproject. Self-consistent while pitch and zoom
-    // are held steady across consecutive frames (the common case).
-    let center: maplibregl.LngLatLike = step.center
-    if (step.offsetPx && step.offsetPx[1] !== 0) {
-      const cPx = map.project(center)
-      const ch = map.getCanvas().clientHeight
-      // Only bake the offset when `center` projects inside the viewport. Near
-      // the horizon (tight zoom + high pitch + far look-ahead) project() blows
-      // up, so unprojecting a shifted pixel yields a wildly distant centre that
-      // throws the rider thousands of px off-screen. In that degenerate case
-      // skip the offset — the rider stays centred and visible.
-      if (Number.isFinite(cPx.y) && cPx.y > 0 && cPx.y < ch) {
-        cPx.y -= step.offsetPx[1]
-        const u = map.unproject(cPx)
-        center = [u.lng, u.lat]
-      }
-    }
-    map.jumpTo({
-      center,
-      zoom: step.zoom,
-      pitch: step.pitch,
-      bearing: step.bearing,
-    })
-    return
-  }
-
-  // ease
-  map.easeTo({
-    center: step.center,
-    zoom: step.zoom,
-    pitch: step.pitch,
-    bearing: step.bearing,
-    offset: step.offsetPx ?? [0, 0],
-    duration: step.durationMs,
-    easing: (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+    is3D: (props.tileProvider ?? 'osm') === 'terrain',
   })
-  if (step.lockMs && step.lockMs > 0) {
-    cameraSettlingUntil = performance.now() + step.lockMs
-  }
 }
 
 /**
- * Lazy-create the camera if it's missing. The on('load') seed should always
- * run, but HMR / fast activity switches occasionally race past it — without
- * this fallback, followPoint's `if (!camera) return` silently swallows
- * every replay tick and the camera doesn't follow even though the marker
- * does (the marker is driven by hoverCoords, not by camera).
+ * Apply one precomputed pose. The only place we touch the renderer. `ease`
+ * (used for strategy-switch / play-start transitions) animates over durationMs
+ * and locks the per-frame loop meanwhile; otherwise it's an instant jump.
  */
-function ensureCamera(): ReplayCamera | null {
-  if (camera) return camera
-  if (!isMapReady()) return null
-  camera = createCamera(props.replayStrategy ?? 'helicopter')
-  pushTrackContextToCamera()
-  return camera
+function applyPose(pose: ReplayPose, ease = false, durationMs = 0): void {
+  if (!map) return
+  // jumpTo/easeTo take the screen CENTER; bake the rider-below-centre pixel
+  // offset into the lngLat via project / shift / unproject.
+  let center: maplibregl.LngLatLike = [pose.lng, pose.lat]
+  if (pose.offsetY !== 0) {
+    const cPx = map.project(center)
+    const ch = map.getCanvas().clientHeight
+    // Skip near the horizon, where project() blows up and unprojecting a shifted
+    // pixel would fling the centre thousands of px away (rider off-screen).
+    if (Number.isFinite(cPx.y) && cPx.y > 0 && cPx.y < ch) {
+      cPx.y -= pose.offsetY
+      const u = map.unproject(cPx)
+      center = [u.lng, u.lat]
+    }
+  }
+  if (ease) {
+    map.easeTo({
+      center, zoom: pose.zoom, pitch: pose.pitch, bearing: pose.bearing,
+      duration: durationMs,
+      easing: (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+    })
+    cameraSettlingUntil = performance.now() + durationMs
+  } else {
+    map.jumpTo({ center, zoom: pose.zoom, pitch: pose.pitch, bearing: pose.bearing })
+  }
+}
+
+/** Sample the precomputed path at `fracIdx` and apply the pose (instant). */
+function sampleCameraAt(fracIdx: number): void {
+  if (!replayPath) rebuildReplayPath()
+  const pose = replayPath ? samplePath(replayPath, fracIdx) : null
+  if (pose) applyPose(pose)
+}
+
+/** Duration of the eased transition when the strategy changes / playback starts. */
+const TRANSITION_MS = 600
+
+/**
+ * Ease into the active strategy's pose at `idx` — the entry transition on
+ * play-start and the cross-fade when the strategy changes mid-replay. Rebuilds
+ * the path first so the target reflects the new mode.
+ */
+function transitionToStrategy(idx: number): void {
+  rebuildReplayPath()
+  const pose = replayPath ? samplePath(replayPath, idx) : null
+  if (pose) applyPose(pose, true, TRANSITION_MS)
 }
 
 function followPoint(idx: number): void {
@@ -1008,15 +1004,12 @@ function followPoint(idx: number): void {
   if (!pt) return
 
   if (props.isPlaying) {
-    // Block the per-frame step loop while a one-shot entry / scene ease is
-    // still in flight. Otherwise our jumpTo would cancel MapLibre's animation
-    // mid-curve and the user sees a partial transition followed by a snap.
+    // During playback the camera is driven by the 60 fps playFrac watcher
+    // (smooth, fractional sampling). Only fall back to integer-index sampling
+    // here if no fractional playhead is being streamed.
+    if (props.playFrac != null) return
     if (performance.now() < cameraSettlingUntil) return
-    const cam = ensureCamera()
-    if (!cam) return
-    const ctx = makeStepCtx(idx)
-    if (!ctx) return
-    applyCameraStep(cam.step(ctx))
+    sampleCameraAt(idx)
     return
   }
 
@@ -1053,19 +1046,6 @@ function followPoint(idx: number): void {
   })
 }
 
-/** Push the current track / viewport into the active camera's onTrackChange hook. */
-function pushTrackContextToCamera(): void {
-  if (!camera || !isMapReady() || !points.value?.length || !bearingData) return
-  const canvas = map!.getCanvas()
-  const ctx: TrackContext = {
-    points: points.value,
-    bearings: bearingData,
-    viewportPxW: canvas.clientWidth,
-    viewportPxH: canvas.clientHeight,
-  }
-  camera.onTrackChange?.(ctx)
-}
-
 // ── Mount/unmount ───────────────────────────────────────────────────────────
 onMounted(() => {
   initMap(props.tileProvider ?? 'osm')
@@ -1075,9 +1055,9 @@ onMounted(() => {
     // pass AFTER MapLibre's load event), the initial renderTrack call was
     // skipped by isMapReady. Re-run it now that the transform is valid.
     if (points.value?.length) renderTrack()
-    // Viewport changed → strategy-owned scene extents may change. Push the
-    // refreshed context into the active camera so it can re-plan if it cares.
-    pushTrackContextToCamera()
+    // Viewport changed → the path's deadzone / heli scene extents depend on it,
+    // so recompute.
+    rebuildReplayPath()
   })
   if (mapEl.value) resizeObserver.observe(mapEl.value)
 
@@ -1100,12 +1080,9 @@ onMounted(() => {
 onUnmounted(() => {
   // Flip mapLoaded FIRST so any in-flight watcher callback (parent's rAF
   // tick still mutating activeIndex/hoverCoords during this teardown frame)
-  // early-returns before touching map. Same belt for the camera instance —
-  // strategy step() / onTrackChange would otherwise be called against a
-  // destroyed map.
+  // early-returns before touching map.
   mapLoaded = false
-  camera?.onDeactivate?.()
-  camera = null
+  replayPath = null
   photoMarkers.forEach(m => m.remove())
   photoMarkers = []
   clearGhosts()
@@ -1135,42 +1112,28 @@ watch(() => [props.showHillshade, props.tileProvider], () => {
 })
 
 // ── Camera lifecycle ───────────────────────────────────────────────────────
-// Strategy ↔ camera instance is 1-1. Swap on strategy change, fire onActivate
-// on play-start (lets each strategy own its own entry transition), fire
-// onTrackChange when track / viewport / bearings update. No strategy-specific
-// code lives here — see `composables/replayCameras.ts`.
+// The path is precomputed per strategy and SAMPLED during playback. On a
+// strategy change (and on play-start) we rebuild the path and ease a transition
+// into the new mode's pose — so switching mid-replay cross-fades rather than
+// snapping. No strategy-specific code lives here; see the simulator/cameras.
 
-function activateCameraForPlay(): void {
-  // Defer one tick — when the user hits Play, ActivityViewer sets
-  // activeIndex.value FIRST then isPlaying.value, both in the same flush.
-  // The isPlaying watcher runs before the prop-bound activeIndex has
-  // propagated as props.hoverIndex, so reading it here would see the stale
-  // value. nextTick flushes the prop update first.
-  nextTick(() => {
-    const cam = ensureCamera()
-    if (!cam || !props.isPlaying) return
-    const ctx = makeStepCtx(props.hoverIndex ?? 0)
-    if (!ctx) return
-    applyCameraStep(cam.onActivate?.(ctx) ?? null)
-  })
-}
-
-// IMPORTANT: NOT `immediate: true`. The map isn't created until onMounted,
-// and an immediate watcher would call camera lifecycle hooks against a
-// half-constructed map (null transform matrices, etc — that's the source of
-// the "Cannot read properties of null (reading '0')" cascade seen during
-// HMR). The initial camera is built in the map.on('load') callback instead.
-watch(() => props.replayStrategy, (s) => {
+// IMPORTANT: NOT `immediate: true`. The map isn't created until onMounted, and an
+// immediate watcher would compute a path against a half-constructed map (null
+// transform). The initial path is built in the map.on('load') callback instead.
+watch(() => props.replayStrategy, () => {
   if (!mapLoaded) return  // initial setup happens in onMounted; skip until ready
-  camera?.onDeactivate?.()
-  camera = createCamera(s ?? 'helicopter')
-  pushTrackContextToCamera()
-  if (props.isPlaying) activateCameraForPlay()
+  // Rebuild + ease into the new strategy, whether playing or paused (a paused
+  // switch still re-frames zoom/pitch/bearing). nextTick so a play-start that
+  // flips strategy + isPlaying together sees the propagated hoverIndex.
+  nextTick(() => transitionToStrategy(props.hoverIndex ?? 0))
 })
 
 watch(() => props.isPlaying, (playing) => {
-  if (playing) activateCameraForPlay()
-  else camera?.onDeactivate?.()
+  if (!mapLoaded || !playing) return
+  // Ease from wherever the map is into the strategy's entry pose. nextTick: on
+  // Play, ActivityViewer sets activeIndex then isPlaying in one flush, so the
+  // prop-bound hoverIndex hasn't propagated yet when this watcher first runs.
+  nextTick(() => transitionToStrategy(props.hoverIndex ?? 0))
 })
 
 // Re-pin photos whenever the manifest changes (new activity, discover, save)
@@ -1183,16 +1146,13 @@ watch(points, (pts) => {
   // Reset every piece of per-track state so nothing leaks across the switch.
   // Without these, the previous activity's track line stays painted during
   // the fetch gap (TanStack flips data to undefined when queryKey changes),
-  // and stale `cameraSettlingUntil` / camera-owned per-track state from an in-flight
-  // ease block the new track's camera from re-anchoring → user sees the new
-  // activity loaded but the camera sitting on the old activity's last
-  // viewpoint until the timer expires.
+  // and a stale `cameraSettlingUntil` / old path block the new track's camera
+  // from re-anchoring → user sees the new activity loaded but the camera sitting
+  // on the old activity's last viewpoint until the timer expires.
   bearingData = pts?.length ? precomputeSmoothedBearings(pts) : null
   cameraSettlingUntil = 0
   smoothedBearing = 0
-  // Deactivate the current camera so any per-track state it cached for the
-  // OLD activity is dropped before we feed it the new track below.
-  camera?.onDeactivate?.()
+  replayPath = null   // drop the old activity's path; rebuilt from the new track below
 
   if (!pts?.length) {
     // Wipe the visible track immediately rather than letting the previous
@@ -1212,7 +1172,7 @@ watch(points, (pts) => {
   }
 
   renderTrack()
-  pushTrackContextToCamera()
+  rebuildReplayPath()
 })
 
 // Helper: render the cursor at given [lon,lat], creating the DOM element lazily.
@@ -1443,6 +1403,16 @@ function placeCursor(lngLat: maplibregl.LngLatLike) {
 watch(() => props.hoverCoords, (coords) => {
   if (!map || !mapLoaded) return
   if (coords) placeCursor(coords as maplibregl.LngLatLike)
+})
+
+// Drive the playback camera off the exact fractional playhead (60 fps), sampling
+// the precomputed path BETWEEN points so the drone glides continuously in the
+// travel direction — never stepping/stopping per integer index.
+watch(() => props.playFrac, (frac) => {
+  if (!map || !mapLoaded || frac == null) return
+  if (!props.isPlaying || !isFollowing.value) return
+  if (performance.now() < cameraSettlingUntil) return
+  sampleCameraAt(frac)
 })
 
 // Compare ride added/removed/changed → redraw the ghost overlay.

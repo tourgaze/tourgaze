@@ -389,6 +389,10 @@ let playbackRaf = 0
 let playbackStartMs = 0
 let playbackStartIdx = 0
 const hoverCoords = ref<[number, number] | null>(null)
+// Exact fractional track index of the playhead (not the integer activeIndex),
+// streamed to the map at 60 fps so the replay camera samples its precomputed
+// path BETWEEN points and glides continuously. Null when not playing.
+const playFrac = ref<number | null>(null)
 
 // CENTRIPETAL Catmull-Rom spline (α = 0.5) through 4 surrounding points —
 // gives a true curve through bends instead of the zig-zag a linear lerp makes
@@ -478,6 +482,7 @@ function startPlayback() {
     if (frac >= endIdx) {
       activeIndex.value = endIdx
       hoverCoords.value = [pts[primaryLast].lon, pts[primaryLast].lat]
+      playFrac.value = primaryLast
       stopPlayback()
       return
     }
@@ -500,6 +505,7 @@ function startPlayback() {
         // Still dwelling — pin marker at the break-start point.
         activeIndex.value = activeBreakSpan.fromIdx
         hoverCoords.value = [pts[activeBreakSpan.fromIdx].lon, pts[activeBreakSpan.fromIdx].lat]
+        playFrac.value = activeBreakSpan.fromIdx
         playbackRaf = requestAnimationFrame(tick)
         return
       }
@@ -507,6 +513,7 @@ function startPlayback() {
       const toIdx = activeBreakSpan.toIdx
       activeIndex.value = toIdx
       hoverCoords.value = [pts[toIdx].lon, pts[toIdx].lat]
+      playFrac.value = toIdx
       playbackStartMs = performance.now()
       playbackStartIdx = toIdx
       activeBreakSpan = null
@@ -523,6 +530,7 @@ function startPlayback() {
       breakDwellUntil = performance.now() + BREAK_DWELL_MS
       activeIndex.value = br.fromIdx
       hoverCoords.value = [pts[br.fromIdx].lon, pts[br.fromIdx].lat]
+      playFrac.value = br.fromIdx
       skipNotice.value = { fromIdx: br.fromIdx, toIdx: br.toIdx, secSkipped: br.points }
       if (skipNoticeTimer) clearTimeout(skipNoticeTimer)
       // Dismiss popup as soon as dwell ends so it dissolves out just as
@@ -537,6 +545,7 @@ function startPlayback() {
     // Follow the smoothed path (ironed-out jitter); clamp to the primary's own
     // finish once "You" are done but the clock runs on for a longer ghost.
     hoverCoords.value = interpAt(smoothCoords.value, Math.min(frac, primaryLast))
+    playFrac.value = Math.min(frac, primaryLast)
     playbackRaf = requestAnimationFrame(tick)
   }
   playbackRaf = requestAnimationFrame(tick)
@@ -550,6 +559,7 @@ function stopPlayback() {
   breakDwellUntil = 0
   if (playbackRaf) cancelAnimationFrame(playbackRaf)
   playbackRaf = 0
+  playFrac.value = null   // stop driving the replay camera
 }
 
 function togglePlayback() { if (isPlaying.value) stopPlayback(); else startPlayback() }
@@ -607,6 +617,7 @@ const activeColorLabel = computed(() =>
           :tile-provider="tileProvider"
           :hover-index="activeIndex"
           :hover-coords="hoverCoords"
+          :play-frac="playFrac"
           :color-mode="colorMode"
           :hr-zones="hrZones"
           :is-playing="isPlaying"
