@@ -49,13 +49,8 @@ async function persistEvents() {
     await qc.invalidateQueries({ queryKey: ['activities'] })
   } catch { push.error('Could not save events') }
 }
-function addEvent() {
-  const first = (eventTypes.value ?? [])[0]
-  // No location → added here as a non-spatial annotation; place it precisely by
-  // adding from the ride map instead. lat/lon/time omitted (undefined).
-  events.value.push({ type: first?.key ?? 'WEATHER_RAIN', label: first?.name ?? '' })
-  persistEvents()
-}
+// Events are added on the ride map (so they get a location); here you edit the
+// type/label of existing ones or delete them.
 function removeEvent(i: number) { events.value.splice(i, 1); persistEvents() }
 
 // Type options for a row — include the row's own type even if it's been deleted
@@ -94,13 +89,8 @@ async function addAttr() {
   <div class="space-y-4 text-[12px]">
     <!-- Events -->
     <section class="space-y-1.5">
-      <div class="flex items-center justify-between">
-        <h3 class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Events</h3>
-        <button class="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-border hover:bg-muted/40" @click="addEvent">
-          <Plus :size="12" /> Add event
-        </button>
-      </div>
-      <p v-if="!events.length" class="text-[11px] text-muted-fg">No events. Rain showers are detected on import; add your own (drink break, puncture, …).</p>
+      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Events</h3>
+      <p v-if="!events.length" class="text-[11px] text-muted-fg">No events. Rain showers are detected on import; add more on the ride map (middle-click → Event) so they're placed at a spot.</p>
       <div v-for="(ev, i) in events" :key="i" class="flex items-center gap-1.5">
         <span class="inline-flex items-center justify-center w-6 h-6 rounded-full shrink-0 text-white"
           :style="{ background: typeMeta(ev.type ?? '').color || '#64748b' }">
@@ -117,9 +107,9 @@ async function addAttr() {
       </div>
     </section>
 
-    <!-- Free-form attributes -->
+    <!-- Free-form custom attributes -->
     <section class="space-y-1.5">
-      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Attributes</h3>
+      <h3 class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Custom Attributes</h3>
       <div v-for="[k, v] in attrRows" :key="k" class="flex items-center gap-1.5">
         <code class="shrink-0 w-28 truncate text-[11px] text-muted-fg" :title="k">{{ k }}</code>
         <input v-if="isEditable(v)" :value="asText(v)" @change="setAttr(k, ($event.target as HTMLInputElement).value)"
