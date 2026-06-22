@@ -271,7 +271,7 @@ public class WeatherService {
 			boolean rain = isRain(w.wmoCode());
 			if (rain && !prevRain) { // onset: the shower starts here
 				String label = w.condition() != null ? w.condition() : "Rain shower";
-				out.add(new RideEventDto(RideEventType.EVENT_RAIN, label, p.lat(), p.lon(), p.time()));
+				out.add(new RideEventDto(RideEventType.WEATHER_RAIN, label, p.lat(), p.lon(), p.time()));
 				if (out.size() >= MAX_RAIN_EVENTS)
 					break;
 			}

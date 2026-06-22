@@ -48,7 +48,7 @@ class ActivityAttributesJsonTest {
 		attrs.put("weather", "rainshower");
 		attrs.put("note", "felt great");
 		attrs.put(RideEventDto.ATTRIBUTES_KEY, List.of(Map.of(
-				"type", "EVENT_RAIN",
+				"type", "WEATHER_RAIN",
 				"label", "Rain showers",
 				"lat", 47.123,
 				"lon", 11.456,
@@ -69,7 +69,7 @@ class ActivityAttributesJsonTest {
 				.get(RideEventDto.ATTRIBUTES_KEY);
 		assertThat(events).hasSize(1);
 		assertThat(events.get(0))
-				.containsEntry("type", "EVENT_RAIN")
+				.containsEntry("type", "WEATHER_RAIN")
 				.containsEntry("time", "2026-06-22T10:00:00Z");
 	}
 }

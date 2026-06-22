@@ -1191,13 +1191,13 @@ export interface components {
             };
             events?: components["schemas"]["RideEvent"][];
         };
-        /** @description A notable point-in-time event along a ride (e.g. a rain shower). */
+        /** @description A notable point-in-time event along a ride (rain shower, drink break, …). */
         RideEvent: {
             /**
-             * @description What happened.
-             * @enum {string}
+             * @description Event kind — open string; built-ins are WEATHER_RAIN, DRINK_BREAK, …
+             * @example WEATHER_RAIN
              */
-            type?: "EVENT_RAIN";
+            type?: string;
             /** @description Short human label, e.g. 'Rain shower'. */
             label?: string;
             /**
