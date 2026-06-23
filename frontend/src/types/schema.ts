@@ -404,6 +404,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recover"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/open-folder": {
         parameters: {
             query?: never;
@@ -1113,6 +1129,17 @@ export interface components {
             /** Format: date-time */
             startTime?: string;
         };
+        RecoveryReport: {
+            /** Format: int32 */
+            scanned?: number;
+            /** Format: int32 */
+            recovered?: number;
+            /** Format: int32 */
+            skipped?: number;
+            /** Format: int32 */
+            failed?: number;
+            errors?: string[];
+        };
         MediaItem: {
             name?: string;
             /** Format: double */
@@ -1406,6 +1433,8 @@ export interface components {
             id?: string;
             name?: string;
             type?: string;
+            /** Format: double */
+            weightKg?: number;
         };
         /** @description Full, self-contained metadata for one ride — the contents of its store/<name>.metadata.json sidecar. Enough to rebuild the DB row from the source files alone; gear/rider/tags are resolved by name so recovery survives id changes. */
         RideMetadata: {
@@ -2516,6 +2545,26 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["EventTypeDto"];
+                };
+            };
+        };
+    };
+    recover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RecoveryReport"];
                 };
             };
         };

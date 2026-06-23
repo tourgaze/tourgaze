@@ -74,7 +74,7 @@ public record RideMetadataDto(
     public record SourceRef(String sourceFilename, String originalFilename, SourceFormat sourceFormat, String sourceHash) {}
 
     @Schema(name = "RideGearRef")
-    public record GearRef(String id, String name, String type) {}
+    public record GearRef(String id, String name, String type, Double weightKg) {}
 
     @Schema(name = "RideRiderRef")
     public record RiderRef(String id, String username, String displayName) {}

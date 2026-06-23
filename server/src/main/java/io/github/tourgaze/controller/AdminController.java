@@ -43,16 +43,19 @@ public class AdminController {
 
 	private final StorageService storage;
 	private final RideExportService rideExport;
+	private final io.github.tourgaze.service.RideRecoveryService rideRecovery;
 	private final io.github.tourgaze.repository.ActivityRepository activityRepo;
 	private final io.github.tourgaze.service.RideMetadataMapper metadataMapper;
 	private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
 	public AdminController(StorageService storage, RideExportService rideExport,
+			io.github.tourgaze.service.RideRecoveryService rideRecovery,
 			io.github.tourgaze.repository.ActivityRepository activityRepo,
 			io.github.tourgaze.service.RideMetadataMapper metadataMapper,
 			com.fasterxml.jackson.databind.ObjectMapper objectMapper) {
 		this.storage = storage;
 		this.rideExport = rideExport;
+		this.rideRecovery = rideRecovery;
 		this.activityRepo = activityRepo;
 		this.metadataMapper = metadataMapper;
 		this.objectMapper = objectMapper;
@@ -216,6 +219,18 @@ public class AdminController {
 	public ResponseEntity<Map<String, Object>> exportMetadata() {
 		int written = rideExport.exportAllNow();
 		return ResponseEntity.ok(Map.of("written", written));
+	}
+
+	/**
+	 * Disaster recovery: rebuild missing DB rows from the {@code .metadata.json}
+	 * sidecars in store/. Re-parses each ride's source track for the recomputable
+	 * fields and reapplies the sidecar metadata (gear/tags/rider by name,
+	 * events/attributes, weight). Idempotent — rides already in the DB are
+	 * skipped, so it's safe to run against a fresh or partial DB.
+	 */
+	@PostMapping("/recover")
+	public ResponseEntity<io.github.tourgaze.service.RideRecoveryService.RecoveryReport> recover() {
+		return ResponseEntity.ok(rideRecovery.recoverAll());
 	}
 
 	/**

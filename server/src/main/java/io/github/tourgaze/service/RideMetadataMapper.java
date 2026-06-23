@@ -49,7 +49,7 @@ public class RideMetadataMapper {
 				a.getWeightKg(), a.getImportedAt(),
 				new RideMetadataDto.SourceRef(a.getSourceFilename(), a.getOriginalFilename(),
 						io.github.tourgaze.parser.SourceFormat.from(a.getSourceFormat()), a.getSourceHash()),
-				g == null ? null : new RideMetadataDto.GearRef(g.getId(), g.getName(), g.getType()),
+				g == null ? null : new RideMetadataDto.GearRef(g.getId(), g.getName(), g.getType(), g.getWeightKg()),
 				u == null ? null : new RideMetadataDto.RiderRef(u.getId(), u.getUsername(), u.getDisplayName()),
 				tags, a.getAttributes());
 	}
