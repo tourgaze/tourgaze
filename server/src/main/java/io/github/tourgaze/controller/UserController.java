@@ -22,10 +22,13 @@ public class UserController {
 
 	private final UserRepository userRepo;
 	private final io.github.tourgaze.service.mapper.UserMapper userMapper;
+	private final io.github.tourgaze.service.RideExportService rideExport;
 
-	public UserController(UserRepository userRepo, io.github.tourgaze.service.mapper.UserMapper userMapper) {
+	public UserController(UserRepository userRepo, io.github.tourgaze.service.mapper.UserMapper userMapper,
+			io.github.tourgaze.service.RideExportService rideExport) {
 		this.userRepo = userRepo;
 		this.userMapper = userMapper;
+		this.rideExport = rideExport;
 	}
 
 	/** Frontend uses this to detect "empty DB → run first-time setup". */
@@ -48,6 +51,7 @@ public class UserController {
 		User u = new User();
 		applyDto(u, dto);
 		u = userRepo.save(u);
+		rideExport.exportLibraryAsync(); // keep the recovery library sidecar fresh
 		return ResponseEntity.status(HttpStatus.CREATED).body(toDto(u));
 	}
 
@@ -56,6 +60,7 @@ public class UserController {
 		return userRepo.findById(id).map(u -> {
 			applyDto(u, dto);
 			u = userRepo.save(u);
+			rideExport.exportLibraryAsync(); // keep the recovery library sidecar fresh
 			return ResponseEntity.ok(toDto(u));
 		}).orElse(ResponseEntity.notFound().build());
 	}
@@ -63,6 +68,7 @@ public class UserController {
 	@DeleteMapping("/{id}")
 	public ResponseEntity<Void> delete(@PathVariable("id") String id) {
 		userRepo.deleteById(id);
+		rideExport.exportLibraryAsync(); // keep the recovery library sidecar fresh
 		return ResponseEntity.noContent().build();
 	}
 

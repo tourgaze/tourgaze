@@ -17,7 +17,6 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Async;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
@@ -112,20 +111,39 @@ public class RideExportService {
 		}
 	}
 
-	// ── Startup + nightly reconcile (backstop) ───────────────────────────────
+	// ── Startup: library sidecar only (cheap insurance) ──────────────────────
+	// Per-ride sidecars are kept fresh on-change (above), so we no longer rewrite
+	// all of them on every boot or nightly — that bulk churn was wasteful. We do
+	// keep the tiny library sidecar (rider + gear) current on startup, since the
+	// rider/gear can't be reconstructed from ride files. A full reconcile is
+	// available on demand via exportAllNow() (Settings → "Back up metadata now").
 	@Async
 	@Transactional(readOnly = true)
 	@EventListener(ApplicationReadyEvent.class)
 	public void onStartup() {
-		if (enabled)
-			exportAll("startup");
+		if (!enabled)
+			return;
+		try {
+			writeLibrarySidecar();
+		} catch (Exception e) {
+			log.warn("[Export] Startup library sidecar failed: {}", e.getMessage());
+		}
 	}
 
-	@Scheduled(cron = "${tourgaze.export.metadata.cron:0 30 3 * * ?}")
+	/**
+	 * Refresh just the library sidecar (rider profiles + gear) off-thread — called
+	 * when a user or gear row changes, so it never goes stale between full exports.
+	 */
+	@Async
 	@Transactional(readOnly = true)
-	public void nightly() {
-		if (enabled)
-			exportAll("nightly");
+	public void exportLibraryAsync() {
+		if (!enabled)
+			return;
+		try {
+			writeLibrarySidecar();
+		} catch (Exception e) {
+			log.warn("[Export] Library sidecar refresh failed: {}", e.getMessage());
+		}
 	}
 
 	/** Manual full export (admin endpoint). Returns rides written. */

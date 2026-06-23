@@ -24,12 +24,15 @@ public class GearController {
 	private final GearRepository gearRepo;
 	private final UserRepository userRepo;
 	private final io.github.tourgaze.service.mapper.GearMapper gearMapper;
+	private final io.github.tourgaze.service.RideExportService rideExport;
 
 	public GearController(GearRepository gearRepo, UserRepository userRepo,
-			io.github.tourgaze.service.mapper.GearMapper gearMapper) {
+			io.github.tourgaze.service.mapper.GearMapper gearMapper,
+			io.github.tourgaze.service.RideExportService rideExport) {
 		this.gearRepo = gearRepo;
 		this.userRepo = userRepo;
 		this.gearMapper = gearMapper;
+		this.rideExport = rideExport;
 	}
 
 	/** All gear, name-sorted. Optionally narrowed to one rider via ?userId=. */
@@ -52,6 +55,7 @@ public class GearController {
 		Gear g = new Gear();
 		applyDto(g, dto);
 		g = gearRepo.save(g);
+		rideExport.exportLibraryAsync(); // keep the recovery library sidecar fresh
 		return ResponseEntity.status(HttpStatus.CREATED).body(toDto(g));
 	}
 
@@ -60,6 +64,7 @@ public class GearController {
 		return gearRepo.findById(id).map(g -> {
 			applyDto(g, dto);
 			g = gearRepo.save(g);
+			rideExport.exportLibraryAsync(); // keep the recovery library sidecar fresh
 			return ResponseEntity.ok(toDto(g));
 		}).orElse(ResponseEntity.notFound().build());
 	}
@@ -67,6 +72,7 @@ public class GearController {
 	@DeleteMapping("/{id}")
 	public ResponseEntity<Void> delete(@PathVariable("id") String id) {
 		gearRepo.deleteById(id);
+		rideExport.exportLibraryAsync(); // keep the recovery library sidecar fresh
 		return ResponseEntity.noContent().build();
 	}
 

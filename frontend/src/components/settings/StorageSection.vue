@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { getDiskUsage, purgeCache, getSettings, saveSetting, openRepositoryFolder, checkIntegrity, type IntegrityReport } from '@/api/client'
+import { getDiskUsage, purgeCache, getSettings, saveSetting, openRepositoryFolder, checkIntegrity, exportMetadata, type IntegrityReport } from '@/api/client'
 import { FolderOpen, ShieldCheck } from 'lucide-vue-next'
 
 const qc = useQueryClient()
@@ -41,6 +41,15 @@ const purgeMut = useMutation({
     }
     push.error('Failed to purge cache')
   },
+})
+
+// Force a full metadata-sidecar export (rider + gear + every ride). Sidecars
+// are normally kept current on every change; this is the on-demand full
+// reconcile (e.g. after editing files outside the app).
+const exportMetaMut = useMutation({
+  mutationFn: exportMetadata,
+  onSuccess: (r) => push.success({ title: 'Metadata backed up', message: `${r.written} ride sidecar${r.written !== 1 ? 's' : ''} + rider/gear written` }),
+  onError: () => push.error('Metadata backup failed'),
 })
 
 // Download a ZIP recreating every ride's original dropped file (name + content)
@@ -144,6 +153,23 @@ function fmtBytes(b: number | undefined): string {
       <button class="px-3 py-1.5 text-sm font-medium rounded border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
         :disabled="purgeMut.isPending.value || adminUnsupported" @click="purgeMut.mutate()">
         {{ purgeMut.isPending.value ? 'Purging…' : 'Purge' }}
+      </button>
+    </div>
+
+    <div class="flex items-start justify-between gap-3 p-4 rounded border border-border bg-muted/10">
+      <div>
+        <p class="text-sm font-medium">Back up metadata now</p>
+        <p class="text-[11px] text-muted-fg mt-0.5">
+          Writes a fresh <code>.metadata.json</code> sidecar for every ride plus a
+          <code>library.metadata.json</code> (your profile + gear) into
+          <code>store/</code>. These are kept current automatically on every change —
+          use this for an on-demand full snapshot (e.g. after editing files outside
+          the app). The whole library can be rebuilt from these sidecars.
+        </p>
+      </div>
+      <button class="px-3 py-1.5 text-sm font-medium rounded border border-border hover:border-primary hover:text-primary transition-colors shrink-0 disabled:opacity-50"
+        :disabled="exportMetaMut.isPending.value" @click="exportMetaMut.mutate()">
+        {{ exportMetaMut.isPending.value ? 'Backing up…' : 'Back up now' }}
       </button>
     </div>
 

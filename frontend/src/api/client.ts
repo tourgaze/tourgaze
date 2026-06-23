@@ -802,6 +802,15 @@ export async function checkIntegrity(): Promise<IntegrityReport> {
   return r.json() as Promise<IntegrityReport>
 }
 
+/** Force a full metadata-sidecar export now (rider + gear + every ride). The
+ *  per-ride sidecars are normally kept fresh on change; this is the on-demand
+ *  full reconcile. Returns the number of ride sidecars written. */
+export async function exportMetadata(): Promise<{ written: number }> {
+  const r = await fetch('/api/admin/export-metadata', { method: 'POST' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json() as Promise<{ written: number }>
+}
+
 export async function getDiskUsage(): Promise<{ storeBytes: number; cacheBytes: number; tilesBytes: number; totalBytes: number }> {
   if (adminEndpointAvailable === false) {
     return { storeBytes: 0, cacheBytes: 0, tilesBytes: 0, totalBytes: 0 }
