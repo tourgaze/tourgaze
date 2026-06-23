@@ -36,7 +36,7 @@ export interface TourFilter {
   label: string
 }
 
-type FieldKind = 'enum' | 'year' | 'tag' | 'gear' | 'loc' | 'country' | 'num' | 'text' | 'geo'
+type FieldKind = 'enum' | 'year' | 'tag' | 'gear' | 'loc' | 'country' | 'num' | 'text' | 'geo' | 'event'
 
 interface FieldDef {
   key: string
@@ -52,6 +52,10 @@ const FIELDS: FieldDef[] = [
   { key: 'year', aliases: ['year'], kind: 'year' },
   { key: 'tag', aliases: ['tag'], kind: 'tag' },
   { key: 'gear', aliases: ['gear', 'bike'], kind: 'gear' },
+  // `event:puncture` — keep rides that have a ride event whose type or label
+  // matches. Substring + case-insensitive, so `event:rain` hits WEATHER_RAIN
+  // ("Rainfall"). Events ride along on the summary, so this stays client-side.
+  { key: 'event', aliases: ['event'], kind: 'event' },
   { key: 'loc', aliases: ['loc', 'location', 'place'], kind: 'loc' },
   // `near:mallorca` — geographic filter: geocode the place, keep rides whose
   // start falls inside its real extent (Nominatim bounding box). Unlike `loc:`
@@ -233,6 +237,13 @@ export function useTourSearch(sources: TourSearchSources) {
       case 'gear':
         // Substring, case-insensitive — `gear:endurace` matches "Canyon Endurace".
         return (a.gearName ?? '').toLowerCase().includes(f.value.toLowerCase())
+      case 'event': {
+        // Substring over both the event type and its display label, so either
+        // `event:puncture` or `event:rain` works regardless of how it's keyed.
+        const v = f.value.toLowerCase()
+        return (a.events ?? []).some(e =>
+          (e.type ?? '').toLowerCase().includes(v) || (e.label ?? '').toLowerCase().includes(v))
+      }
       case 'loc': {
         const hay = `${a.startLocation ?? ''} ${a.endLocation ?? ''}`.toLowerCase()
         return hay.includes(f.value.toLowerCase())
@@ -309,6 +320,14 @@ export function useTourSearch(sources: TourSearchSources) {
         case 'year': values = distinct(a => a.startTime ? new Date(a.startTime).getFullYear().toString() : null).reverse(); break
         case 'tag': values = Array.from(new Set(sources.tags.value.map(t => t.name).filter(Boolean) as string[])).sort(); break
         case 'gear': values = distinct(a => a.gearName); break
+        case 'event': {
+          // Suggest the labels (or type keys) actually present on loaded rides.
+          const set = new Set<string>()
+          for (const a of sources.activities.value ?? [])
+            for (const e of a.events ?? []) { const v = e.label || e.type; if (v) set.add(v) }
+          values = Array.from(set).sort()
+          break
+        }
         case 'loc': values = Array.from(new Set([...distinct(a => a.startLocation), ...distinct(a => a.endLocation)])).sort(); break
         case 'country': values = Array.from(new Set([...distinct(a => a.startCountry), ...distinct(a => a.endCountry)])).sort(); break
         case 'num': return [] // free-form numeric, nothing to suggest

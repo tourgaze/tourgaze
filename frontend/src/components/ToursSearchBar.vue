@@ -123,7 +123,7 @@ function chipIcon(field: string) {
         ref="inputRef"
         v-model="s.query.value"
         type="text"
-        :placeholder="s.activeFilters.value.length ? 'and…' : 'Search — try sport:cycling year:2020 tag:climb'"
+        :placeholder="s.activeFilters.value.length ? 'and…' : 'Search — try sport:cycling year:2020 tag:climb event:puncture'"
         class="flex-1 min-w-[120px] bg-transparent border-none outline-none py-0.5"
         autocomplete="off"
         spellcheck="false"
