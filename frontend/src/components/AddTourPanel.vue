@@ -8,12 +8,13 @@ import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, Arr
 import {
   importInbox, discardInbox, moveInboxToProcessed, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
   getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile, getSports,
-  getAllMarkers, createMarker,
-  type InboxItem, type WeatherResult, type Prediction, type Marker,
+  getAllMarkers, createMarker, getEventTypes, setActivityEvents,
+  type InboxItem, type WeatherResult, type Prediction, type Marker, type RideEvent,
 } from '@/api/client'
 import { bboxOf, inBBox } from '@/lib/geo'
 import StartLocationMap from '@/components/StartLocationMap.vue'
 import MarkerEditor from '@/components/MarkerEditor.vue'
+import EventEditor from '@/components/EventEditor.vue'
 import TagCombobox from '@/components/TagCombobox.vue'
 import LocationAutocomplete from '@/components/LocationAutocomplete.vue'
 import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
@@ -38,19 +39,41 @@ const { data: previewTrack } = useQuery({
   staleTime: 60 * 60 * 1000,
 })
 
-// ── Add a marker on the route at import time (a memory pin while it's fresh) ──
-// Markers are global; we show the ones near this route and let the user drop new
-// ones by clicking the map. Reuses StartLocationMap (placing) + MarkerEditor.
-const addingMarker = ref(false)
+// ── Add markers / events on the route at import time (memory pins while it's
+// fresh). Click the map → choose Marker (a global place, saved now) or Event (a
+// moment on THIS ride, staged and written when the ride is imported). Reuses
+// StartLocationMap (placing/rendering) + MarkerEditor + EventEditor.
+const addingPins = ref(false)
+const addChooser = ref<{ lat: number; lon: number } | null>(null)
 const markerDraft = ref<Marker | null>(null)
+const eventDraft = ref<RideEvent | null>(null)
+const stagedEvents = ref<RideEvent[]>([])
+
 const { data: allMarkers } = useQuery({ queryKey: ['markers'], queryFn: getAllMarkers })
+const { data: eventTypes } = useQuery({ queryKey: ['event-types', 'enabled'], queryFn: () => getEventTypes(true) })
+
 // Only the markers near this ride's route (bbox + 5 km), like the ride map does.
 const nearbyMarkers = computed(() => {
   const box = bboxOf((previewTrack.value ?? []).map(p => ({ lat: p.lat, lon: p.lon })), 5)
   return (allMarkers.value ?? []).filter(m => inBBox(m.lat, m.lon, box))
 })
-function placeMarker(at: { lat: number; lon: number }) {
-  markerDraft.value = { id: '', lat: at.lat, lon: at.lon, label: '', description: '', category: 'star' } as Marker
+
+// A map click (while placing) asks what to drop here.
+function onPlace(at: { lat: number; lon: number }) {
+  addChooser.value = at
+}
+function chooseMarker() {
+  const c = addChooser.value
+  if (!c) return
+  markerDraft.value = { id: '', lat: c.lat, lon: c.lon, label: '', description: '', category: 'star' } as Marker
+  addChooser.value = null
+}
+function chooseEvent() {
+  const c = addChooser.value
+  if (!c) return
+  const first = (eventTypes.value ?? [])[0]
+  eventDraft.value = { type: first?.key ?? 'WEATHER_RAIN', label: '', lat: c.lat, lon: c.lon }
+  addChooser.value = null
 }
 async function saveMarker() {
   const m = markerDraft.value
@@ -64,6 +87,14 @@ async function saveMarker() {
   } finally {
     markerDraft.value = null
   }
+}
+// Events can't be saved until the ride exists, so stage them now and write them
+// after import (see the import mutation's onSuccess).
+function saveEvent() {
+  if (!eventDraft.value) return
+  stagedEvents.value.push({ ...eventDraft.value })
+  eventDraft.value = null
+  push.success({ title: 'Event added', message: 'Saved with the ride on import' })
 }
 
 // ── Photos: drop here now, moved into the ride's media folder on import ──────
@@ -231,7 +262,15 @@ const importMut = useMutation({
     endLocation: endLocation.value.trim() || null,
     endCountry: endCountry.value.trim().toUpperCase() || null,
   } as any),
-  onSuccess: () => {
+  onSuccess: async (res) => {
+    // The ride now exists → write any events staged on the route map to it.
+    if (stagedEvents.value.length && res?.activityId) {
+      try {
+        await setActivityEvents(res.activityId, stagedEvents.value)
+      } catch {
+        push.warning({ title: 'Ride saved, but events failed', message: 'Add them on the ride map.' })
+      }
+    }
     qc.invalidateQueries({ queryKey: ['activities'] })
     qc.invalidateQueries({ queryKey: ['inbox'] })
     push.success({ title: 'Saved', message: name.value || props.item.filename })
@@ -347,25 +386,44 @@ const processedMut = useMutation({
           <div v-if="item.startLat != null" class="flex items-center gap-2 px-1">
             <button type="button"
               class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border transition-colors"
-              :class="addingMarker ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-fg hover:text-primary hover:border-primary'"
-              @click="addingMarker = !addingMarker; markerDraft = null">
+              :class="addingPins ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-fg hover:text-primary hover:border-primary'"
+              @click="addingPins = !addingPins; markerDraft = null; eventDraft = null; addChooser = null">
               <MapPin :size="11" />
-              {{ addingMarker ? 'Click the map to drop a marker' : 'Add marker' }}
+              {{ addingPins ? 'Click the map to add here' : 'Add marker / event' }}
             </button>
-            <span v-if="addingMarker" class="text-[10px] text-muted-fg">a place you want to remember on this route</span>
+            <span v-if="addingPins" class="text-[10px] text-muted-fg">a place (marker) or a moment on this ride (event)</span>
+            <span v-if="stagedEvents.length" class="text-[10px] text-primary ml-auto">{{ stagedEvents.length }} event{{ stagedEvents.length !== 1 ? 's' : '' }} staged</span>
           </div>
-          <StartLocationMap
-            :key="item.filename ?? 'map'"
-            :lat="item.startLat ?? null"
-            :lon="item.startLon ?? null"
-            :points="previewTrack ?? null"
-            :interactive="addingMarker"
-            :markers="nearbyMarkers"
-            :draft="markerDraft"
-            height-class="h-72"
-            @place="placeMarker"
-          />
-          <MarkerEditor v-model="markerDraft" @save="saveMarker" @delete="markerDraft = null" />
+          <div class="relative">
+            <StartLocationMap
+              :key="item.filename ?? 'map'"
+              :lat="item.startLat ?? null"
+              :lon="item.startLon ?? null"
+              :points="previewTrack ?? null"
+              :interactive="addingPins"
+              :markers="nearbyMarkers"
+              :draft="markerDraft"
+              :events="stagedEvents"
+              :event-draft="eventDraft"
+              :event-types="eventTypes ?? []"
+              height-class="h-72"
+              @place="onPlace"
+            />
+            <!-- What to drop here: a global Marker or a ride Event. -->
+            <div v-if="addChooser"
+              class="absolute top-2 left-1/2 -translate-x-1/2 z-[20] flex items-center gap-2
+                     bg-background/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl px-3 py-2">
+              <span class="text-[11px] text-muted-fg">Add here:</span>
+              <button type="button" class="px-2.5 py-1 text-[11px] font-medium rounded border border-border hover:bg-muted/40" @click="chooseMarker">Marker</button>
+              <button type="button" class="px-2.5 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:opacity-90" @click="chooseEvent">Event</button>
+              <button type="button" class="btn-icon" title="Cancel" @click="addChooser = null">✕</button>
+            </div>
+            <MarkerEditor v-model="markerDraft" class="absolute top-2 left-1/2 -translate-x-1/2 z-[20] w-64 max-w-[92%]"
+              @save="saveMarker" @delete="markerDraft = null" />
+            <EventEditor v-model="eventDraft" :event-types="eventTypes ?? []"
+              class="absolute top-2 left-1/2 -translate-x-1/2 z-[20] w-64 max-w-[92%]"
+              @save="saveEvent" @delete="eventDraft = null" />
+          </div>
         </div>
       </div>
 

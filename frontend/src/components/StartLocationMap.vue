@@ -3,9 +3,10 @@ import { onMounted, onUnmounted, watch, ref } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { getChartTrack } from '@/api/client'
+import { getChartTrack, type EventType } from '@/api/client'
 import { tileUrl } from '@/lib/mapStyle'
 import { markerCategory, markerIconSvg } from '@/markerCategories'
+import { gearIconSvg } from '@/gearIcons'
 
 /**
  * Compact basemap preview. Two modes:
@@ -29,6 +30,12 @@ const props = withDefaults(defineProps<{
   markers?: { lat: number; lon: number; category: string }[] | null
   /** A draft marker being placed/edited, rendered with a highlight. */
   draft?: { lat: number; lon: number; category: string } | null
+  /** Ride events to render as round badges (styled by event type). */
+  events?: { lat?: number; lon?: number; type?: string }[] | null
+  /** A draft event being placed/edited. */
+  eventDraft?: { lat?: number; lon?: number; type?: string } | null
+  /** Event-type masterdata (for event badge colour + icon). */
+  eventTypes?: EventType[] | null
 }>(), { heightClass: 'h-40', interactive: false })
 
 const emit = defineEmits<{ place: [{ lat: number; lon: number }] }>()
@@ -55,6 +62,21 @@ function renderMarkers() {
   }
   for (const mk of props.markers ?? []) pin(mk.lat, mk.lon, mk.category, false)
   if (props.draft) pin(props.draft.lat, props.draft.lon, props.draft.category, true)
+
+  const typeByKey = new Map((props.eventTypes ?? []).map(t => [t.key, t]))
+  const eventPin = (lat: number, lon: number, type: string | undefined, draft: boolean) => {
+    const t = typeByKey.get(type ?? '')
+    const el = document.createElement('div')
+    el.className = 'map-event-pin'
+    el.style.background = t?.color || '#3b82f6'
+    if (draft) el.style.outline = '2px solid var(--color-primary, #2563eb)'
+    el.innerHTML = gearIconSvg(t?.icon || 'MapPin', 13, '#fff')
+    markerEls.push(new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([lon, lat]).addTo(map!))
+  }
+  for (const ev of props.events ?? [])
+    if (ev.lat != null && ev.lon != null) eventPin(ev.lat, ev.lon, ev.type, false)
+  if (props.eventDraft?.lat != null && props.eventDraft?.lon != null)
+    eventPin(props.eventDraft.lat, props.eventDraft.lon, props.eventDraft.type, true)
 }
 
 const { data: routePoints } = useQuery({
@@ -189,8 +211,8 @@ onUnmounted(() => {
   routeAdded = false
 })
 
-// Re-render pins whenever the markers / draft change.
-watch(() => [props.markers, props.draft], () => renderMarkers(), { deep: true })
+// Re-render pins whenever the markers / events / drafts change.
+watch(() => [props.markers, props.draft, props.events, props.eventDraft], () => renderMarkers(), { deep: true })
 
 // Recenter + reset marker when the parent passes a different start location.
 watch(() => [props.lat, props.lon], ([lat, lon]) => {

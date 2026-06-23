@@ -8,6 +8,7 @@ import { getTrack, getActivityMedia, activityMediaUrl, isVideoFile,
   type Marker, type Highlight } from '@/api/client'
 import { markerCategory, markerIconSvg } from '@/markerCategories'
 import MarkerEditor from '@/components/MarkerEditor.vue'
+import EventEditor from '@/components/EventEditor.vue'
 import { gearIconSvg } from '@/gearIcons'
 import { onKeyStroke } from '@vueuse/core'
 import { tileUrl } from '@/lib/mapStyle'
@@ -326,7 +327,7 @@ watch(() => props.hoverCoords, c => updateRain(c))
 watch(() => props.isPlaying, p => { if (!p) raining.value = false })
 let eventEls: maplibregl.Marker[] = []
 // Editor for one event. _idx = position in the list (-1 = new draft).
-const editingEvent = ref<(RideEvent & { _idx: number }) | null>(null)
+const editingEvent = ref<(RideEvent & { _idx?: number }) | null>(null)
 // "Add here" chooser (marker vs event) shown at a clicked point.
 const addChooser = ref<{ lng: number; lat: number } | null>(null)
 onKeyStroke('Escape', () => { editingEvent.value = null; addChooser.value = null })
@@ -382,16 +383,16 @@ async function saveEditingEvent() {
   if (!e) return
   const { _idx, ...ev } = e
   const list = (rideEvents.value ?? []).map(x => ({ ...x }))
-  if (_idx >= 0 && _idx < list.length) list[_idx] = ev
+  if (_idx != null && _idx >= 0 && _idx < list.length) list[_idx] = ev
   else list.push(ev)
   try { await persistEvents(list) } finally { editingEvent.value = null }
 }
 async function deleteEditingEvent() {
   const e = editingEvent.value
   if (!e) return
-  if (e._idx < 0) { editingEvent.value = null; return }   // unsaved draft
+  if ((e._idx ?? -1) < 0) { editingEvent.value = null; return }   // unsaved draft
   const list = (rideEvents.value ?? []).map(x => ({ ...x }))
-  list.splice(e._idx, 1)
+  list.splice(e._idx!, 1)
   try { await persistEvents(list) } finally { editingEvent.value = null }
 }
 
@@ -1721,26 +1722,9 @@ function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
     </div>
 
     <!-- Ride-event editor — pin a typed event (rain, drink break, …) on this ride. -->
-    <div v-if="editingEvent"
-      class="absolute top-3 left-1/2 -translate-x-1/2 z-[1600] w-72 max-w-[92%]
-             bg-background/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl p-3 space-y-2.5">
-      <div class="flex items-center justify-between">
-        <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Ride event</span>
-        <button class="btn-icon" title="Close" @click="editingEvent = null">✕</button>
-      </div>
-      <select v-model="editingEvent.type"
-        class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:border-primary">
-        <option v-for="t in eventTypes ?? []" :key="t.key" :value="t.key">{{ t.name }}</option>
-      </select>
-      <input v-model="editingEvent.label" type="text" placeholder="Label (optional)…"
-        class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground focus:outline-none focus:border-primary" />
-      <div class="flex items-center justify-between pt-0.5">
-        <button class="px-2 py-1 text-[11px] font-medium rounded border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-          @click="deleteEditingEvent">{{ editingEvent._idx >= 0 ? 'Delete' : 'Discard' }}</button>
-        <button class="px-3 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:opacity-90 transition-opacity"
-          @click="saveEditingEvent">Save</button>
-      </div>
-    </div>
+    <EventEditor v-model="editingEvent" :event-types="eventTypes ?? []"
+      class="absolute top-3 left-1/2 -translate-x-1/2 z-[1600] w-72 max-w-[92%]"
+      @save="saveEditingEvent" @delete="deleteEditingEvent" />
 
     <!-- In-app photo viewer — native top-layer popover (Popover API). Click a
          pin to open here (no new window); click ::backdrop or press Esc to close. -->
