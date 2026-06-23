@@ -239,9 +239,10 @@ const activity = computed<ActivitySummary | null>(() =>
 
 // This ride's gear glyph (if its gear has one) → drives the replay cursor icon.
 const { data: gearList } = useQuery({ queryKey: ['gear'], queryFn: () => getGear() })
-const cursorIcon = computed<string | null>(() =>
-  gearList.value?.find(g => g.id === activity.value?.gearId)?.icon ?? null,
+const rideGear = computed(() =>
+  gearList.value?.find(g => g.id === activity.value?.gearId) ?? null,
 )
+const cursorIcon = computed<string | null>(() => rideGear.value?.icon ?? null)
 
 // "Tours" overlay: every OTHER ride's start point, for the map to pin whichever
 // fall in the current viewport (empty when the toggle is off).
@@ -258,7 +259,7 @@ const { zones: hrZones, tiz, totalSec: hrTotalSec } = useHrZones(
   computed(() => rawPoints.value ?? null),
 )
 // Advanced ride analytics — computed from the full-res track.
-const rideStats = useRideStats(() => withDist.value, activity, currentUser)
+const rideStats = useRideStats(() => withDist.value, activity, currentUser, () => rideGear.value?.weightKg)
 
 const colorMode = ref<'none' | 'hr' | 'slope'>('none')
 const colorModes = [

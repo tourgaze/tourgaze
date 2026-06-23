@@ -16,6 +16,8 @@ public record GearDto(
         String description,
         String icon,
         boolean assisted,
+        /** Gear weight (kg) — added to body weight for the power estimate. */
+        Double weightKg,
         Instant createdAt,
         Instant retiredAt
 ) {

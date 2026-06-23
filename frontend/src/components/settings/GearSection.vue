@@ -18,6 +18,7 @@ const newType = ref<string>('bike')
 const newDescription = ref('')
 const newIcon = ref<string>('')
 const newAssisted = ref(false)
+const newWeightKg = ref<number | null>(null)
 
 const createMut = useMutation({
   mutationFn: () => createGear({
@@ -26,6 +27,7 @@ const createMut = useMutation({
     description: newDescription.value.trim() || null,
     icon: newIcon.value || null,
     assisted: newAssisted.value,
+    weightKg: typeof newWeightKg.value === 'number' && newWeightKg.value > 0 ? newWeightKg.value : null,
   }),
   onSuccess: () => {
     qc.invalidateQueries({ queryKey: ['gear'] })
@@ -35,6 +37,7 @@ const createMut = useMutation({
     newDescription.value = ''
     newIcon.value = ''
     newAssisted.value = false
+    newWeightKg.value = null
   },
   onError: () => push.error('Failed to add gear'),
 })
@@ -46,6 +49,7 @@ const editType = ref<string>('bike')
 const editDescription = ref('')
 const editIcon = ref<string>('')
 const editAssisted = ref(false)
+const editWeightKg = ref<number | null>(null)
 
 function startEdit(g: Gear) {
   editingId.value = g.id!
@@ -54,6 +58,7 @@ function startEdit(g: Gear) {
   editDescription.value = g.description ?? ''
   editIcon.value = g.icon ?? ''
   editAssisted.value = g.assisted ?? false
+  editWeightKg.value = g.weightKg ?? null
 }
 function cancelEdit() { editingId.value = null }
 
@@ -66,6 +71,7 @@ const updateMut = useMutation({
       description: editDescription.value.trim() || null,
       icon: editIcon.value || null,
       assisted: editAssisted.value,
+      weightKg: typeof editWeightKg.value === 'number' && editWeightKg.value > 0 ? editWeightKg.value : null,
       // Preserve fields the form doesn't expose so the PUT doesn't wipe them.
       userId: orig?.userId ?? null,
       retiredAt: orig?.retiredAt ?? null,
@@ -107,6 +113,7 @@ const deleteMut = useMutation({
                 <span v-if="g.type" class="uppercase tracking-wide">{{ g.type }}</span>
                 <span v-if="g.type && g.description"> · </span>
                 <span v-if="g.description">{{ g.description }}</span>
+                <span v-if="g.weightKg"> · {{ g.weightKg }} kg</span>
               </div>
             </div>
           </div>
@@ -132,6 +139,12 @@ const deleteMut = useMutation({
             <span class="text-[11px] text-muted-fg mr-0.5">Icon</span>
             <div class="w-48"><IconPicker v-model="editIcon" /></div>
           </div>
+          <label class="flex items-center gap-2 text-[12px]">
+            <span class="text-muted-fg">Weight</span>
+            <input v-model.number="editWeightKg" type="number" min="0" step="0.1" placeholder="kg"
+              class="w-24 px-2.5 py-1.5 text-sm rounded border border-border bg-background focus:outline-none focus:border-primary" />
+            <span class="text-[10px] text-muted-fg">kg — added to body weight for the power estimate</span>
+          </label>
           <label class="flex items-center gap-1.5 text-[12px] cursor-pointer select-none">
             <input type="checkbox" v-model="editAssisted" class="accent-primary" />
             Motor-assisted (e-bike) <span class="text-[10px] text-muted-fg">— kept out of speed/power records</span>
@@ -166,6 +179,12 @@ const deleteMut = useMutation({
         <span class="text-[11px] text-muted-fg mr-0.5">Icon</span>
         <div class="w-48"><IconPicker v-model="newIcon" /></div>
       </div>
+      <label class="flex items-center gap-2 text-[12px]">
+        <span class="text-muted-fg">Weight</span>
+        <input v-model.number="newWeightKg" type="number" min="0" step="0.1" placeholder="kg"
+          class="w-24 px-3 py-1.5 text-sm rounded border border-border bg-transparent focus:outline-none focus:border-primary" />
+        <span class="text-[10px] text-muted-fg">kg — added to body weight for the power estimate</span>
+      </label>
       <label class="flex items-center gap-1.5 text-[12px] cursor-pointer select-none">
         <input type="checkbox" v-model="newAssisted" class="accent-primary" />
         Motor-assisted (e-bike) <span class="text-[10px] text-muted-fg">— kept out of speed/power records</span>

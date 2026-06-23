@@ -44,6 +44,13 @@ public class Gear extends BaseEntity {
 	@Column(nullable = false)
 	private boolean assisted = false;
 
+	/**
+	 * Gear weight in kg (e.g. the bike). Added to the rider's body weight to get
+	 * the system mass for the cycling-power estimate. Null = unknown.
+	 */
+	@Column(name = "weight_kg")
+	private Double weightKg;
+
 	@Column(name = "created_at", nullable = false)
 	private Instant createdAt;
 
@@ -112,6 +119,14 @@ public class Gear extends BaseEntity {
 
 	public void setAssisted(boolean assisted) {
 		this.assisted = assisted;
+	}
+
+	public Double getWeightKg() {
+		return weightKg;
+	}
+
+	public void setWeightKg(Double weightKg) {
+		this.weightKg = weightKg;
 	}
 
 	public Instant getCreatedAt() {

@@ -121,7 +121,9 @@ public class Activity extends BaseEntity {
 	private String subSport;
 
 	private String name;
-	/** Long-form notes (recovered metadata, ride reports) — text, not varchar(255). */
+	/**
+	 * Long-form notes (recovered metadata, ride reports) — text, not varchar(255).
+	 */
 	@Column(columnDefinition = "text")
 	private String description;
 

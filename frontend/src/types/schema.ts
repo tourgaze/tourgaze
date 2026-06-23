@@ -1048,6 +1048,8 @@ export interface components {
             description?: string;
             icon?: string;
             assisted?: boolean;
+            /** Format: double */
+            weightKg?: number;
             /** Format: date-time */
             createdAt?: string;
             /** Format: date-time */

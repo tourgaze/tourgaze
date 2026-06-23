@@ -556,6 +556,8 @@ export type Gear = {
   icon?: string | null
   /** Motor-assisted (e-bike) — lets stats exclude/segment assisted rides. */
   assisted?: boolean
+  /** Gear weight (kg) — added to body weight for the cycling-power estimate. */
+  weightKg?: number | null
   createdAt?: string | null
   retiredAt?: string | null
 }

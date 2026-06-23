@@ -67,10 +67,14 @@ function measuredChannels(a: ActivitySummary | null) {
   }
 }
 
+/** Nominal bike mass (kg) used when the ride's gear has no recorded weight. */
+const DEFAULT_BIKE_KG = 9
+
 export function useRideStats(
   points: () => StatPoint[],
   activity: Ref<ActivitySummary | null>,
   user: Ref<User | null | undefined>,
+  gearWeightKg?: () => number | null | undefined,
 ) {
   return computed<RideStats>(() => {
     const pts = points()
@@ -86,7 +90,10 @@ export function useRideStats(
 
     const n = pts.length
     const isCycling = (activity.value?.activityType ?? '') === 'cycling'
-    const mass = activity.value?.weightKg ?? user.value?.weightKg ?? 80   // rider+bike fallback
+    // System mass = rider body weight (at ride time, else profile) + the gear's
+    // own weight; fall back to a nominal bike when the gear weight is unknown.
+    const bodyKg = activity.value?.weightKg ?? user.value?.weightKg ?? 75
+    const mass = bodyKg + (gearWeightKg?.() ?? DEFAULT_BIKE_KG)
 
     // Per-second derived channels.
     const dt = 1                                   // 1 Hz assumption
