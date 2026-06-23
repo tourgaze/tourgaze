@@ -1,5 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
-import type { ActivitySummary, Tag } from '@/api/client'
+import type { ActivitySummary, EventType, Tag } from '@/api/client'
 
 /**
  * JIRA / Lucene-style faceted search for the Tours list — ported in spirit from
@@ -165,6 +165,8 @@ export type GeoBox = { south: number; north: number; west: number; east: number 
 export interface TourSearchSources {
   activities: Ref<ActivitySummary[] | undefined>
   tags: Ref<Tag[]>
+  /** Defined ride-event kinds (masterdata) — used to propose `event:` values. */
+  eventTypes?: Ref<EventType[]>
   /** Resolved `near:` boxes keyed by lowercased place. undefined = still
    *  geocoding (fail-open, show all), null = no result (can't filter). */
   geoBoxes?: Ref<Map<string, GeoBox | null>>
@@ -321,10 +323,19 @@ export function useTourSearch(sources: TourSearchSources) {
         case 'tag': values = Array.from(new Set(sources.tags.value.map(t => t.name).filter(Boolean) as string[])).sort(); break
         case 'gear': values = distinct(a => a.gearName); break
         case 'event': {
-          // Suggest the labels (or type keys) actually present on loaded rides.
+          // Propose every defined event kind (masterdata: name + key) plus any
+          // type/label actually present on loaded rides — so `event:punc`
+          // proposes PUNCTURE and `event:reifen` the label "Reifen Defekt".
           const set = new Set<string>()
+          for (const t of sources.eventTypes?.value ?? []) {
+            if (t.name) set.add(t.name)
+            if (t.key) set.add(t.key)
+          }
           for (const a of sources.activities.value ?? [])
-            for (const e of a.events ?? []) { const v = e.label || e.type; if (v) set.add(v) }
+            for (const e of a.events ?? []) {
+              if (e.type) set.add(e.type)
+              if (e.label) set.add(e.label)
+            }
           values = Array.from(set).sort()
           break
         }

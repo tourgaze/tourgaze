@@ -35,13 +35,17 @@ public class RouteSimilarityService {
 
 	private static final Logger log = LoggerFactory.getLogger(RouteSimilarityService.class);
 	private static final int PRECISION = 7; // ≈ 150 m cells
-	private static final double GPS_THRESHOLD = 0.25;
+	// Minimum Jaccard overlap of the two cell sets to call it the "same route".
+	// Set high enough that rides which only share the hometown corridor (the same
+	// roads out of / back into town) but diverge in the middle do NOT match — a
+	// brief shared start/end is well under this, a genuinely re-ridden loop is
+	// well over it (typically 0.6–0.9 even with GPS drift).
+	private static final double GPS_THRESHOLD = 0.4;
 	// A shared tag only counts if the rides ALSO overlap geographically by at least
 	// this much — otherwise "both tagged holiday" would match a Mallorca ride to a
-	// Sweden one. Lower than GPS_THRESHOLD so a tag still helps a
-	// near-but-not-quite
-	// route qualify, but never a far-away one.
-	private static final double TAG_MIN_OVERLAP = 0.05;
+	// Sweden one. Below GPS_THRESHOLD so a tag still rescues a near-miss route, but
+	// never a hometown-corridor-only or far-away overlap.
+	private static final double TAG_MIN_OVERLAP = 0.25;
 	// Comparable length: keep only candidates whose distance is within 0.5×–2× of
 	// the opened ride. A 30 km ride shouldn't list a 120 km one to "race".
 	private static final double MIN_DIST_RATIO = 0.5;

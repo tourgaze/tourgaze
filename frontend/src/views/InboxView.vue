@@ -270,7 +270,9 @@ async function moveProcessed(filename: string) {
           <div class="flex items-center gap-1.5 mb-0.5">
             <Bike :size="12" class="text-muted-fg shrink-0" />
             <span class="text-xs font-medium truncate flex-1">{{ it.suggestedName }}</span>
-            <span v-if="it.existingActivityId" class="text-[9px] text-amber-600 shrink-0">dup</span>
+            <span v-if="it.existingActivityId"
+              class="text-[9px] px-1 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/40 shrink-0"
+              title="This exact file is already imported — nothing to do but remove it from the inbox.">already imported</span>
             <span v-else-if="it.duplicateOfName"
               class="text-[9px] px-1 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/40 shrink-0"
               :title="`Same route as an already-imported ride: ${it.duplicateOfName}`">duplicate</span>
@@ -309,6 +311,17 @@ async function moveProcessed(filename: string) {
           </div>
           <div v-if="it.startTime" class="text-[10px] text-muted-fg mt-0.5 flex items-center gap-0.5">
             <Clock :size="9" />{{ fmtDateTime(it.startTime) }}
+          </div>
+          <!-- Exact-duplicate of an imported ride: no import value, so offer a
+               clear, always-visible remove instead of silently sweeping it. -->
+          <div v-if="it.existingActivityId" class="mt-1.5 flex items-center gap-2 text-[10px]">
+            <span class="text-amber-600">Already in your library.</span>
+            <button type="button"
+              class="px-2 py-0.5 rounded border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 inline-flex items-center gap-1"
+              title="Archive to ~/.tourgaze/inbox-processed/ (bytes kept, won't re-stage from your device)"
+              @click.stop="moveProcessed(it.filename!)">
+              <Archive :size="11" /> Remove duplicate
+            </button>
           </div>
           <!-- Skeleton: file listed instantly, not yet parsed by the warm job (pushed → fills in). -->
           <div v-if="it.parsing" class="text-[10px] text-muted-fg/70 mt-0.5 flex items-center gap-1">

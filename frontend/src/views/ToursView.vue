@@ -6,10 +6,10 @@ import { Splitpanes, Pane } from 'splitpanes'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
 import {
-  getActivities, getTags, addTagToActivity, getGear,
+  getActivities, getTags, addTagToActivity, getGear, getEventTypes,
   getFilterPresets, createFilterPreset, updateFilterPreset, deleteFilterPreset,
   searchPlaces,
-  type ActivitySummary, type Tag, type ActivityType,
+  type ActivitySummary, type Tag, type ActivityType, type EventType,
 } from '@/api/client'
 import { type GeoBox } from '@/composables/useTourSearch'
 import {
@@ -35,6 +35,7 @@ const router = useRouter()
 const { data: activities } = useQuery({ queryKey: ['activities'], queryFn: getActivities })
 const { data: tags } = useQuery({ queryKey: ['tags'], queryFn: getTags })
 const { data: gearList } = useQuery({ queryKey: ['gear'], queryFn: () => getGear() })
+const { data: eventTypesList } = useQuery({ queryKey: ['event-types'], queryFn: () => getEventTypes() })
 
 // ── Selection (URL-driven, deep-linkable) ───────────────────────────────────
 const selectedId = computed<string | null>(() => {
@@ -248,7 +249,8 @@ const tagsById = computed(() => new Map(tagsList.value.map(t => [t.id!, t])))
 // ── Faceted search (JIRA/Lucene-style) ──────────────────────────────────────
 // `near:<place>` boxes, resolved lazily by forward-geocoding each place once.
 const geoBoxes = ref<Map<string, GeoBox | null>>(new Map())
-const search = useTourSearch({ activities, tags: tagsList, geoBoxes })
+const eventTypesRef = computed<EventType[]>(() => (eventTypesList.value ?? []) as EventType[])
+const search = useTourSearch({ activities, tags: tagsList, eventTypes: eventTypesRef, geoBoxes })
 
 // Geocode any new `near:` place → its bounding box (the place's real extent;
 // fall back to a ~22 km box around the point for coordinate-only hits). Cached

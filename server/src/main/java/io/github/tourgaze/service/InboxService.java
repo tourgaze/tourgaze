@@ -243,16 +243,9 @@ public class InboxService {
 				ParsedCard pc = parseOne(file, mtime, candidates);
 				if (pc == null)
 					continue; // unreadable
-				if (pc.existingActivityId() != null) {
-					// Byte-identical to an imported ride → sweep the redundant inbox copy.
-					try {
-						Files.deleteIfExists(file);
-					} catch (IOException e) {
-						log.debug("Could not sweep duplicate {}: {}", file, e.getMessage());
-					}
-					parseCache.remove(name);
-					continue;
-				}
+				// Byte-identical to an imported ride: keep the card (with
+				// existingActivityId set) so the user SEES it's a duplicate and
+				// removes it deliberately — don't silently sweep the inbox copy.
 				parseCache.put(name, pc);
 				if (++parsed % 10 == 0)
 					inboxStream.changed(); // progressive push

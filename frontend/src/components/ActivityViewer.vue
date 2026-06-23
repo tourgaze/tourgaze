@@ -2,7 +2,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
-import { getActivities, getSettings, saveSetting, getTrack, getChartTrack, getTileProviders, getActivityMedia, activityMediaUrl, deleteActivityMedia, discoverPhotos, makePhotoPersonal, isVideoFile, getAllMarkers, deleteMarker, getSections, getActivityHighlights, getGear, type ActivitySummary, type RideMedia, type Marker } from '@/api/client'
+import { getActivities, getSettings, saveSetting, getTrack, getChartTrack, getTileProviders, getActivityMedia, activityMediaUrl, deleteActivityMedia, uploadActivityMedia, discoverPhotos, makePhotoPersonal, isVideoFile, getAllMarkers, deleteMarker, getSections, getActivityHighlights, getGear, type ActivitySummary, type RideMedia, type Marker } from '@/api/client'
 import { markerCategory, markerIconSvg } from '@/markerCategories'
 import MapRenderer from '@/components/MapRenderer.vue'
 import ElevationChart from '@/components/ElevationChart.vue'
@@ -188,6 +188,26 @@ async function removePhoto(m: RideMedia) {
     await qc.invalidateQueries({ queryKey: ['media', activityId.value] })
   } catch {
     push.error('Could not delete photo')
+  }
+}
+// Drag-and-drop / picker upload straight onto the Photos tab (without opening
+// the Edit panel). preventDefault on the drop is what stops the browser from
+// just navigating to the dropped image file.
+const mediaDragOver = ref(false)
+const uploadingMedia = ref(false)
+async function addMedia(files: FileList | File[] | null) {
+  if (!activityId.value || !files) return
+  const list = Array.from(files).filter(f => f.type.startsWith('image/') || f.type.startsWith('video/'))
+  if (!list.length) return
+  uploadingMedia.value = true
+  try {
+    const added = await uploadActivityMedia(activityId.value, list)
+    await qc.invalidateQueries({ queryKey: ['media', activityId.value] })
+    push.success({ title: `${added.length || list.length} photo${(added.length || list.length) === 1 ? '' : 's'} added` })
+  } catch {
+    push.error('Could not upload photos')
+  } finally {
+    uploadingMedia.value = false
   }
 }
 async function findPhotos() {
@@ -865,8 +885,14 @@ const activeColorLabel = computed(() =>
       </template>
 
       <!-- Photos view — responsive gallery that reflows with the window. -->
-      <div v-else-if="!chartCollapsed && bottomView === 'photos'" class="flex-1 min-h-0 overflow-y-auto p-2">
-        <!-- Header: legend (public vs personal) + the Find-photos action. -->
+      <div v-else-if="!chartCollapsed && bottomView === 'photos'"
+        class="flex-1 min-h-0 overflow-y-auto p-2 relative transition-colors"
+        :class="mediaDragOver ? 'ring-2 ring-inset ring-primary bg-primary/5' : ''"
+        @dragover.prevent="mediaDragOver = true"
+        @dragenter.prevent="mediaDragOver = true"
+        @dragleave.prevent="mediaDragOver = false"
+        @drop.prevent="mediaDragOver = false; addMedia($event.dataTransfer?.files ?? null)">
+        <!-- Header: legend (public vs personal) + Add / Find-photos actions. -->
         <div class="flex items-center gap-3 px-1 pb-2 text-[10px] text-muted-fg">
           <template v-if="hasPhotos">
             <span class="font-medium uppercase tracking-wide opacity-70">Photos</span>
@@ -877,12 +903,21 @@ const activeColorLabel = computed(() =>
               <span class="photo-legend-dot photo-legend-dot--personal"><UserRound :size="9" /></span>Personal
             </span>
           </template>
+          <label
+            class="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border border-border text-muted-fg hover:text-primary hover:border-primary hover:bg-primary/10 transition-colors active:scale-95 cursor-pointer"
+            :class="uploadingMedia ? 'opacity-50 pointer-events-none' : ''"
+            title="Add photos/videos to this ride (or drag &amp; drop them here)">
+            <ImagePlus :size="11" />
+            <span>{{ uploadingMedia ? 'Uploading…' : 'Add photos' }}</span>
+            <input type="file" accept="image/*,video/*" multiple class="hidden"
+              @change="addMedia(($event.target as HTMLInputElement).files); ($event.target as HTMLInputElement).value = ''" />
+          </label>
           <button
-            class="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border border-border text-muted-fg hover:text-primary hover:border-primary hover:bg-primary/10 transition-colors active:scale-95 disabled:opacity-50"
+            class="inline-flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium border border-border text-muted-fg hover:text-primary hover:border-primary hover:bg-primary/10 transition-colors active:scale-95 disabled:opacity-50"
             title="Find Creative-Commons photos along this route (Wikimedia Commons)"
             :disabled="discovering"
             @click="findPhotos">
-            <ImagePlus :size="11" />
+            <Globe :size="11" />
             <span>{{ discovering ? 'Finding…' : 'Find photos' }}</span>
           </button>
         </div>
@@ -924,7 +959,7 @@ const activeColorLabel = computed(() =>
         </div>
         <div v-else class="h-full flex flex-col items-center justify-center text-center text-[11px] text-muted-fg gap-1">
           <ImagePlus :size="20" class="opacity-50" />
-          <span>No photos yet. Drop some on the Edit panel, or use “Find photos”.</span>
+          <span>No photos yet. Drag &amp; drop photos here, use “Add photos”, or “Find photos”.</span>
         </div>
       </div>
 
@@ -951,15 +986,16 @@ const activeColorLabel = computed(() =>
             <span class="flex items-center gap-1.5 shrink-0">
               <span class="inline-block w-2.5 h-2.5 rounded-full"
                 :style="{ background: selectedCompareIds.includes(s.id) ? colorOf(s.id) : 'transparent', border: selectedCompareIds.includes(s.id) ? 'none' : '1px solid hsl(var(--border))' }" />
-              <!-- Badge shows WHEN the ride was (yesterday / 2 months ago / one
-                   year ago) — far more useful at a glance than a raw GPS-overlap
-                   %. Colour still encodes match type (emerald gps/both, slate
-                   tag-only); the exact date sits in the title attr + the meta. -->
-              <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap"
+              <!-- Badge shows the GPS route-overlap % (the match strength), so
+                   you can see how close a route this really is; tag-only matches
+                   show "tag". Colour encodes match type (emerald gps/both, slate
+                   tag). The relative day sits next to it for context. -->
+              <span class="text-[10px] font-semibold px-1.5 py-0.5 rounded whitespace-nowrap tabular-nums"
                 :class="s.matchType === 'tag' ? 'bg-slate-500/20 text-slate-400' : 'bg-emerald-500/20 text-emerald-500'"
                 :title="(s.startTime ? new Date(s.startTime).toLocaleDateString() : '') + (s.matchType === 'tag' ? ' · tag match' : ` · ${Math.round(s.score * 100)}% GPS overlap`)">
-                {{ relativeDay(s.startTime) }}
+                {{ s.matchType === 'tag' ? 'tag' : Math.round(s.score * 100) + '%' }}
               </span>
+              <span class="text-[9px] text-muted-fg whitespace-nowrap">{{ relativeDay(s.startTime) }}</span>
             </span>
             <!-- Racing: a bar anchored at the CELL CENTRE (= You). Ahead grows it
                  right, behind grows it left; length scales to the field. Fill is
