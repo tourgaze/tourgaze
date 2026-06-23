@@ -5,6 +5,7 @@ import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { getChartTrack } from '@/api/client'
 import { tileUrl } from '@/lib/mapStyle'
+import { markerCategory, markerIconSvg } from '@/markerCategories'
 
 /**
  * Compact basemap preview. Two modes:
@@ -22,12 +23,39 @@ const props = withDefaults(defineProps<{
   points?: { lat: number; lon: number }[] | null
   /** Tailwind height class for the map box. */
   heightClass?: string
-}>(), { heightClass: 'h-40' })
+  /** Allow panning/zooming + click-to-place (emits `place`). Off = read-only preview. */
+  interactive?: boolean
+  /** Markers (places) to render as pins. */
+  markers?: { lat: number; lon: number; category: string }[] | null
+  /** A draft marker being placed/edited, rendered with a highlight. */
+  draft?: { lat: number; lon: number; category: string } | null
+}>(), { heightClass: 'h-40', interactive: false })
+
+const emit = defineEmits<{ place: [{ lat: number; lon: number }] }>()
 
 const containerEl = ref<HTMLDivElement | null>(null)
 let map: maplibregl.Map | null = null
 let marker: maplibregl.Marker | null = null
+let markerEls: maplibregl.Marker[] = []
 let routeAdded = false
+
+/** Render the passed markers + the draft as teardrop pins (reused styling). */
+function renderMarkers() {
+  if (!map) return
+  markerEls.forEach(m => m.remove())
+  markerEls = []
+  const pin = (lat: number, lon: number, category: string, draft: boolean) => {
+    const cat = markerCategory(category)
+    const el = document.createElement('div')
+    el.className = 'map-marker-pin'
+    el.style.background = cat.color
+    if (draft) el.style.outline = '2px solid var(--color-primary, #2563eb)'
+    el.innerHTML = markerIconSvg(cat)
+    markerEls.push(new maplibregl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lon, lat]).addTo(map!))
+  }
+  for (const mk of props.markers ?? []) pin(mk.lat, mk.lon, mk.category, false)
+  if (props.draft) pin(props.draft.lat, props.draft.lon, props.draft.category, true)
+}
 
 const { data: routePoints } = useQuery({
   queryKey: ['minimap-track', () => props.activityId],
@@ -42,7 +70,7 @@ function ensureMap() {
 
   map = new maplibregl.Map({
     container: containerEl.value,
-    interactive: false,                // small preview — no panning
+    interactive: props.interactive,    // read-only preview unless placing markers
     attributionControl: { compact: true },   // OSM/CARTO terms require visible credit
     style: {
       version: 8,
@@ -94,6 +122,11 @@ function ensureMap() {
     // priority, else the activity's chart track if it's already cached.
     if (props.points?.length) drawRoute(props.points)
     else if (routePoints.value?.length) drawRoute(routePoints.value)
+    renderMarkers()
+  })
+  // Click-to-place (only when interactive) → let the parent open its editor.
+  map.on('click', (e) => {
+    if (props.interactive) emit('place', { lat: e.lngLat.lat, lon: e.lngLat.lng })
   })
 }
 
@@ -151,9 +184,13 @@ onMounted(() => ensureMap())
 
 onUnmounted(() => {
   marker?.remove(); marker = null
+  markerEls.forEach(m => m.remove()); markerEls = []
   map?.remove(); map = null
   routeAdded = false
 })
+
+// Re-render pins whenever the markers / draft change.
+watch(() => [props.markers, props.draft], () => renderMarkers(), { deep: true })
 
 // Recenter + reset marker when the parent passes a different start location.
 watch(() => [props.lat, props.lon], ([lat, lon]) => {

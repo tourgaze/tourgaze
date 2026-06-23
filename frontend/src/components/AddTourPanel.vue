@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { fmtDuration } from '@/lib/format'
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
@@ -8,9 +8,12 @@ import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, Arr
 import {
   importInbox, discardInbox, moveInboxToProcessed, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
   getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile, getSports,
-  type InboxItem, type WeatherResult, type Prediction,
+  getAllMarkers, createMarker,
+  type InboxItem, type WeatherResult, type Prediction, type Marker,
 } from '@/api/client'
+import { bboxOf, inBBox } from '@/lib/geo'
 import StartLocationMap from '@/components/StartLocationMap.vue'
+import MarkerEditor from '@/components/MarkerEditor.vue'
 import TagCombobox from '@/components/TagCombobox.vue'
 import LocationAutocomplete from '@/components/LocationAutocomplete.vue'
 import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
@@ -34,6 +37,34 @@ const { data: previewTrack } = useQuery({
   enabled: () => mapExpanded.value && !!props.item.filename && props.item.startLat != null,
   staleTime: 60 * 60 * 1000,
 })
+
+// ── Add a marker on the route at import time (a memory pin while it's fresh) ──
+// Markers are global; we show the ones near this route and let the user drop new
+// ones by clicking the map. Reuses StartLocationMap (placing) + MarkerEditor.
+const addingMarker = ref(false)
+const markerDraft = ref<Marker | null>(null)
+const { data: allMarkers } = useQuery({ queryKey: ['markers'], queryFn: getAllMarkers })
+// Only the markers near this ride's route (bbox + 5 km), like the ride map does.
+const nearbyMarkers = computed(() => {
+  const box = bboxOf((previewTrack.value ?? []).map(p => ({ lat: p.lat, lon: p.lon })), 5)
+  return (allMarkers.value ?? []).filter(m => inBBox(m.lat, m.lon, box))
+})
+function placeMarker(at: { lat: number; lon: number }) {
+  markerDraft.value = { id: '', lat: at.lat, lon: at.lon, label: '', description: '', category: 'star' } as Marker
+}
+async function saveMarker() {
+  const m = markerDraft.value
+  if (!m) return
+  try {
+    await createMarker({ lat: m.lat, lon: m.lon, label: m.label, description: m.description, category: m.category })
+    await qc.invalidateQueries({ queryKey: ['markers'] })
+    push.success({ title: 'Marker added' })
+  } catch {
+    push.error('Could not add marker')
+  } finally {
+    markerDraft.value = null
+  }
+}
 
 // ── Photos: drop here now, moved into the ride's media folder on import ──────
 const { data: media } = useQuery({
@@ -312,14 +343,29 @@ const processedMut = useMutation({
         <!-- Only mount the map on demand (no tile loads per inbox item while
              collapsed), and key it to the file so it refreshes when you switch
              rides instead of reusing the previous ride's view. -->
-        <div v-if="mapExpanded" class="p-1">
+        <div v-if="mapExpanded" class="p-1 space-y-1">
+          <div v-if="item.startLat != null" class="flex items-center gap-2 px-1">
+            <button type="button"
+              class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border transition-colors"
+              :class="addingMarker ? 'border-primary text-primary bg-primary/10' : 'border-border text-muted-fg hover:text-primary hover:border-primary'"
+              @click="addingMarker = !addingMarker; markerDraft = null">
+              <MapPin :size="11" />
+              {{ addingMarker ? 'Click the map to drop a marker' : 'Add marker' }}
+            </button>
+            <span v-if="addingMarker" class="text-[10px] text-muted-fg">a place you want to remember on this route</span>
+          </div>
           <StartLocationMap
             :key="item.filename ?? 'map'"
             :lat="item.startLat ?? null"
             :lon="item.startLon ?? null"
             :points="previewTrack ?? null"
+            :interactive="addingMarker"
+            :markers="nearbyMarkers"
+            :draft="markerDraft"
             height-class="h-72"
+            @place="placeMarker"
           />
+          <MarkerEditor v-model="markerDraft" @save="saveMarker" @delete="markerDraft = null" />
         </div>
       </div>
 

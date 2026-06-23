@@ -6,7 +6,8 @@ import { getTrack, getActivityMedia, activityMediaUrl, isVideoFile,
   getAllMarkers, createMarker, updateMarker, deleteMarker,
   getActivityEvents, setActivityEvents, getEventTypes, type RideEvent, type EventType,
   type Marker, type Highlight } from '@/api/client'
-import { MARKER_CATEGORIES, markerCategory, markerIconSvg } from '@/markerCategories'
+import { markerCategory, markerIconSvg } from '@/markerCategories'
+import MarkerEditor from '@/components/MarkerEditor.vue'
 import { gearIconSvg } from '@/gearIcons'
 import { onKeyStroke } from '@vueuse/core'
 import { tileUrl } from '@/lib/mapStyle'
@@ -296,7 +297,6 @@ const editingMarker = ref<Marker | null>(null)
 onKeyStroke('Escape', (e) => {
   if (editingMarker.value) { e.preventDefault(); editingMarker.value = null }
 })
-const categories = MARKER_CATEGORIES
 
 // ── Ride events (typed annotations pinned on THIS ride) ─────────────────────
 const { data: rideEvents } = useQuery({
@@ -1705,36 +1705,9 @@ function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
       >⊙</button>
     </div>
 
-    <!-- Marker editor — opens on right-click (new marker) or clicking a pin.
-         Editable label, category and description; right-click placed it here. -->
-    <div v-if="editingMarker"
-      class="absolute top-3 left-1/2 -translate-x-1/2 z-[1600] w-72 max-w-[92%]
-             bg-background/95 backdrop-blur-sm border border-border rounded-xl shadow-2xl p-3 space-y-2.5">
-      <div class="flex items-center justify-between">
-        <span class="text-[11px] font-semibold uppercase tracking-wide text-muted-fg">Marker</span>
-        <button class="btn-icon" title="Close" @click="editingMarker = null">✕</button>
-      </div>
-      <input v-model="editingMarker.label" type="text" placeholder="Label (e.g. Nice restaurant)"
-        class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground
-               focus:outline-none focus:border-primary" />
-      <div class="flex flex-wrap gap-1">
-        <button v-for="c in categories" :key="c.key" type="button" :title="c.label"
-          class="w-7 h-7 rounded-full flex items-center justify-center text-white transition-transform"
-          :class="editingMarker.category === c.key ? 'ring-2 ring-offset-1 ring-offset-background ring-foreground scale-110' : 'opacity-70 hover:opacity-100'"
-          :style="{ background: c.color }"
-          @click="editingMarker.category = c.key"
-          v-html="markerIconSvg(c)"></button>
-      </div>
-      <textarea v-model="editingMarker.description" rows="3" placeholder="Description…"
-        class="w-full px-2 py-1.5 text-sm rounded-md border border-border bg-background text-foreground
-               resize-none focus:outline-none focus:border-primary"></textarea>
-      <div class="flex items-center justify-between pt-0.5">
-        <button class="px-2 py-1 text-[11px] font-medium rounded border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-          @click="deleteEditingMarker">{{ editingMarker.id ? 'Delete' : 'Discard' }}</button>
-        <button class="px-3 py-1 text-[11px] font-semibold rounded bg-primary text-white hover:opacity-90 transition-opacity"
-          @click="saveEditingMarker">Save</button>
-      </div>
-    </div>
+    <!-- Marker editor — opens on right-click (new marker) or clicking a pin. -->
+    <MarkerEditor v-model="editingMarker" class="absolute top-3 left-1/2 -translate-x-1/2 z-[1600] w-72 max-w-[92%]"
+      @save="saveEditingMarker" @delete="deleteEditingMarker" />
 
     <!-- Add chooser — middle / right-double-click on the map asks what to drop:
          a global Marker (a place) or a ride Event (on this ride's timeline). -->
