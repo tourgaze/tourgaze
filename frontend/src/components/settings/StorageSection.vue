@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { getDiskUsage, purgeCache, getSettings, saveSetting, openRepositoryFolder, checkIntegrity, exportMetadata, type IntegrityReport } from '@/api/client'
+import { getDiskUsage, purgeCache, getSettings, saveSetting, openRepositoryFolder, checkIntegrity, exportMetadata, purgeOrphans, type IntegrityReport } from '@/api/client'
 import { FolderOpen, ShieldCheck } from 'lucide-vue-next'
 
 const qc = useQueryClient()
@@ -78,6 +78,18 @@ const integrityMut = useMutation({
     else push.warning({ title: `${issues} issue${issues !== 1 ? 's' : ''} found`, message: 'See the report below' })
   },
   onError: () => push.error('Integrity check failed'),
+})
+
+// Remove orphan store/<id> folders (leftovers with no matching ride).
+const purgeOrphansMut = useMutation({
+  mutationFn: purgeOrphans,
+  onSuccess: (r) => {
+    const mb = (r.bytesFreed / (1024 * 1024)).toFixed(1)
+    push.success({ title: `Removed ${r.removed} orphan folder${r.removed !== 1 ? 's' : ''}`, message: `${mb} MB freed` })
+    integrityMut.mutate() // refresh the report
+    refetch()
+  },
+  onError: () => push.error('Could not remove orphan folders'),
 })
 
 // Open the repository folder in the OS file manager (server-side; only works when
@@ -222,6 +234,11 @@ function fmtBytes(b: number | undefined): string {
           <li v-for="o in rep.orphans" :key="'o' + o" class="text-amber-600">⌁ orphan folder — {{ o }}</li>
         </ul>
         <p v-else class="mt-1 text-emerald-600">✓ everything in sync</p>
+        <button v-if="rep.orphans.length"
+          class="mt-2 px-3 py-1.5 text-sm font-medium rounded border border-amber-400 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors disabled:opacity-50"
+          :disabled="purgeOrphansMut.isPending.value" @click="purgeOrphansMut.mutate()">
+          {{ purgeOrphansMut.isPending.value ? 'Removing…' : `Remove ${rep.orphans.length} orphan folder${rep.orphans.length !== 1 ? 's' : ''}` }}
+        </button>
       </div>
     </div>
   </div>

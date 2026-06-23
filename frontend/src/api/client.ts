@@ -811,6 +811,14 @@ export async function exportMetadata(): Promise<{ written: number }> {
   return r.json() as Promise<{ written: number }>
 }
 
+/** Delete orphan store/<id> folders (no matching activity). Returns how many
+ *  folders were removed and bytes freed. */
+export async function purgeOrphans(): Promise<{ removed: number; bytesFreed: number }> {
+  const r = await fetch('/api/admin/purge-orphans', { method: 'POST' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json() as Promise<{ removed: number; bytesFreed: number }>
+}
+
 export async function getDiskUsage(): Promise<{ storeBytes: number; cacheBytes: number; tilesBytes: number; totalBytes: number }> {
   if (adminEndpointAvailable === false) {
     return { storeBytes: 0, cacheBytes: 0, tilesBytes: 0, totalBytes: 0 }

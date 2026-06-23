@@ -108,6 +108,53 @@ public class AdminController {
 		return new IntegrityReportDto(all.size(), missing, corrupt, orphans);
 	}
 
+	/**
+	 * Delete orphan {@code store/<id>/} folders — those whose id is not a current
+	 * activity (leftovers from earlier import generations). These hold no data not
+	 * already in a live ride, but they waste disk and clutter recovery scans.
+	 * Returns how many folders were removed and how many bytes freed.
+	 */
+	@PostMapping("/purge-orphans")
+	@Transactional(readOnly = true)
+	public ResponseEntity<Map<String, Object>> purgeOrphans() {
+		Set<String> dbIds = new HashSet<>();
+		for (Activity a : activityRepo.findAll())
+			dbIds.add(a.getId());
+		int removed = 0;
+		long bytes = 0;
+		try (var dirs = Files.list(storage.storeDir())) {
+			List<java.nio.file.Path> orphanDirs = dirs.filter(Files::isDirectory)
+					.filter(p -> !dbIds.contains(p.getFileName().toString()))
+					.toList();
+			for (java.nio.file.Path d : orphanDirs) {
+				try {
+					bytes += deleteTree(d);
+					removed++;
+				} catch (IOException e) {
+					log.warn("[Purge] could not delete orphan {}: {}", d, e.getMessage());
+				}
+			}
+		} catch (IOException e) {
+			log.warn("[Purge] store scan failed: {}", e.getMessage());
+		}
+		log.info("[Purge] removed {} orphan folder(s), freed {} bytes", removed, bytes);
+		return ResponseEntity.ok(Map.of("removed", removed, "bytesFreed", bytes));
+	}
+
+	/** Recursively delete a directory tree, returning the total bytes removed. */
+	private static long deleteTree(java.nio.file.Path root) throws IOException {
+		long[] total = { 0 };
+		try (var walk = Files.walk(root)) {
+			List<java.nio.file.Path> paths = walk.sorted(java.util.Comparator.reverseOrder()).toList();
+			for (java.nio.file.Path p : paths) {
+				if (Files.isRegularFile(p))
+					total[0] += Files.size(p);
+				Files.deleteIfExists(p);
+			}
+		}
+		return total[0];
+	}
+
 	private static String sha256Hex(byte[] data) {
 		try {
 			byte[] hash = MessageDigest.getInstance("SHA-256").digest(data);

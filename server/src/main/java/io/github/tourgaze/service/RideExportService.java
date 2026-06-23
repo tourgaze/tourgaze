@@ -205,17 +205,25 @@ public class RideExportService {
 	}
 
 	/**
-	 * Drop sidecars whose source file (and thus ride) is gone, so the export
-	 * mirrors the DB.
+	 * Drop per-ride sidecars whose source file (and thus ride) is gone, so the
+	 * export mirrors the store. Per-ride sidecars live one level down in
+	 * {@code store/<id>/}, so we walk the tree (the previous top-level-only scan
+	 * never saw them — and wrongly treated the top-level library sidecar as an
+	 * orphan). The library sidecar is skipped: it intentionally has no source file.
 	 */
 	private void pruneOrphans() {
-		Path dir = storage.storeDir();
-		try (var files = Files.list(dir)) {
-			List<Path> sidecars = files.filter(p -> p.getFileName().toString().endsWith(".metadata.json")).toList();
+		Path root = storage.storeDir();
+		try (var walk = Files.walk(root, 2)) {
+			List<Path> sidecars = walk
+					.filter(Files::isRegularFile)
+					.filter(p -> p.getFileName().toString().endsWith(".metadata.json"))
+					.filter(p -> !p.getFileName().toString().equals("library.metadata.json"))
+					.toList();
 			for (Path p : sidecars) {
 				String base = p.getFileName().toString().replaceFirst("\\.metadata\\.json$", "");
+				Path folder = p.getParent();
 				boolean hasSource;
-				try (var siblings = Files.list(dir)) {
+				try (var siblings = Files.list(folder)) {
 					hasSource = siblings.anyMatch(s -> {
 						String n = s.getFileName().toString();
 						return !n.endsWith(".metadata.json") && (n.equals(base) || n.startsWith(base + "."));
