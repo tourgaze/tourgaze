@@ -22,7 +22,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.github.tourgaze.dto.GearDto;
+import io.github.tourgaze.dto.LibraryMetadataDto;
 import io.github.tourgaze.dto.RideMetadataDto;
+import io.github.tourgaze.dto.UserDto;
 import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.entity.Gear;
 import io.github.tourgaze.entity.Tag;
@@ -82,7 +85,8 @@ public class RideRecoveryService {
 	}
 
 	/** Outcome of a recovery sweep. */
-	public record RecoveryReport(int scanned, int recovered, int skipped, int failed, List<String> errors) {
+	public record RecoveryReport(int scanned, int recovered, int skipped, int failed,
+			int usersRestored, int gearRestored, List<String> errors) {
 	}
 
 	/**
@@ -98,6 +102,19 @@ public class RideRecoveryService {
 		List<Path> sidecars = findSidecars();
 		int recovered = 0, skipped = 0, failed = 0;
 		List<String> errors = new ArrayList<>();
+
+		// Restore rider profiles + the full gear list FIRST, so per-ride rider /
+		// gear resolution below can link to them. Without this, a rebuilt DB loses
+		// the user and any gear not attached to a ride.
+		int usersRestored = 0, gearRestored = 0;
+		try {
+			int[] lib = self.restoreLibrary();
+			usersRestored = lib[0];
+			gearRestored = lib[1];
+		} catch (Exception e) {
+			errors.add("library.metadata.json: " + e.getMessage());
+			log.warn("[Recovery] Library restore failed: {}", e.getMessage());
+		}
 
 		// Parse up front so we can order by recency before recovering.
 		List<RideMetadataDto> dtos = new ArrayList<>();
@@ -127,9 +144,59 @@ public class RideRecoveryService {
 				log.warn("[Recovery] Failed for {}", msg);
 			}
 		}
-		log.info("[Recovery] scanned={} recovered={} skipped={} failed={}",
-				sidecars.size(), recovered, skipped, failed);
-		return new RecoveryReport(sidecars.size(), recovered, skipped, failed, errors);
+		log.info("[Recovery] scanned={} recovered={} skipped={} failed={} usersRestored={} gearRestored={}",
+				sidecars.size(), recovered, skipped, failed, usersRestored, gearRestored);
+		return new RecoveryReport(sidecars.size(), recovered, skipped, failed,
+				usersRestored, gearRestored, errors);
+	}
+
+	/**
+	 * Restore the rider profile(s) + full gear list from the library sidecar
+	 * ({@code store/library.metadata.json}), preserving ids. Idempotent. Returns
+	 * {@code [usersRestored, gearRestored]}.
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public int[] restoreLibrary() throws Exception {
+		Path lib = storage.storeDir().resolve("library.metadata.json");
+		if (!Files.isRegularFile(lib))
+			return new int[] { 0, 0 };
+		LibraryMetadataDto dto = objectMapper.readValue(lib.toFile(), LibraryMetadataDto.class);
+		int u = 0, g = 0;
+		for (UserDto ud : dto.users() == null ? List.<UserDto>of() : dto.users()) {
+			if (ud.id() == null || userRepo.existsById(ud.id()))
+				continue;
+			User user = new User();
+			user.setId(ud.id());
+			user.setUsername(ud.username());
+			user.setDisplayName(ud.displayName());
+			user.setCreatedAt(ud.createdAt());
+			user.setDateOfBirth(ud.dateOfBirth());
+			user.setHeightCm(ud.heightCm());
+			user.setWeightKg(ud.weightKg());
+			user.setGender(ud.gender());
+			user.setRestingHr(ud.restingHr());
+			user.setMaxHr(ud.maxHr());
+			userRepo.save(user);
+			u++;
+		}
+		for (GearDto gd : dto.gear() == null ? List.<GearDto>of() : dto.gear()) {
+			if (gd.id() == null || gearRepo.existsById(gd.id()))
+				continue;
+			Gear gear = new Gear();
+			gear.setId(gd.id());
+			gear.setName(gd.name());
+			gear.setType(gd.type());
+			gear.setDescription(gd.description());
+			gear.setIcon(gd.icon());
+			gear.setAssisted(gd.assisted());
+			gear.setWeightKg(gd.weightKg());
+			if (gd.userId() != null)
+				userRepo.findById(gd.userId()).ifPresent(gear::setUser);
+			gearRepo.save(gear);
+			g++;
+		}
+		log.info("[Recovery] library restored: {} user(s), {} gear", u, g);
+		return new int[] { u, g };
 	}
 
 	/** All {@code *.metadata.json} sidecars, one per ride folder under store/. */
@@ -140,6 +207,9 @@ public class RideRecoveryService {
 		try (var walk = Files.walk(store, 2)) {
 			return walk.filter(Files::isRegularFile)
 					.filter(p -> p.getFileName().toString().endsWith(".metadata.json"))
+					// library.metadata.json is the library sidecar (users + gear),
+					// restored separately — not a per-ride sidecar.
+					.filter(p -> !p.getFileName().toString().equals("library.metadata.json"))
 					.sorted()
 					.toList();
 		} catch (Exception e) {

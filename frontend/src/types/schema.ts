@@ -1138,6 +1138,10 @@ export interface components {
             skipped?: number;
             /** Format: int32 */
             failed?: number;
+            /** Format: int32 */
+            usersRestored?: number;
+            /** Format: int32 */
+            gearRestored?: number;
             errors?: string[];
         };
         MediaItem: {

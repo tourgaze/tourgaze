@@ -25,10 +25,15 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import io.github.tourgaze.dto.LibraryMetadataDto;
 import io.github.tourgaze.dto.RideMetadataDto;
 import io.github.tourgaze.entity.Activity;
 import io.github.tourgaze.event.ActivityEvents;
 import io.github.tourgaze.repository.ActivityRepository;
+import io.github.tourgaze.repository.GearRepository;
+import io.github.tourgaze.repository.UserRepository;
+import io.github.tourgaze.service.mapper.GearMapper;
+import io.github.tourgaze.service.mapper.UserMapper;
 import io.github.tourgaze.store.StorageService;
 
 /**
@@ -56,16 +61,25 @@ public class RideExportService {
 	private final StorageService storage;
 	private final ObjectMapper objectMapper;
 	private final RideMetadataMapper mapper;
+	private final UserRepository userRepo;
+	private final GearRepository gearRepo;
+	private final UserMapper userMapper;
+	private final GearMapper gearMapper;
 
 	@Value("${tourgaze.export.metadata.enabled:true}")
 	private boolean enabled;
 
 	public RideExportService(ActivityRepository activityRepo, StorageService storage,
-			ObjectMapper objectMapper, RideMetadataMapper mapper) {
+			ObjectMapper objectMapper, RideMetadataMapper mapper, UserRepository userRepo,
+			GearRepository gearRepo, UserMapper userMapper, GearMapper gearMapper) {
 		this.activityRepo = activityRepo;
 		this.storage = storage;
 		this.objectMapper = objectMapper;
 		this.mapper = mapper;
+		this.userRepo = userRepo;
+		this.gearRepo = gearRepo;
+		this.userMapper = userMapper;
+		this.gearMapper = gearMapper;
 	}
 
 	// ── On-change (primary) ──────────────────────────────────────────────────
@@ -131,9 +145,28 @@ public class RideExportService {
 				log.warn("[Export] Failed for {}: {}", a.getId(), e.getMessage());
 			}
 		}
+		try {
+			writeLibrarySidecar();
+		} catch (Exception e) {
+			log.warn("[Export] Library sidecar failed: {}", e.getMessage());
+		}
 		pruneOrphans();
 		log.info("[Export] {} metadata sidecars written ({}), {} failed", ok, reason, failed);
 		return ok;
+	}
+
+	/**
+	 * Write the library sidecar (rider profiles + full gear list) so recovery can
+	 * restore the user and any gear not attached to a ride.
+	 */
+	private void writeLibrarySidecar() throws Exception {
+		var users = userRepo.findAll().stream().map(userMapper::toDto).toList();
+		var gear = gearRepo.findAll().stream().map(gearMapper::toDto).toList();
+		LibraryMetadataDto dto = new LibraryMetadataDto(
+				LibraryMetadataDto.SCHEMA_VERSION, Instant.now(), users, gear);
+		Path file = storage.storeDir().resolve("library.metadata.json");
+		Files.createDirectories(file.getParent());
+		objectMapper.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), dto);
 	}
 
 	// ── Write / path helpers ─────────────────────────────────────────────────
