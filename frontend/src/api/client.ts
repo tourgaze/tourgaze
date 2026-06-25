@@ -111,6 +111,15 @@ export async function refreshInbox(): Promise<void> {
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
 
+/** Scan the configured inbox folders (Garmin USB, cloud sync, …) for new files
+ *  right now instead of waiting for the ~60s background poll. Returns how many
+ *  new files were copied into the inbox. */
+export async function scanWatchFolders(): Promise<{ copied: number }> {
+  const r = await fetch('/api/inbox/scan-watch-folders', { method: 'POST' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+
 /** Recompute proposals for a single inbox file. */
 export async function refreshInboxItem(filename: string): Promise<void> {
   const r = await fetch(`/api/inbox/${encodeURIComponent(filename)}/refresh`, { method: 'POST' })

@@ -433,15 +433,28 @@ const processedMut = useMutation({
         </div>
       </div>
 
-      <div v-if="item.existingActivityId" class="text-[11px] p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">
-        This file is already imported. Ignore to remove it from the inbox (the file moves to inbox-ignored/, not deleted).
+      <!-- Already in the library: the common case for a re-plugged device. One
+           click to dismiss — archives the inbox copy (bytes kept) and stops it
+           re-staging on the next scan. No import needed. -->
+      <div v-if="item.existingActivityId" class="text-[11px] p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 flex items-center justify-between gap-2">
+        <span>This exact ride is already in your library — nothing to import.</span>
+        <button class="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 font-medium"
+          title="Archive to inbox-processed/ and close — bytes kept, won't re-stage from your device."
+          :disabled="processedMut.isPending.value" @click="processedMut.mutate()">
+          <Archive :size="11" /> {{ processedMut.isPending.value ? 'Dismissing…' : 'Dismiss' }}
+        </button>
       </div>
 
       <div v-else-if="item.duplicateOfName" class="text-[11px] p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">
-        Looks like the <strong>same route</strong> as your already-imported ride
-        “{{ item.duplicateOfName }}”. If it's a duplicate recording, use
-        <strong>Move to processed</strong> below — it's archived (not deleted) and
-        won't re-stage from your device. Import anyway if you want to keep both.
+        <div class="flex items-center justify-between gap-2">
+          <span>Same <strong>route</strong> as “{{ item.duplicateOfName }}”, already in your library.</span>
+          <button class="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 font-medium"
+            title="Archive to inbox-processed/ and close — bytes kept, won't re-stage from your device."
+            :disabled="processedMut.isPending.value" @click="processedMut.mutate()">
+            <Archive :size="11" /> {{ processedMut.isPending.value ? 'Dismissing…' : 'Dismiss' }}
+          </button>
+        </div>
+        <div class="mt-1 opacity-75">A duplicate recording — dismiss it, or fill in below and Import anyway to keep both.</div>
       </div>
 
       <!-- Name, dense grid for related single-line fields. -->

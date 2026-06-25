@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
 import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Ban, Archive, Clock, Loader2, FolderInput, Sparkles, Search, X as XIcon } from 'lucide-vue-next'
-import { getInbox, refreshInbox, refreshInboxItem, importInbox, uploadFit, discardInbox, moveInboxToProcessed, SOURCE_FORMATS, type InboxItem } from '@/api/client'
+import { getInbox, refreshInbox, refreshInboxItem, scanWatchFolders, importInbox, uploadFit, discardInbox, moveInboxToProcessed, SOURCE_FORMATS, type InboxItem } from '@/api/client'
 import { InboxStreamEvent } from '@/enums/generated'
 import AddTourPanel from '@/components/AddTourPanel.vue'
 
@@ -115,16 +115,22 @@ const visibleItems = computed(() => {
     || (i.suggestedLocation ?? '').toLowerCase().includes(q))
 })
 
-// Refresh = recompute proposals (gear/type/duplicate) from current history, then
-// refetch. Use after importing rides so the next items reflect the new history
-// (e.g. gear pre-selection). Cards briefly show "parsing" while the warm reruns.
+// Refresh = (1) scan the configured inbox folders (Garmin USB, cloud sync) for
+// new files right now instead of waiting for the ~60s poll, then (2) recompute
+// proposals (gear/type/duplicate) from current history, then refetch. Cards
+// briefly show "parsing" while the warm reruns.
 const refreshing = ref(false)
 async function refresh() {
   refreshing.value = true
   try {
+    const { copied } = await scanWatchFolders().catch(() => ({ copied: 0 }))
     await refreshInbox()
     await qc.invalidateQueries({ queryKey: ['inbox'] })
-    push.success({ title: 'Refreshing proposals', message: 'Cards update as they re-process.' })
+    if (copied > 0) {
+      push.success({ title: `Found ${copied} new file${copied !== 1 ? 's' : ''}`, message: 'Pulled from your inbox folders. Cards update as they process.' })
+    } else {
+      push.success({ title: 'Up to date', message: 'No new files in your inbox folders; proposals re-processing.' })
+    }
   } catch { push.error('Refresh failed') }
   finally { refreshing.value = false }
 }
@@ -312,15 +318,17 @@ async function moveProcessed(filename: string) {
           <div v-if="it.startTime" class="text-[10px] text-muted-fg mt-0.5 flex items-center gap-0.5">
             <Clock :size="9" />{{ fmtDateTime(it.startTime) }}
           </div>
-          <!-- Exact-duplicate of an imported ride: no import value, so offer a
-               clear, always-visible remove instead of silently sweeping it. -->
-          <div v-if="it.existingActivityId" class="mt-1.5 flex items-center gap-2 text-[10px]">
-            <span class="text-amber-600">Already in your library.</span>
+          <!-- Already in the repository (exact file OR same route): no import
+               value, so offer a clear, always-visible one-click Dismiss right on
+               the row instead of making the user open the card. Archives (bytes
+               kept) and won't re-stage from the device. -->
+          <div v-if="it.existingActivityId || it.duplicateOfName" class="mt-1.5 flex items-center gap-2 text-[10px]">
+            <span class="text-amber-600">{{ it.existingActivityId ? 'Already in your library.' : 'Already in your library (same route).' }}</span>
             <button type="button"
               class="px-2 py-0.5 rounded border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 inline-flex items-center gap-1"
-              title="Archive to ~/.tourgaze/inbox-processed/ (bytes kept, won't re-stage from your device)"
+              title="Dismiss — archive to inbox-processed/ (bytes kept, won't re-stage from your device)"
               @click.stop="moveProcessed(it.filename!)">
-              <Archive :size="11" /> Remove duplicate
+              <Archive :size="11" /> Dismiss
             </button>
           </div>
           <!-- Skeleton: file listed instantly, not yet parsed by the warm job (pushed → fills in). -->
