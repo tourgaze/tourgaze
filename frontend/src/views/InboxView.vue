@@ -4,8 +4,8 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
-import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Ban, Archive, Clock, Loader2, FolderInput, Sparkles, Search, X as XIcon, ChevronDown, ChevronRight } from 'lucide-vue-next'
-import { getInbox, refreshInbox, refreshInboxItem, scanWatchFolders, getSkippedInbox, importInbox, uploadFit, discardInbox, moveInboxToProcessed, SOURCE_FORMATS, type InboxItem } from '@/api/client'
+import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Trash2, Clock, Loader2, FolderInput, Sparkles, Search, X as XIcon, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { getInbox, refreshInbox, refreshInboxItem, scanWatchFolders, getSkippedInbox, importInbox, uploadFit, discardInbox, SOURCE_FORMATS, type InboxItem } from '@/api/client'
 import { InboxStreamEvent } from '@/enums/generated'
 import AddTourPanel from '@/components/AddTourPanel.vue'
 
@@ -190,21 +190,14 @@ async function refreshItem(filename: string) {
   finally { refreshingItem.value = null }
 }
 
-// Per-item inbox actions (matros-style inline icons). Both keep the bytes — the
-// file moves to inbox-ignored/ or inbox-processed/, never deleted.
-async function ignore(filename: string) {
+// The single user-initiated remove: the file leaves the inbox (kept in
+// inbox-ignored/ for undo) and won't re-stage from a keep-on-device source.
+async function removeFromInbox(filename: string) {
   try {
     await discardInbox(filename)
     qc.invalidateQueries({ queryKey: ['inbox'] })
-    push.info({ title: 'Ignored', message: 'Moved to ~/.tourgaze/inbox-ignored/' })
-  } catch { push.error('Could not ignore') }
-}
-async function moveProcessed(filename: string) {
-  try {
-    await moveInboxToProcessed(filename)
-    qc.invalidateQueries({ queryKey: ['inbox'] })
-    push.info({ title: 'Moved to processed', message: "Archived; won't re-stage." })
-  } catch { push.error('Could not move to processed') }
+    push.info({ title: 'Deleted from inbox' })
+  } catch { push.error('Could not delete from inbox') }
 }
 </script>
 
@@ -306,10 +299,10 @@ async function moveProcessed(filename: string) {
             <span class="text-xs font-medium truncate flex-1">{{ it.suggestedName }}</span>
             <span v-if="it.existingActivityId"
               class="text-[9px] px-1 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/40 shrink-0"
-              title="This exact file is already imported — nothing to do but remove it from the inbox.">already imported</span>
+              title="This exact file is already in your library — nothing to import.">already imported</span>
             <span v-else-if="it.duplicateOfName"
-              class="text-[9px] px-1 rounded-full bg-amber-500/15 text-amber-600 border border-amber-500/40 shrink-0"
-              :title="`Same route as an already-imported ride: ${it.duplicateOfName}`">duplicate</span>
+              class="text-[9px] px-1 rounded-full bg-muted/40 text-muted-fg border border-border shrink-0"
+              :title="`Looks like the same route as ${it.duplicateOfName} — importable, just a heads-up.`">similar route</span>
             <!-- Which inbox source (watch-folder) this file came from — matters with
                  multiple sources. Absent for hand-dropped files. -->
             <span v-if="it.sourceLabel"
@@ -325,15 +318,10 @@ async function moveProcessed(filename: string) {
                 @click.stop="refreshItem(it.filename!)">
                 <Sparkles :size="13" :class="refreshingItem === it.filename ? 'animate-pulse' : ''" />
               </button>
-              <button type="button" class="p-1 rounded text-muted-fg hover:text-amber-600 hover:bg-amber-500/10"
-                title="Move to processed — archive without importing (won't re-stage from your device)"
-                @click.stop="moveProcessed(it.filename!)">
-                <Archive :size="13" />
-              </button>
               <button type="button" class="p-1 rounded text-muted-fg hover:text-red-600 hover:bg-red-500/10"
-                title="Ignore — move to inbox-ignored/ (bytes kept)"
-                @click.stop="ignore(it.filename!)">
-                <Ban :size="13" />
+                title="Delete from inbox (kept for undo, won't re-stage)"
+                @click.stop="removeFromInbox(it.filename!)">
+                <Trash2 :size="13" />
               </button>
             </span>
           </div>
@@ -346,18 +334,20 @@ async function moveProcessed(filename: string) {
           <div v-if="it.startTime" class="text-[10px] text-muted-fg mt-0.5 flex items-center gap-0.5">
             <Clock :size="9" />{{ fmtDateTime(it.startTime) }}
           </div>
-          <!-- Already in the repository (exact file OR same route): no import
-               value, so offer a clear, always-visible one-click Dismiss right on
-               the row instead of making the user open the card. Archives (bytes
-               kept) and won't re-stage from the device. -->
-          <div v-if="it.existingActivityId || it.duplicateOfName" class="mt-1.5 flex items-center gap-2 text-[10px]">
-            <span class="text-amber-600">{{ it.existingActivityId ? 'Already in your library.' : 'Already in your library (same route).' }}</span>
+          <!-- Exact file already in the repository: nothing to import → a clear,
+               always-visible one-click delete right on the row. -->
+          <div v-if="it.existingActivityId" class="mt-1.5 flex items-center gap-2 text-[10px]">
+            <span class="text-amber-600">Already in your library.</span>
             <button type="button"
               class="px-2 py-0.5 rounded border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 inline-flex items-center gap-1"
-              title="Dismiss — archive to inbox-processed/ (bytes kept, won't re-stage from your device)"
-              @click.stop="moveProcessed(it.filename!)">
-              <Archive :size="11" /> Dismiss
+              title="Delete from inbox (kept for undo, won't re-stage)"
+              @click.stop="removeFromInbox(it.filename!)">
+              <Trash2 :size="11" /> Delete
             </button>
+          </div>
+          <!-- Same route (different file): importable, just a soft heads-up. -->
+          <div v-else-if="it.duplicateOfName" class="mt-1.5 text-[10px] text-muted-fg">
+            Looks like the same route as “{{ it.duplicateOfName }}”.
           </div>
           <!-- Skeleton: file listed instantly, not yet parsed by the warm job (pushed → fills in). -->
           <div v-if="it.parsing" class="text-[10px] text-muted-fg/70 mt-0.5 flex items-center gap-1">

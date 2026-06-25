@@ -128,21 +128,13 @@ public class StorageService {
 	}
 
 	/**
-	 * Sibling of inbox/ where files the user actively rejected are parked.
-	 * They're not deleted (drop-recovery would be lost otherwise) — they just
-	 * don't appear in `listPending` anymore. Move back into inbox/ to undo.
+	 * Sibling of inbox/ where files the user deleted from the inbox are parked.
+	 * They're not destroyed (drop-recovery would be lost otherwise) — they just
+	 * don't appear in `listPending` anymore, and their hash is parked so a
+	 * keep-on-device source won't re-stage them. Move back into inbox/ to undo.
 	 */
 	public Path inboxIgnoredDir() {
 		return baseDir.resolve("inbox-ignored");
-	}
-
-	/**
-	 * Archive folder for inbox files the user has dealt with but doesn't want to
-	 * import (e.g. a same-track duplicate) — moved here rather than deleted, so
-	 * the bytes are never lost. Sibling of inbox/ (matros "processed" convention).
-	 */
-	public Path inboxProcessedDir() {
-		return baseDir.resolve("inbox-processed");
 	}
 
 	/** Root of the precious, cloud-syncable library (holds store/ + db-backup/). */

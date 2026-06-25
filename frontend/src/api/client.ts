@@ -490,14 +490,9 @@ export async function getPrediction(
   return r.json()
 }
 
+/** Delete a staged file from the inbox (the single user-initiated remove). */
 export async function discardInbox(filename: string): Promise<void> {
   const r = await fetch(`/api/inbox/${encodeURIComponent(filename)}`, { method: 'DELETE' })
-  if (!r.ok) throw new Error(`HTTP ${r.status}`)
-}
-
-/** Archive a staged inbox file to ~/.tourgaze/inbox-processed/ without importing it. */
-export async function moveInboxToProcessed(filename: string): Promise<void> {
-  const r = await fetch(`/api/inbox/${encodeURIComponent(filename)}/processed`, { method: 'POST' })
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
 

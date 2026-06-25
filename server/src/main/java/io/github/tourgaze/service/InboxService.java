@@ -228,6 +228,44 @@ public class InboxService {
 		return storage.cacheDir().resolve("inbox-sources.json");
 	}
 
+	/**
+	 * One-time migration: the old inbox-processed/ archive is gone ("delete from
+	 * inbox" now uses the single inbox-ignored/). Fold any files it still holds
+	 * into inbox-ignored/ so their hashes stay parked (won't re-stage), then drop
+	 * the dead folder. Best-effort; safe to run every boot.
+	 */
+	@PostConstruct
+	void migrateProcessedIntoIgnored() {
+		Path processed = storage.inboxDir().resolveSibling("inbox-processed");
+		if (!Files.isDirectory(processed))
+			return;
+		Path ignored = storage.inboxIgnoredDir();
+		try {
+			Files.createDirectories(ignored);
+			try (var s = Files.list(processed)) {
+				for (Path p : (Iterable<Path>) s::iterator) {
+					if (!Files.isRegularFile(p))
+						continue;
+					String name = p.getFileName().toString();
+					Path dest = ignored.resolve(name);
+					int n = 1;
+					while (Files.exists(dest) && n < 100) {
+						int dot = name.lastIndexOf('.');
+						String stem = dot > 0 ? name.substring(0, dot) : name;
+						String ext = dot > 0 ? name.substring(dot) : "";
+						dest = ignored.resolve(stem + "-" + n + ext);
+						n++;
+					}
+					Files.move(p, dest, StandardCopyOption.REPLACE_EXISTING);
+				}
+			}
+			Files.deleteIfExists(processed);
+			log.info("[Inbox] migrated legacy inbox-processed/ into inbox-ignored/");
+		} catch (IOException e) {
+			log.debug("[Inbox] processed→ignored migration skipped: {}", e.getMessage());
+		}
+	}
+
 	@PostConstruct
 	void loadSources() {
 		Path f = sourcesFile();
@@ -514,10 +552,6 @@ public class InboxService {
 				: pc.suggestedName();
 		// "Processing" once parsed: has GPS but the geocode/tag-vote hasn't run yet.
 		boolean proposalPending = pred == null && pc.lat() != null;
-		// Exact-hash match (in the repo) or a same-route ride → duplicate; else ready.
-		var status = (pc.existingActivityId() != null || pc.dupId() != null)
-				? io.github.tourgaze.enums.InboxItemStatus.DUPLICATE
-				: io.github.tourgaze.enums.InboxItemStatus.READY;
 		return new InboxItemDto(
 				filename, pc.sha(), pc.size(), pc.format(), displayName,
 				pc.type() != null ? pc.type().wire() : null,
@@ -528,7 +562,7 @@ public class InboxService {
 				pred != null ? pred.country() : null,
 				pred != null ? proposedTagNames(pred) : List.of(),
 				proposalPending, false, origins.get(filename),
-				pc.hasHr(), pc.hasCadence(), pc.hasPower(), status);
+				pc.hasHr(), pc.hasCadence(), pc.hasPower());
 	}
 
 	/** A not-yet-parsed card: name/size/format only, {@code parsing: true}. */
@@ -543,8 +577,7 @@ public class InboxService {
 		return new InboxItemDto(
 				filename, null, size, io.github.tourgaze.parser.SourceFormat.from(extensionOf(filename)),
 				suggestedName, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, List.of(), false, true, origins.get(filename), false, false, false,
-				io.github.tourgaze.enums.InboxItemStatus.PARSING);
+				null, null, null, List.of(), false, true, origins.get(filename), false, false, false);
 	}
 
 	/**
@@ -572,27 +605,26 @@ public class InboxService {
 	}
 
 	/**
-	 * SHA-256 hashes of every file parked in inbox-ignored/ and inbox-processed/.
-	 * The watch-folder scanner consults this so a duplicate the user ignored (or
-	 * moved to processed) isn't re-copied from the still-present source device on
-	 * the next scan — "stays on the Garmin, stays ignored here".
+	 * SHA-256 hashes of every file the user deleted from the inbox (parked in
+	 * inbox-ignored/). The watch-folder scanner consults this so a file the user
+	 * removed isn't re-copied from the still-present source device on the next
+	 * scan — "stays on the Garmin, stays out of the inbox".
 	 */
 	public Set<String> parkedHashes() {
 		Set<String> out = new HashSet<>();
-		for (Path dir : List.of(storage.inboxIgnoredDir(), storage.inboxProcessedDir())) {
-			if (!Files.isDirectory(dir))
-				continue;
-			try (var s = Files.list(dir)) {
-				s.filter(Files::isRegularFile).forEach(p -> {
-					try {
-						out.add(sha256Hex(Files.readAllBytes(p)));
-					} catch (IOException e) {
-						log.debug("Could not hash parked file {}: {}", p, e.getMessage());
-					}
-				});
-			} catch (IOException e) {
-				log.debug("Could not list parked dir {}: {}", dir, e.getMessage());
-			}
+		Path dir = storage.inboxIgnoredDir();
+		if (!Files.isDirectory(dir))
+			return out;
+		try (var s = Files.list(dir)) {
+			s.filter(Files::isRegularFile).forEach(p -> {
+				try {
+					out.add(sha256Hex(Files.readAllBytes(p)));
+				} catch (IOException e) {
+					log.debug("Could not hash parked file {}: {}", p, e.getMessage());
+				}
+			});
+		} catch (IOException e) {
+			log.debug("Could not list parked dir {}: {}", dir, e.getMessage());
 		}
 		return out;
 	}
@@ -1094,22 +1126,14 @@ public class InboxService {
 	}
 
 	/**
-	 * "Ignore" — move the file out of inbox/ into inbox-ignored/ instead of
-	 * deleting it. The user can drag it back into inbox/ to re-stage. We
-	 * never destroy the bytes; the only real deletion path is via the
-	 * activity-delete endpoint after a successful import.
+	 * "Delete from inbox" — the single user-initiated remove. The file leaves
+	 * inbox/ for inbox-ignored/ (bytes kept, drag back to re-stage) and its hash is
+	 * parked so a keep-on-device source won't re-stage it. We never destroy the
+	 * bytes; the only real deletion path is the activity-delete endpoint after a
+	 * successful import.
 	 */
 	public void discard(String filename) throws IOException {
-		moveOutOfInbox(filename, storage.inboxIgnoredDir(), "Ignored");
-	}
-
-	/**
-	 * "Move to processed" — archive an inbox file into inbox-processed/ instead of
-	 * importing it (e.g. a recognised same-track duplicate). Bytes are kept, never
-	 * deleted; drag it back into inbox/ to re-stage. (matros "processed" folder.)
-	 */
-	public void moveToProcessed(String filename) throws IOException {
-		moveOutOfInbox(filename, storage.inboxProcessedDir(), "Processed");
+		moveOutOfInbox(filename, storage.inboxIgnoredDir(), "Removed");
 	}
 
 	/**

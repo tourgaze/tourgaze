@@ -297,22 +297,11 @@ public class InboxController {
 		return guess != null ? guess : "application/octet-stream";
 	}
 
+	/** Delete a staged file from the inbox (the single user-initiated remove). */
 	@DeleteMapping("/{filename}")
 	public ResponseEntity<Void> discard(@PathVariable("filename") String filename) {
 		try {
 			inboxService.discard(filename);
-			inboxService.notifyChanged();
-			return ResponseEntity.noContent().build();
-		} catch (IOException e) {
-			return ResponseEntity.internalServerError().build();
-		}
-	}
-
-	/** Archive a staged file to inbox-processed/ without importing it. */
-	@PostMapping("/{filename}/processed")
-	public ResponseEntity<Void> moveToProcessed(@PathVariable("filename") String filename) {
-		try {
-			inboxService.moveToProcessed(filename);
 			inboxService.notifyChanged();
 			return ResponseEntity.noContent().build();
 		} catch (IOException e) {

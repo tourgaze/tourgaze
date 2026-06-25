@@ -82,9 +82,5 @@ public record InboxItemDto(
         // so the user sees at a glance what extra data the ride brings.
         boolean hasHeartRate,
         boolean hasCadence,
-        boolean hasPower,
-        // Single derived lifecycle status the frontend keys off — parsing |
-        // ready | duplicate. Supersedes juggling parsing/existingActivityId/
-        // duplicateOfId on the client; those fields stay for back-compat + links.
-        io.github.tourgaze.enums.InboxItemStatus status
+        boolean hasPower
 ) {}

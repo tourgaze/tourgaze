@@ -4,9 +4,9 @@ import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, EyeOff, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Archive, Heart, Zap, Gauge } from 'lucide-vue-next'
+import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, Trash2, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Heart, Zap, Gauge } from 'lucide-vue-next'
 import {
-  importInbox, discardInbox, moveInboxToProcessed, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
+  importInbox, discardInbox, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
   getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile, getSports,
   getAllMarkers, createMarker, getEventTypes, setActivityEvents,
   type InboxItem, type WeatherResult, type Prediction, type Marker, type RideEvent,
@@ -285,29 +285,17 @@ const importMut = useMutation({
   onError: () => push.error('Save failed'),
 })
 
-// "Ignore" semantics: the file is moved to ~/.tourgaze/inbox-ignored/ on
-// the server, NOT deleted. Drag back into ~/.tourgaze/inbox/ to un-ignore.
-const discardMut = useMutation({
+// The single user-initiated remove: the file leaves inbox/ for inbox-ignored/
+// (bytes kept, drag back to undo) and its hash is parked so a keep-on-device
+// source won't re-stage it. NOT a hard delete.
+const removeMut = useMutation({
   mutationFn: () => discardInbox(props.item.filename!),
   onSuccess: () => {
     qc.invalidateQueries({ queryKey: ['inbox'] })
-    push.info({ title: 'Ignored', message: 'Moved to ~/.tourgaze/inbox-ignored/ — bytes preserved.' })
+    push.info({ title: 'Deleted from inbox' })
     emit('done')
   },
-  onError: () => push.error('Could not ignore'),
-})
-
-// "Move to processed": archive the file to ~/.tourgaze/inbox-processed/ without
-// importing. Used for recognised same-track duplicates — the bytes are kept and
-// the watch-folder scan won't re-stage it from the (untouched) source device.
-const processedMut = useMutation({
-  mutationFn: () => moveInboxToProcessed(props.item.filename!),
-  onSuccess: () => {
-    qc.invalidateQueries({ queryKey: ['inbox'] })
-    push.info({ title: 'Moved to processed', message: 'Archived to ~/.tourgaze/inbox-processed/ — won\'t re-stage.' })
-    emit('done')
-  },
-  onError: () => push.error('Could not move to processed'),
+  onError: () => push.error('Could not delete from inbox'),
 })
 </script>
 
@@ -433,28 +421,21 @@ const processedMut = useMutation({
         </div>
       </div>
 
-      <!-- Already in the library: the common case for a re-plugged device. One
-           click to dismiss — archives the inbox copy (bytes kept) and stops it
-           re-staging on the next scan. No import needed. -->
+      <!-- Already in the library (exact file): nothing to import — one click to
+           delete it from the inbox. -->
       <div v-if="item.existingActivityId" class="text-[11px] p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 flex items-center justify-between gap-2">
         <span>This exact ride is already in your library — nothing to import.</span>
         <button class="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 font-medium"
-          title="Archive to inbox-processed/ and close — bytes kept, won't re-stage from your device."
-          :disabled="processedMut.isPending.value" @click="processedMut.mutate()">
-          <Archive :size="11" /> {{ processedMut.isPending.value ? 'Dismissing…' : 'Dismiss' }}
+          title="Delete from inbox (kept for undo, won't re-stage)."
+          :disabled="removeMut.isPending.value" @click="removeMut.mutate()">
+          <Trash2 :size="11" /> {{ removeMut.isPending.value ? 'Deleting…' : 'Delete from inbox' }}
         </button>
       </div>
 
-      <div v-else-if="item.duplicateOfName" class="text-[11px] p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300">
-        <div class="flex items-center justify-between gap-2">
-          <span>Same <strong>route</strong> as “{{ item.duplicateOfName }}”, already in your library.</span>
-          <button class="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 font-medium"
-            title="Archive to inbox-processed/ and close — bytes kept, won't re-stage from your device."
-            :disabled="processedMut.isPending.value" @click="processedMut.mutate()">
-            <Archive :size="11" /> {{ processedMut.isPending.value ? 'Dismissing…' : 'Dismiss' }}
-          </button>
-        </div>
-        <div class="mt-1 opacity-75">A duplicate recording — dismiss it, or fill in below and Import anyway to keep both.</div>
+      <!-- Same route, different file: importable (keeps both) — just a heads-up,
+           not a duplicate to dismiss. Delete is in the footer if you don't want it. -->
+      <div v-else-if="item.duplicateOfName" class="text-[11px] p-2 rounded border border-border bg-muted/10 text-muted-fg">
+        Looks like the same <strong>route</strong> as “{{ item.duplicateOfName }}”. Fill in below and Import to keep both, or delete it from the inbox.
       </div>
 
       <!-- Name, dense grid for related single-line fields. -->
@@ -605,14 +586,9 @@ const processedMut = useMutation({
     <div class="flex items-center justify-between gap-2 px-4 py-3 border-t border-border bg-muted/10">
       <div class="flex gap-2">
         <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-amber-300 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50"
-          title="Move this file to ~/.tourgaze/inbox-ignored/ — bytes preserved, drag back to inbox/ to undo."
-          :disabled="discardMut.isPending.value" @click="discardMut.mutate()">
-          <EyeOff :size="12" /> Ignore
-        </button>
-        <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-border text-muted-fg hover:text-foreground disabled:opacity-50"
-          title="Archive to ~/.tourgaze/inbox-processed/ without importing — for known duplicates. Bytes kept; won't re-stage from your device."
-          :disabled="processedMut.isPending.value" @click="processedMut.mutate()">
-          <Archive :size="12" /> Move to processed
+          title="Delete from inbox — moves to ~/.tourgaze/inbox-ignored/ (bytes kept, drag back to undo), won't re-stage from your device."
+          :disabled="removeMut.isPending.value" @click="removeMut.mutate()">
+          <Trash2 :size="12" /> Delete from inbox
         </button>
       </div>
       <div class="flex gap-2">
