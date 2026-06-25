@@ -701,12 +701,14 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
     <Pane :size="effectiveLeftSize" :min-size="2.4" :max-size="60"
       class="flex flex-col bg-background border-r border-border overflow-hidden">
 
-      <!-- Collapsed strip: only the unfold button -->
+      <!-- Collapsed: a full-height vertical tab (icon + vertical label) so the
+           strip reads as a deliberate fold control, not an empty dead column. -->
       <button v-if="leftCollapsed"
-        class="h-full w-full flex items-start justify-center pt-3 text-muted-fg hover:text-foreground"
+        class="h-full w-full flex flex-col items-center justify-center gap-3 bg-muted/10 hover:bg-muted/30 text-muted-fg hover:text-foreground transition-colors"
         title="Show filters &amp; tree"
         @click="toggleLeftPane">
-        <PanelLeftOpen :size="16" />
+        <PanelLeftOpen :size="16" class="shrink-0" />
+        <span class="text-[10px] font-semibold uppercase tracking-wide [writing-mode:vertical-rl] select-none">Tours</span>
       </button>
 
       <template v-else>

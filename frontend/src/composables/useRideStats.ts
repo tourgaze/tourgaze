@@ -36,6 +36,7 @@ export type RideStats = {
   measuredMaxPowerW: number | null
   estAvgPowerW: number | null     // cycling only
   estNpW: number | null           // normalized power
+  estClimbPowerW: number | null   // avg estimated power on climbs (>3%) — most reliable estimate
   variabilityIndex: number | null // NP / avg
   workKj: number | null
   calories: number | null
@@ -47,6 +48,13 @@ const ASCENT_NOISE_M = 1.0
 const MOVING_SPEED_MS = 0.6        // below this ≈ stopped
 // Cycling power model constants (road bike, hoods). Rough but consistent.
 const CRR = 0.005, RHO = 1.225, CDA = 0.32, G = 9.81, DRIVE_EFF = 0.97
+// Grade for the climbing power term is measured over a rolling horizontal
+// window (not a single ~1 s step) so GPS/baro altitude jitter doesn't make
+// climbing power spike, and clamped to a sane bound (a single noisy point
+// otherwise injects an extreme gravity term that NP's 4th-power weighting then
+// over-amplifies). 30 m smooths noise while still resolving real pitch changes.
+const POWER_GRADE_WIN_M = 30
+const MAX_POWER_GRADE = 0.35
 
 const GRADE_BANDS: { label: string; color: string; lo: number; hi: number }[] = [
   { label: '↓ steep',  color: '#1d4ed8', lo: -Infinity, hi: -6 },
@@ -83,7 +91,7 @@ export function useRideStats(
       avgSpeedKmh: null, maxSpeedKmh: null, ascentM: 0, descentM: 0, maxGradePct: null, vamMh: null,
       avgHr: null, maxHr: null, trimp: null, decouplingPct: null,
       avgCadence: null, maxCadence: null, measuredAvgPowerW: null, measuredMaxPowerW: null,
-      estAvgPowerW: null, estNpW: null, variabilityIndex: null, workKj: null, calories: null,
+      estAvgPowerW: null, estNpW: null, estClimbPowerW: null, variabilityIndex: null, workKj: null, calories: null,
       bestEfforts: [], gradeBuckets: [],
     }
     if (!pts || pts.length < 2) return { ...empty, ...measuredChannels(activity.value) }
@@ -99,9 +107,15 @@ export function useRideStats(
     const dt = 1                                   // 1 Hz assumption
     let ascent = 0, descent = 0, maxGrade = -Infinity, climbSeconds = 0, climbAscent = 0
     let movingSeconds = 0, maxSpeedMs = 0
+    let gw = 0                                     // trailing pointer for windowed grade
     let hrSum = 0, hrCount = 0, hrMax = 0
     let trimp = 0
     let workJ = 0
+    // Climbing power: average estimated watts over true climbing seconds (grade
+    // >3%). On a climb the estimate is dominated by the well-known gravity term
+    // and barely touched by the fixed-CdA aero guess, so it's the most reliable
+    // power number the model produces — surfaced separately for that reason.
+    let climbPowerSum = 0, climbPowerSec = 0
     const power = new Float64Array(n)
     // Decoupling accumulators (sum HR, sum speed over each moving half).
     let hr1 = 0, sp1 = 0, c1 = 0, hr2 = 0, sp2 = 0, c2 = 0
@@ -130,12 +144,23 @@ export function useRideStats(
         }
       }
 
-      // Estimated cycling power.
-      const grade = horizM > 0.3 && p.altM != null && prev.altM != null ? (p.altM - prev.altM) / horizM : 0
+      // Estimated cycling power. The gravity term needs a stable grade: advance
+      // the trailing pointer so the window spans ~POWER_GRADE_WIN_M of horizontal
+      // distance, take the grade over that span, and clamp it.
+      while (gw < i - 1 && (p.distKm - pts[gw + 1].distKm) * 1000 >= POWER_GRADE_WIN_M) gw++
+      const base = pts[gw]
+      const winM = (p.distKm - base.distKm) * 1000
+      let grade = 0
+      if (winM > 1 && p.altM != null && base.altM != null) {
+        grade = (p.altM - base.altM) / winM
+        if (grade > MAX_POWER_GRADE) grade = MAX_POWER_GRADE
+        else if (grade < -MAX_POWER_GRADE) grade = -MAX_POWER_GRADE
+      }
       const pw = (CRR * mass * G * v) + (0.5 * RHO * CDA * v * v * v) + (mass * G * grade * v)
       const pClamped = Math.max(0, pw) / DRIVE_EFF
       power[i] = pClamped
       if (moving) workJ += pClamped * dt
+      if (moving && grade > 0.03) { climbPowerSum += pClamped * dt; climbPowerSec += dt }
 
       // Heart-rate training load (Banister TRIMP) + decoupling halves.
       if (p.hr != null) {
@@ -171,6 +196,8 @@ export function useRideStats(
 
     // Normalized power: 30s rolling mean, then 4th-power mean.
     let estAvgPowerW: number | null = null, estNpW: number | null = null, vi: number | null = null
+    let estClimbPowerW: number | null = null
+    if (isCycling && climbPowerSec > 60) estClimbPowerW = Math.round(climbPowerSum / climbPowerSec)
     if (isCycling && movingSeconds > 0) {
       estAvgPowerW = workJ / movingSeconds
       const win = 30
@@ -230,6 +257,7 @@ export function useRideStats(
       ...measuredChannels(activity.value),
       estAvgPowerW,
       estNpW,
+      estClimbPowerW,
       variabilityIndex: vi,
       workKj,
       calories: workKj != null ? workKj : null,   // ~1 kcal per kJ (human efficiency cancels)

@@ -354,19 +354,29 @@ public class AdminController {
 				|| System.getenv("CONTAINER") != null;
 	}
 
-	/** Disk usage summary for the data directory. 30s TTL via Caffeine. */
+	/**
+	 * Disk usage summary for the data directory plus the on-disk locations of the
+	 * precious library (repository root + the user-info sidecar), so the Storage
+	 * settings page can show <em>where</em> profile/gear actually live. 30s TTL via
+	 * Caffeine.
+	 */
 	@org.springframework.web.bind.annotation.GetMapping("/disk")
 	@Cacheable("diskUsage")
-	public ResponseEntity<Map<String, Long>> diskUsage() {
+	public ResponseEntity<Map<String, Object>> diskUsage() {
 		try {
 			long store = directorySize(storage.storeDir());
 			long cache = directorySize(storage.cacheDir());
 			long tiles = directorySize(storage.tilesDir());
-			return ResponseEntity.ok(Map.of(
-					"storeBytes", store,
-					"cacheBytes", cache,
-					"tilesBytes", tiles,
-					"totalBytes", store + cache + tiles));
+			Map<String, Object> body = new java.util.LinkedHashMap<>();
+			body.put("storeBytes", store);
+			body.put("cacheBytes", cache);
+			body.put("tilesBytes", tiles);
+			body.put("totalBytes", store + cache + tiles);
+			// Resolved server-side — the repository root and the library sidecar
+			// (profiles + full gear list) that recovery rebuilds the library from.
+			body.put("repositoryDir", storage.repositoryDir().toString());
+			body.put("libraryFile", storage.storeDir().resolve("library.metadata.json").toString());
+			return ResponseEntity.ok(body);
 		} catch (IOException e) {
 			return ResponseEntity.internalServerError().build();
 		}

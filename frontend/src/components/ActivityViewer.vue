@@ -377,25 +377,35 @@ watch(playbackSpeed, () => {
 // it on every visit.
 const chartCollapsed = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'chartCollapsed', false)
 const chartSize = autoLayoutRef<number>(VIEWER_LAYOUT_SLOT, 'chartSize', 32)
-// Visible Splitpanes pane sizes. The chart pane shrinks to a thin handle when
-// collapsed; the map pane reclaims the freed height.
-// Collapsed value was 4 % of viewport height (~32 px on a 800 px-tall pane)
-// which left a ~2 cm dead strip at the bottom. 2.4 % matches the splitpanes
-// min-size below — just enough room for the inline "Show diagram" button
-// without giving up visible map space.
-const effectiveChartSize = computed(() => chartCollapsed.value ? 2.4 : chartSize.value)
+// "Expand stats" gives the bottom panel a balanced 50/50 split rather than the
+// whole height — the stats are compact, so a full-height panel just leaves dead
+// space, and you keep the map in view. Folding back returns to the user's saved
+// split (the starting position), not a collapsed state. Mutually exclusive with
+// the map-full panel fold (chartCollapsed).
+const statsExpanded = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'statsExpanded', false)
+// Visible Splitpanes pane sizes. Folding the panel down shrinks it to a thin
+// handle (2.4 %, matching the min-size below); expanding stats is a 50/50 split.
+const HANDLE_PCT = 2.4
+const STATS_HALF_PCT = 50
+const effectiveChartSize = computed(() => {
+  if (!activityId.value) return 0
+  if (chartCollapsed.value) return HANDLE_PCT        // panel folded → map full
+  if (statsExpanded.value) return STATS_HALF_PCT     // balanced 50/50
+  return chartSize.value                             // user's saved split (start)
+})
 const effectiveMapSize = computed(() => activityId.value ? 100 - effectiveChartSize.value : 100)
 // splitpanes v4 emits { panes: [...] }; older builds emit the array directly.
 type ResizePayload = { panes?: Array<{ size: number }> }
 function onPaneResize(e: ResizePayload | Array<{ size: number }>) {
-  // panes[0] = map (top), panes[1] = chart (bottom). Only persist when the
-  // chart is actually expanded — otherwise we'd save the 4% collapsed size.
+  // panes[0] = map (top), panes[1] = chart (bottom). Only persist a genuine
+  // user drag — i.e. when neither preset (panel-fold / 50-50) is active.
   const panes = Array.isArray(e) ? e : (e?.panes ?? [])
-  if (!chartCollapsed.value && panes[1]?.size != null) {
+  if (!chartCollapsed.value && !statsExpanded.value && panes[1]?.size != null) {
     chartSize.value = panes[1].size
   }
 }
-function toggleChart() { chartCollapsed.value = !chartCollapsed.value }
+function toggleChart() { chartCollapsed.value = !chartCollapsed.value; if (chartCollapsed.value) statsExpanded.value = false }
+function toggleStats() { statsExpanded.value = !statsExpanded.value; if (statsExpanded.value) chartCollapsed.value = false }
 
 // rAF-driven smooth playback. The integer activeIndex still drives the chart
 // cursor + segment highlight (those work in point-space), but we also expose
@@ -623,7 +633,7 @@ const activeColorLabel = computed(() =>
 
 <template>
   <Splitpanes :horizontal="true" class="h-full w-full" @resize="onPaneResize">
-    <Pane :size="effectiveMapSize" class="relative overflow-hidden">
+    <Pane :size="effectiveMapSize" :min-size="2.0" class="relative overflow-hidden">
       <div class="h-full w-full bg-background flex items-center justify-center relative">
         <MapRenderer
           v-if="activityId"
@@ -704,7 +714,7 @@ const activeColorLabel = computed(() =>
 
         <div v-if="activityId" ref="layersMenuRef" class="absolute top-3 left-3 z-[1000]">
           <button
-            class="inline-flex items-center gap-1.5 bg-background/90 backdrop-blur-sm border border-border rounded-lg px-2.5 py-1.5 shadow-sm text-[11px] font-medium text-foreground hover:bg-muted/40 transition-colors"
+            class="inline-flex items-center gap-1.5 bg-background backdrop-blur-sm border border-border rounded-lg px-2.5 py-1.5 shadow-sm text-[11px] font-medium text-foreground hover:bg-muted/40 transition-colors"
             :class="layersOpen ? 'border-primary text-primary' : ''"
             @click="layersOpen = !layersOpen"
             :title="`${activeProviderLabel} · ${activeColorLabel}`"
@@ -867,9 +877,19 @@ const activeColorLabel = computed(() =>
               <Tags :size="10" /> Events
             </button>
           </div>
-          <button class="btn-icon" title="Hide panel" @click="toggleChart">
-            <ChevronDown :size="13" />
-          </button>
+          <!-- Two fold knobs: ▲ grows the panel to a 50/50 split (toggle back to
+               the saved split), ▼ folds the panel so the map is full height. -->
+          <div class="inline-flex items-center rounded-md border border-border overflow-hidden">
+            <button class="px-1.5 py-0.5 transition-colors"
+              :class="statsExpanded ? 'bg-primary/15 text-primary' : 'text-muted-fg hover:bg-muted/40'"
+              :title="statsExpanded ? 'Back to saved split' : 'Expand panel — 50/50 split'" @click="toggleStats">
+              <ChevronUp :size="13" />
+            </button>
+            <button class="px-1.5 py-0.5 border-l border-border text-muted-fg hover:bg-muted/40 transition-colors"
+              title="Fold panel down — map full height" @click="toggleChart">
+              <ChevronDown :size="13" />
+            </button>
+          </div>
         </div>
       </div>
 

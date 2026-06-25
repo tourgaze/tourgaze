@@ -19,6 +19,7 @@ import TagCombobox from '@/components/TagCombobox.vue'
 import LocationAutocomplete from '@/components/LocationAutocomplete.vue'
 import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
 import { useCurrentUser } from '@/composables/useCurrentUser'
+import { INBOX_LAYOUT_SLOT, autoLayoutRef } from '@/composables/useLayoutState'
 
 const props = defineProps<{ item: InboxItem }>()
 const emit = defineEmits<{ done: []; cancel: [] }>()
@@ -31,9 +32,13 @@ const { data: sports } = useQuery({ queryKey: ['sports'], queryFn: () => getSpor
 
 // Foldable map card: collapsed shows the small start-location preview; expanded
 // fetches + draws the whole route. The track is only fetched once expanded.
-const mapExpanded = ref(false)
+// Persisted (localStorage) so it stays open as you switch between rides and
+// across reloads — the panel is re-created per ride, so a plain ref would reset.
+const mapExpanded = autoLayoutRef(INBOX_LAYOUT_SLOT, 'mapExpanded', false)
 const { data: previewTrack } = useQuery({
-  queryKey: ['inbox-track', () => props.item.filename],
+  // Reactive value key (NOT a function — vue-query hashes keys via JSON and
+  // drops functions, which would collapse every inbox item onto one entry).
+  queryKey: computed(() => ['inbox-track', props.item.filename]),
   queryFn: () => getInboxTrack(props.item.filename!),
   enabled: () => mapExpanded.value && !!props.item.filename && props.item.startLat != null,
   staleTime: 60 * 60 * 1000,
@@ -99,7 +104,7 @@ function saveEvent() {
 
 // ── Photos: drop here now, moved into the ride's media folder on import ──────
 const { data: media } = useQuery({
-  queryKey: ['inbox-media', () => props.item.filename],
+  queryKey: computed(() => ['inbox-media', props.item.filename]),
   queryFn: () => getInboxMedia(props.item.filename!),
   enabled: () => !!props.item.filename,
 })
@@ -111,7 +116,7 @@ async function addMedia(files: FileList | File[] | null) {
   mediaUploading.value = true
   try {
     await uploadInboxMedia(props.item.filename, arr)
-    await qc.invalidateQueries({ queryKey: ['inbox-media', () => props.item.filename] })
+    await qc.invalidateQueries({ queryKey: ['inbox-media', props.item.filename] })
   } catch { push.error('Photo upload failed') }
   finally { mediaUploading.value = false }
 }
@@ -119,7 +124,7 @@ async function removeMedia(name: string) {
   if (!props.item.filename) return
   try {
     await deleteInboxMedia(props.item.filename, name)
-    await qc.invalidateQueries({ queryKey: ['inbox-media', () => props.item.filename] })
+    await qc.invalidateQueries({ queryKey: ['inbox-media', props.item.filename] })
   } catch { push.error('Could not remove photo') }
 }
 function mediaUrl(name: string) { return inboxMediaUrl(props.item.filename!, name) }
@@ -186,7 +191,8 @@ watch(() => props.item, async (it) => {
   userId.value = currentUser.value?.id ?? users.value?.[0]?.id ?? null
   // Pre-fill the gear heuristically proposed from past similar rides.
   gearId.value = it.suggestedGearId ?? null
-  mapExpanded.value = false
+  // NB: deliberately do NOT reset mapExpanded here — the "Start location" route
+  // card keeps its open/closed state across rides (persisted via autoLayoutRef).
   // Default body weight from the current rider's profile. User can override
   // for occasional readings (race-day, post-illness, etc).
   weightKg.value = currentUser.value?.weightKg ?? null
@@ -406,7 +412,7 @@ const processedMut = useMutation({
               :events="stagedEvents"
               :event-draft="eventDraft"
               :event-types="eventTypes ?? []"
-              height-class="h-72"
+              height-class="h-96"
               @place="onPlace"
             />
             <!-- What to drop here: a global Marker or a ride Event. -->

@@ -18,7 +18,7 @@
         <app.description>Local-first FIT file viewer with OpenStreetMap</app.description>
         <jpackage.version>1.0.0</jpackage.version>
         <mapstruct.version>1.6.3</mapstruct.version>
-        <bouncycastle.version>1.80</bouncycastle.version>
+        <bouncycastle.version>1.81</bouncycastle.version>
     </properties>
 
     <dependencies>

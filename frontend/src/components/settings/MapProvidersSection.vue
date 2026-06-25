@@ -2,8 +2,8 @@
 import { ref } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { getMapProviders, createMapProvider, updateMapProvider, deleteMapProvider, type MapProvider } from '@/api/client'
-import { Trash2, Map as MapIcon, Pencil, Check, X, Plus } from 'lucide-vue-next'
+import { getMapProviders, createMapProvider, updateMapProvider, deleteMapProvider, testMapProvider, type MapProvider } from '@/api/client'
+import { Trash2, Map as MapIcon, Pencil, Check, X, Plus, Wifi, Loader2 } from 'lucide-vue-next'
 
 const qc = useQueryClient()
 const { data: providers, isPending } = useQuery({ queryKey: ['map-providers'], queryFn: getMapProviders })
@@ -15,9 +15,26 @@ const draft = ref<MapProvider>(blank())
 const editingId = ref<string | null>(null)
 const formOpen = ref(false)
 
-function openAdd() { draft.value = blank(); editingId.value = null; formOpen.value = true }
-function openEdit(p: MapProvider) { draft.value = { ...p }; editingId.value = p.id ?? null; formOpen.value = true }
-function cancel() { formOpen.value = false; editingId.value = null }
+const testResult = ref<{ ok: boolean; message: string } | null>(null)
+function openAdd() { draft.value = blank(); editingId.value = null; formOpen.value = true; testResult.value = null }
+function openEdit(p: MapProvider) { draft.value = { ...p }; editingId.value = p.id ?? null; formOpen.value = true; testResult.value = null }
+function cancel() { formOpen.value = false; editingId.value = null; testResult.value = null }
+
+// Probe the draft against the live server before saving — surfaces typos,
+// dead hosts and wrong-shape URLs without persisting a broken provider.
+const testMut = useMutation({
+  mutationFn: () => {
+    const d = draft.value
+    return testMapProvider({
+      name: d.name.trim() || 'test', type: d.type,
+      urlTemplate: d.type === 'raster' ? (d.urlTemplate?.trim() || null) : null,
+      styleUrl: d.type === 'vector' ? (d.styleUrl?.trim() || null) : null,
+    })
+  },
+  onSuccess: (r) => { testResult.value = r },
+  onError: () => { testResult.value = { ok: false, message: 'Test request failed.' } },
+})
+function runTest() { testResult.value = null; testMut.mutate() }
 
 function invalidate() { qc.invalidateQueries({ queryKey: ['map-providers'] }); qc.invalidateQueries({ queryKey: ['tile-providers'] }) }
 
@@ -94,8 +111,10 @@ const canSave = () => !!draft.value.name.trim() &&
         </select>
       </div>
       <input v-if="draft.type === 'raster'" v-model="draft.urlTemplate" placeholder="https://…/{z}/{x}/{y}.png"
+        @input="testResult = null"
         class="w-full px-3 py-1.5 text-sm rounded border border-border bg-transparent focus:outline-none focus:border-primary font-mono text-[12px]" />
       <input v-else v-model="draft.styleUrl" placeholder="https://…/style.json"
+        @input="testResult = null"
         class="w-full px-3 py-1.5 text-sm rounded border border-border bg-transparent focus:outline-none focus:border-primary font-mono text-[12px]" />
       <input v-model="draft.attribution" placeholder="Attribution (HTML allowed, optional)"
         class="w-full px-3 py-1.5 text-sm rounded border border-border bg-transparent focus:outline-none focus:border-primary" />
@@ -114,10 +133,21 @@ const canSave = () => !!draft.value.name.trim() &&
           class="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded bg-primary text-primary-fg hover:bg-primary/90 disabled:opacity-50">
           <Check :size="13" /> {{ editingId ? 'Save' : 'Add' }}
         </button>
+        <button type="button" :disabled="testMut.isPending.value || !canSave()"
+          class="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded border border-border text-muted-fg hover:text-primary hover:border-primary disabled:opacity-50"
+          @click="runTest">
+          <Loader2 v-if="testMut.isPending.value" :size="13" class="animate-spin" />
+          <Wifi v-else :size="13" /> Test
+        </button>
         <button type="button" class="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded border border-border text-muted-fg hover:text-foreground" @click="cancel">
           <X :size="13" /> Cancel
         </button>
       </div>
+      <p v-if="testResult" class="flex items-start gap-1.5 text-[12px]"
+        :class="testResult.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">
+        <component :is="testResult.ok ? Check : X" :size="14" class="shrink-0 mt-px" />
+        <span>{{ testResult.message }}</span>
+      </p>
     </form>
   </div>
 </template>

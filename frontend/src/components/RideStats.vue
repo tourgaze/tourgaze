@@ -112,11 +112,17 @@ const isOpen = (k: string) => !collapsed.value.has(k)
           <component :is="isOpen('power') ? ChevronDown : ChevronRight" :size="11" class="opacity-60" />
           <Zap :size="12" /> Power <span class="stat-est">estimated</span>
         </button>
-        <div v-show="isOpen('power')" class="stat-grid">
-          <div class="stat-card"><span class="stat-val">{{ stats.estAvgPowerW }}</span><span class="stat-unit">W</span><span class="stat-lbl">Avg power</span></div>
-          <div class="stat-card"><span class="stat-val">{{ stats.estNpW ?? '—' }}</span><span class="stat-unit">W</span><span class="stat-lbl">Normalized (NP)</span></div>
-          <div class="stat-card"><span class="stat-val">{{ stats.variabilityIndex ?? '—' }}</span><span class="stat-lbl">Variability index</span></div>
-          <div class="stat-card"><span class="stat-val">{{ stats.workKj ?? '—' }}</span><span class="stat-unit">kJ</span><span class="stat-lbl">Work · ~{{ stats.calories ?? '—' }} kcal</span></div>
+        <div v-show="isOpen('power')">
+          <div class="stat-grid">
+            <div class="stat-card"><span class="stat-val">{{ stats.estAvgPowerW }}</span><span class="stat-unit">W</span><span class="stat-lbl">Avg power</span></div>
+            <div class="stat-card"><span class="stat-val">{{ stats.estNpW ?? '—' }}</span><span class="stat-unit">W</span><span class="stat-lbl">Normalized (NP)</span></div>
+            <div v-if="stats.estClimbPowerW != null" class="stat-card" title="Average estimated power on climbing segments (>3%). On a climb the estimate is gravity-dominated and barely affected by the fixed aero guess, so it's the most reliable figure here.">
+              <span class="stat-val">{{ stats.estClimbPowerW }}</span><span class="stat-unit">W</span><span class="stat-lbl">Climbing &gt;3%</span>
+            </div>
+            <div class="stat-card"><span class="stat-val">{{ stats.variabilityIndex ?? '—' }}</span><span class="stat-lbl">Variability index</span></div>
+            <div class="stat-card"><span class="stat-val">{{ stats.workKj ?? '—' }}</span><span class="stat-unit">kJ</span><span class="stat-lbl">Work · ~{{ stats.calories ?? '—' }} kcal</span></div>
+          </div>
+          <p class="stat-foot">Martin et al. (1998) model — most reliable on sustained climbs; flats/descents are noisier (coasting &amp; the fixed aero estimate).</p>
         </div>
       </section>
 
@@ -183,4 +189,5 @@ button.stat-h:hover { color: hsl(var(--foreground)); }
 }
 .stat-val { font-size: 13px; font-weight: 700; line-height: 1.1; color: hsl(var(--foreground)); }
 .stat-unit { font-size: 9px; color: hsl(var(--muted-fg)); margin-left: 3px; }
+.stat-foot { font-size: 9px; line-height: 1.25; color: hsl(var(--muted-fg)); opacity: 0.8; margin-top: 4px; padding: 0 2px; }
 </style>

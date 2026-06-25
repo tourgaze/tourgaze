@@ -35,6 +35,15 @@
 
 /* ── Colour utilities via CSS vars ─────────────────────────────────────────── */
 .bg-background  { background-color: hsl(var(--background)); }
+/* Translucent variants. `--background` is a hand-written class (not a Tailwind
+   theme colour), so Tailwind's `bg-background/NN` opacity modifier produces
+   nothing — overlay cards that used it rendered with a fully transparent fill
+   (text floating straight on the map). These restore the intended frosted
+   background; pair with backdrop-blur on the element. */
+.bg-background\/80 { background-color: hsl(var(--background) / 0.80); }
+.bg-background\/85 { background-color: hsl(var(--background) / 0.85); }
+.bg-background\/90 { background-color: hsl(var(--background) / 0.90); }
+.bg-background\/95 { background-color: hsl(var(--background) / 0.95); }
 .bg-muted       { background-color: hsl(var(--muted)); }
 .bg-card        { background-color: hsl(var(--card)); }
 .text-foreground { color: hsl(var(--foreground)); }

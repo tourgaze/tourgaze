@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppActivityBar from '@/components/layout/AppActivityBar.vue'
+import WelcomeFirstStart from '@/components/WelcomeFirstStart.vue'
 
 const darkMode = ref(false)
 
@@ -31,5 +32,6 @@ function toggleDark() {
         <RouterView />
       </div>
     </div>
+    <WelcomeFirstStart />
   </div>
 </template>

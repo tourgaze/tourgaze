@@ -20,14 +20,24 @@ const router = useRouter()
 const route = useRoute()
 const { user } = useCurrentUser()
 
-// Global save / restore layout. Save is contextual to the current view —
-// only shown when something registered itself. Restore wipes every persisted
-// `tourgaze.layout.*` key (matrosdms convention: native confirm dialog so
-// the user can't fat-finger it; reload picks up the defaults). They share a
-// visual group in the header so the destructive action sits next to the
-// constructive one rather than being hidden in a settings menu.
+// Global save / restore layout. Save is always available: when the active view
+// registered a saver (Tours, Settings) we commit its gated state (filters,
+// sections, pane sizes); on any other view there's no view-specific state to
+// persist — pane folds/sizes there auto-save as you change them — so Save just
+// confirms. Either way the button responds, never greys out. Restore wipes
+// every persisted `tourgaze.layout.*` key (matrosdms convention: native confirm
+// dialog so the user can't fat-finger it; reload picks up the defaults). They
+// share a visual group so the destructive action sits next to the constructive.
 const currentSaver = useCurrentLayoutSaver()
-function runSave() { currentSaver.value?.fn() }
+function runSave() {
+  const saver = currentSaver.value
+  if (saver) {
+    saver.fn()
+    push.success({ title: 'Layout saved', message: `${saver.label} pane sizes, filters and section remembered.` })
+  } else {
+    push.success({ title: 'Layout saved', message: 'This view has no extra layout to store — pane changes here save automatically.' })
+  }
+}
 function runRestore() {
   if (!confirm('Reset layout to defaults? This clears saved pane sizes, sidebar widths and view-specific state across all perspectives.')) return
   resetAllLayouts()
@@ -208,17 +218,15 @@ function signOut() {
     <!-- Spacer that pushes everything from here onward to the right edge. -->
     <div class="flex-1" />
 
-    <!-- Layout group: Save + Restore. Both always visible so the pair reads
-         as a single control group; Save disables when no view registered a
-         saver (matrosdms convention — destructive Restore stays available,
-         constructive Save greys out gracefully). -->
+    <!-- Layout group: Save + Restore as one control group. Save is always
+         enabled — it commits the active view's layout when there is one, and
+         otherwise just confirms (pane state on those views auto-saves). -->
     <div class="inline-flex items-center rounded border border-border overflow-hidden">
       <button
-        :disabled="!currentSaver"
-        class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-fg hover:text-foreground hover:bg-muted/40 transition-colors border-r border-border disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-muted-fg disabled:hover:bg-transparent"
+        class="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-muted-fg hover:text-foreground hover:bg-muted/40 transition-colors border-r border-border"
         :title="currentSaver
           ? `Save ${currentSaver.label} layout (pane sizes, filters, current section)`
-          : 'Save layout — open a perspective with a layout (Tours, Settings, …) to enable.'"
+          : 'Save the current layout'"
         @click="runSave"
       >
         <Save :size="13" />

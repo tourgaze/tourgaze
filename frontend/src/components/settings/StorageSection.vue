@@ -111,18 +111,32 @@ function fmtBytes(b: number | undefined): string {
 
 <template>
   <div class="w-full space-y-4">
-    <div class="flex items-start justify-between gap-3 p-4 rounded border border-border bg-muted/10">
-      <div>
-        <p class="text-sm font-medium">Repository folder</p>
-        <p class="text-[11px] text-muted-fg mt-0.5">
-          Your precious, cloud-syncable library (<code>store/</code> + <code>db-backup/</code>).
-          Opens in your file manager — only works when the app runs on this machine.
-        </p>
+    <div class="p-4 rounded border border-border bg-muted/10 space-y-3">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-sm font-medium">Repository folder</p>
+          <p class="text-[11px] text-muted-fg mt-0.5">
+            Your precious, cloud-syncable library (<code>store/</code> + <code>db-backup/</code>).
+            Opens in your file manager — only works when the app runs on this machine.
+          </p>
+        </div>
+        <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-border hover:border-primary hover:text-primary transition-colors shrink-0 disabled:opacity-50"
+          :disabled="openFolderMut.isPending.value" @click="openFolderMut.mutate()">
+          <FolderOpen :size="14" /> Open folder
+        </button>
       </div>
-      <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded border border-border hover:border-primary hover:text-primary transition-colors shrink-0 disabled:opacity-50"
-        :disabled="openFolderMut.isPending.value" @click="openFolderMut.mutate()">
-        <FolderOpen :size="14" /> Open folder
-      </button>
+      <!-- Where the library actually lives on disk (resolved server-side). Handy
+           when the app runs headless/in a container and "Open folder" is a no-op. -->
+      <dl v-if="disk?.repositoryDir" class="text-[11px] space-y-1.5 border-t border-border pt-3">
+        <div>
+          <dt class="text-muted-fg">Repository root</dt>
+          <dd class="font-mono text-foreground break-all select-all">{{ disk.repositoryDir }}</dd>
+        </div>
+        <div v-if="disk?.libraryFile">
+          <dt class="text-muted-fg">User information (profile + gear)</dt>
+          <dd class="font-mono text-foreground break-all select-all">{{ disk.libraryFile }}</dd>
+        </div>
+      </dl>
     </div>
 
     <div class="grid grid-cols-2 gap-2 text-sm p-4 rounded border border-border bg-muted/10">

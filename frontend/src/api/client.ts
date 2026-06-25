@@ -447,6 +447,14 @@ export async function deleteMapProvider(id: string): Promise<void> {
   const r = await fetch(`/api/map-providers/${id}`, { method: 'DELETE' })
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
+// Probe a provider (fetch a sample tile / its style JSON) without saving it.
+export async function testMapProvider(dto: MapProvider): Promise<{ ok: boolean; message: string }> {
+  const r = await fetch('/api/map-providers/test', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
 
 export async function getPrediction(
   startLat: number, startLon: number,
@@ -819,7 +827,12 @@ export async function purgeOrphans(): Promise<{ removed: number; bytesFreed: num
   return r.json() as Promise<{ removed: number; bytesFreed: number }>
 }
 
-export async function getDiskUsage(): Promise<{ storeBytes: number; cacheBytes: number; tilesBytes: number; totalBytes: number }> {
+export type DiskUsage = {
+  storeBytes: number; cacheBytes: number; tilesBytes: number; totalBytes: number
+  // Resolved server-side; absent on older backends → undefined.
+  repositoryDir?: string | null; libraryFile?: string | null
+}
+export async function getDiskUsage(): Promise<DiskUsage> {
   if (adminEndpointAvailable === false) {
     return { storeBytes: 0, cacheBytes: 0, tilesBytes: 0, totalBytes: 0 }
   }

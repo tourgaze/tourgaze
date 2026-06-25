@@ -163,68 +163,68 @@ function fmtElev(v: number) { return Math.round(v).toLocaleString() + ' m' }
 </script>
 
 <template>
-  <div class="h-full overflow-y-auto p-4 max-w-6xl mx-auto">
-    <div class="flex items-baseline justify-between mb-4">
+  <div class="h-full overflow-y-auto p-3 max-w-6xl mx-auto">
+    <div class="flex items-baseline justify-between mb-3">
       <h2 class="text-xl font-semibold">Dashboard</h2>
       <span class="text-xs text-muted-fg">{{ list.length }} activities tracked</span>
     </div>
 
     <!-- KPI row : this year + lifetime side by side -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-      <div class="p-3 rounded border border-border bg-muted/10">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+      <div class="p-2.5 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><Ruler :size="11" />Distance · {{ thisYear }}</div>
-        <div class="text-xl font-bold mt-0.5">{{ fmtKm(yearStats.km) }}</div>
+        <div class="text-lg font-bold mt-0.5">{{ fmtKm(yearStats.km) }}</div>
         <div class="text-[10px] text-muted-fg mt-0.5">lifetime {{ fmtKm(lifetime.km) }}</div>
         <div v-if="hasAssisted" class="text-[10px] text-amber-500 mt-0.5" title="Motor-assisted e-bike rides, kept separate">+ e-bike {{ fmtKm(yearAssisted.km) }} · life {{ fmtKm(lifetimeAssisted.km) }}</div>
       </div>
-      <div class="p-3 rounded border border-border bg-muted/10">
+      <div class="p-2.5 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><Mountain :size="11" />Elevation · {{ thisYear }}</div>
-        <div class="text-xl font-bold mt-0.5">{{ fmtElev(yearStats.elev) }}</div>
+        <div class="text-lg font-bold mt-0.5">{{ fmtElev(yearStats.elev) }}</div>
         <div class="text-[10px] text-muted-fg mt-0.5">lifetime {{ fmtElev(lifetime.elev) }}</div>
         <div v-if="hasAssisted" class="text-[10px] text-amber-500 mt-0.5" title="Motor-assisted e-bike rides, kept separate">+ e-bike {{ fmtElev(yearAssisted.elev) }} · life {{ fmtElev(lifetimeAssisted.elev) }}</div>
       </div>
-      <div class="p-3 rounded border border-border bg-muted/10">
+      <div class="p-2.5 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><Timer :size="11" />Moving · {{ thisYear }}</div>
-        <div class="text-xl font-bold mt-0.5">{{ fmtDuration(yearStats.sec) }}</div>
+        <div class="text-lg font-bold mt-0.5">{{ fmtDuration(yearStats.sec) }}</div>
         <div class="text-[10px] text-muted-fg mt-0.5">lifetime {{ fmtDuration(lifetime.sec) }}</div>
         <div v-if="hasAssisted" class="text-[10px] text-amber-500 mt-0.5" title="Motor-assisted e-bike rides, kept separate">+ e-bike {{ fmtDuration(yearAssisted.sec) }} · life {{ fmtDuration(lifetimeAssisted.sec) }}</div>
       </div>
-      <div class="p-3 rounded border border-border bg-muted/10">
+      <div class="p-2.5 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><ActivityIcon :size="11" />Tours · {{ thisYear }}</div>
-        <div class="text-xl font-bold mt-0.5">{{ yearStats.count }}</div>
+        <div class="text-lg font-bold mt-0.5">{{ yearStats.count }}</div>
         <div class="text-[10px] text-muted-fg mt-0.5">lifetime {{ lifetime.count }}</div>
         <div v-if="hasAssisted" class="text-[10px] text-amber-500 mt-0.5" title="Motor-assisted e-bike rides, kept separate">+ e-bike {{ yearAssisted.count }} · life {{ lifetimeAssisted.count }}</div>
       </div>
     </div>
 
     <!-- Secondary KPIs -->
-    <div class="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-      <div class="p-3 rounded border border-border bg-muted/10">
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4">
+      <div class="p-2.5 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><Heart :size="11" /> Avg HR (overall)</div>
-        <div class="text-base font-semibold mt-0.5">{{ avgHr ?? '—' }}{{ avgHr != null ? ' bpm' : '' }}</div>
+        <div class="text-sm font-semibold mt-0.5">{{ avgHr ?? '—' }}{{ avgHr != null ? ' bpm' : '' }}</div>
       </div>
-      <div class="p-3 rounded border border-border bg-muted/10">
+      <div class="p-2.5 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><TrendingUp :size="11" /> Avg km / tour</div>
-        <div class="text-base font-semibold mt-0.5">{{ lifetime.count ? (lifetime.km / lifetime.count).toFixed(1) + ' km' : '—' }}</div>
+        <div class="text-sm font-semibold mt-0.5">{{ lifetime.count ? (lifetime.km / lifetime.count).toFixed(1) + ' km' : '—' }}</div>
       </div>
-      <div class="p-3 rounded border border-border bg-muted/10">
+      <div class="p-2.5 rounded border border-border bg-muted/10">
         <div class="text-[10px] text-muted-fg uppercase tracking-wide flex items-center gap-1"><CloudSun :size="11" /> Most common weather</div>
-        <div class="text-base font-semibold mt-0.5">
+        <div class="text-sm font-semibold mt-0.5">
           {{ Array.from(conditionsCount.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—' }}
         </div>
       </div>
     </div>
 
     <!-- By gear — compare bikes (MTB vs race bike, …). Hidden until gear exists. -->
-    <div v-if="hasGear" class="mb-6">
+    <div v-if="hasGear" class="mb-4">
       <div class="flex items-center gap-1.5 mb-2 text-xs font-semibold text-muted-fg uppercase tracking-wide">
         <Bike :size="13" /> By gear
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
         <!-- Gear cards -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 content-start">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 content-start">
           <div v-for="g in gearStats" :key="g.id"
-            class="p-3 rounded border border-border bg-muted/10">
+            class="p-2.5 rounded border border-border bg-muted/10">
             <div class="flex items-center justify-between gap-2">
               <div class="font-medium text-sm truncate">{{ g.name }}</div>
               <span v-if="g.type" class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/30 shrink-0">{{ g.type }}</span>
@@ -242,8 +242,8 @@ function fmtElev(v: number) { return Math.round(v).toLocaleString() + ' m' }
         </div>
         <!-- Distance-share donut -->
         <div class="rounded border border-border bg-muted/5">
-          <div class="px-3 py-2 text-xs font-semibold border-b border-border">Distance per gear</div>
-          <div class="relative w-full h-64 overflow-hidden">
+          <div class="px-3 py-1.5 text-xs font-semibold border-b border-border">Distance per gear</div>
+          <div class="relative w-full h-56 overflow-hidden">
             <VChart class="absolute inset-0" :option="perGearChart" autoresize />
           </div>
         </div>
@@ -256,22 +256,22 @@ function fmtElev(v: number) { return Math.round(v).toLocaleString() + ' m' }
          autoresize can't push the parent grid cell (which would otherwise
          feed back into the ResizeObserver and grow forever — bug seen on
          the per-sport donut). -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
       <div class="rounded border border-border bg-muted/5">
-        <div class="px-3 py-2 text-xs font-semibold border-b border-border">Distance per year</div>
-        <div class="relative w-full h-64 overflow-hidden">
+        <div class="px-3 py-1.5 text-xs font-semibold border-b border-border">Distance per year</div>
+        <div class="relative w-full h-56 overflow-hidden">
           <VChart class="absolute inset-0" :option="perYearChart" autoresize />
         </div>
       </div>
       <div class="rounded border border-border bg-muted/5">
-        <div class="px-3 py-2 text-xs font-semibold border-b border-border">Distance per sport</div>
-        <div class="relative w-full h-64 overflow-hidden">
+        <div class="px-3 py-1.5 text-xs font-semibold border-b border-border">Distance per sport</div>
+        <div class="relative w-full h-56 overflow-hidden">
           <VChart class="absolute inset-0" :option="perSportChart" autoresize />
         </div>
       </div>
       <div class="rounded border border-border bg-muted/5 md:col-span-2">
-        <div class="px-3 py-2 text-xs font-semibold border-b border-border">{{ thisYear }} · Distance per month</div>
-        <div class="relative w-full h-64 overflow-hidden">
+        <div class="px-3 py-1.5 text-xs font-semibold border-b border-border">{{ thisYear }} · Distance per month</div>
+        <div class="relative w-full h-56 overflow-hidden">
           <VChart class="absolute inset-0" :option="perMonthChart" autoresize />
         </div>
       </div>

@@ -99,6 +99,12 @@ export const VIEWER_LAYOUT_SLOT = new LayoutSlot<{
   chartSize: number
 }>('tourgaze.layout.viewer')
 
+export const INBOX_LAYOUT_SLOT = new LayoutSlot<{
+  // Whether the import panel's "Start location" route card is expanded — a
+  // single shared preference so it stays open as you move between rides.
+  mapExpanded: boolean
+}>('tourgaze.layout.inbox')
+
 /**
  * Variant of {@link layoutRef} that **auto-persists** every write back to the
  * slot. Use for tiny ergonomic state (a single pane fold flag, a remembered

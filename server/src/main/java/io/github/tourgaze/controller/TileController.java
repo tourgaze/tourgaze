@@ -144,6 +144,15 @@ public class TileController {
 			}
 
 			byte[] tileData = resp.body();
+			// Only cache genuine images. Tile servers/CDNs/captive portals can
+			// answer 200 with an HTML error page or empty body; caching that as a
+			// .png would poison the immutable cache (served for a year), so reject
+			// it as a bad gateway instead of persisting garbage.
+			if (!io.github.tourgaze.util.ImageSniff.isImage(tileData)) {
+				log.warn("Upstream tile was not an image z={} x={} y={} ({} bytes) — not caching",
+						z, x, y, tileData == null ? 0 : tileData.length);
+				return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
+			}
 			Files.createDirectories(cached.getParent());
 			Files.write(cached, tileData);
 
