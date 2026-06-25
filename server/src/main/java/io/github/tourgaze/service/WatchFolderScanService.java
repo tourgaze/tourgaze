@@ -93,6 +93,9 @@ public class WatchFolderScanService {
 	/** Scan all configured inbox folders; returns how many files were copied in. */
 	public int scanNow() {
 		int copied = 0;
+		// Rebuild the "already imported / skipped" view from scratch each scan so it
+		// reflects exactly what's on the connected sources right now.
+		inboxService.clearSkipped();
 		// Computed once per scan: hashes of files the user already ignored / moved
 		// to processed, so we don't re-copy them from the (untouched) source.
 		Set<String> parked = inboxService.parkedHashes();
@@ -163,24 +166,28 @@ public class WatchFolderScanService {
 		try {
 			byte[] data = Files.readAllBytes(source);
 			String sha = inboxService.hashOf(data);
-			if (inboxService.isAlreadyImported(sha) || inboxService.isAlreadyStaged(sha) || parkedHashes.contains(sha))
+			String filename = source.getFileName().toString();
+			// Dismissed (ignored/processed) or already staged → leave it alone.
+			if (parkedHashes.contains(sha) || inboxService.isAlreadyStaged(sha))
 				return false;
-			// Copy by default — the source is usually a device / cloud folder we must
-			// not mutate.
-			Path target = storage.inboxDir().resolve(source.getFileName().toString());
-			Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
-			// Remember which watch-folder this came from so the inbox card can show it.
-			inboxService.recordOrigin(target.getFileName().toString(), label);
-			if (!keepOriginal) {
-				// User opted out of keeping the device copy → remove the original after
-				// a successful copy (move semantics). Non-fatal if it can't be deleted.
-				try {
-					Files.delete(source);
-				} catch (IOException e) {
-					log.warn("Copied {} but couldn't remove the source (keep-on-device off): {}",
-							source, e.getMessage());
-				}
+			var importedId = inboxService.importedActivityId(sha);
+			if (importedId.isPresent()) {
+				// Already in the repository — don't re-stage. Record it so the inbox
+				// "Already imported" filter can surface it: silent skipping was opaque
+				// ("is the watcher even working?").
+				inboxService.recordSkipped(filename, label, importedId.get());
+				return false;
 			}
+			// New file → copy into the working inbox. The source is a device/cloud
+			// folder we must not mutate here.
+			Path target = storage.inboxDir().resolve(filename);
+			Files.copy(source, target, StandardCopyOption.REPLACE_EXISTING);
+			inboxService.recordOrigin(filename, label);
+			// Delete-from-device: remember the original so IMPORT removes it after the
+			// store/ copy succeeds — never here at scan time. That way a not-yet-
+			// imported file always stays recoverable from the device.
+			if (!keepOriginal)
+				inboxService.recordSource(filename, source);
 			return true;
 		} catch (IOException e) {
 			log.warn("Inbox-folder scan: could not copy {}: {}", source, e.getMessage());

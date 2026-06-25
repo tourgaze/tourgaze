@@ -80,6 +80,16 @@ public class InboxController {
 		return Map.of("copied", watchFolders.scanNow());
 	}
 
+	/**
+	 * Files the last watch-folder scan skipped because they're already in the
+	 * repository (so they're not staged). Read-only; powers the inbox "Already
+	 * imported" filter so silent skipping isn't opaque.
+	 */
+	@GetMapping("/skipped")
+	public java.util.List<InboxService.SkippedEntry> skipped() {
+		return inboxService.skippedEntries();
+	}
+
 	/** Recompute inbox proposals (gear/type/duplicate) from current history. */
 	@PostMapping("/refresh")
 	public ResponseEntity<Void> refresh() {

@@ -4,8 +4,8 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
-import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Ban, Archive, Clock, Loader2, FolderInput, Sparkles, Search, X as XIcon } from 'lucide-vue-next'
-import { getInbox, refreshInbox, refreshInboxItem, scanWatchFolders, importInbox, uploadFit, discardInbox, moveInboxToProcessed, SOURCE_FORMATS, type InboxItem } from '@/api/client'
+import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Ban, Archive, Clock, Loader2, FolderInput, Sparkles, Search, X as XIcon, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { getInbox, refreshInbox, refreshInboxItem, scanWatchFolders, getSkippedInbox, importInbox, uploadFit, discardInbox, moveInboxToProcessed, SOURCE_FORMATS, type InboxItem } from '@/api/client'
 import { InboxStreamEvent } from '@/enums/generated'
 import AddTourPanel from '@/components/AddTourPanel.vue'
 
@@ -32,7 +32,10 @@ onMounted(() => {
   try {
     inboxStream = new EventSource('/api/inbox/stream')
     // Event name derived from the OpenAPI-published enum (api-first), not a magic string.
-    inboxStream.addEventListener(InboxStreamEvent.INBOX_CHANGED, () => qc.invalidateQueries({ queryKey: ['inbox'] }))
+    inboxStream.addEventListener(InboxStreamEvent.INBOX_CHANGED, () => {
+      qc.invalidateQueries({ queryKey: ['inbox'] })
+      qc.invalidateQueries({ queryKey: ['inbox-skipped'] })
+    })
   } catch { /* SSE unavailable — the backstop interval still refreshes */ }
 })
 onBeforeUnmount(() => { inboxStream?.close(); inboxStream = null })
@@ -41,6 +44,12 @@ const selected = ref<string | null>(null)
 const selectedItem = computed<InboxItem | null>(() =>
   items.value?.find(i => i.filename === selected.value) ?? null,
 )
+
+// "Already imported" (Ignored) filter: files the last scan skipped because
+// they're already in the library. Read-only transparency — confirms the watcher
+// saw your device files even though it didn't (re-)stage them.
+const showSkipped = ref(false)
+const { data: skipped } = useQuery({ queryKey: ['inbox-skipped'], queryFn: getSkippedInbox, refetchInterval: 60000 })
 
 // Auto-select the first item once data arrives.
 watch(items, (list) => {
@@ -247,6 +256,25 @@ async function moveProcessed(filename: string) {
           {{ uploading ? 'Uploading…' : (isDragging ? 'Drop to stage' : `Drop ${formatLabel} or click to import`) }}
         </span>
         <input ref="fileInputRef" type="file" :accept="acceptAttr" multiple class="hidden" @change="onFileSelect" />
+      </div>
+
+      <!-- "Already imported" filter: opt-in transparency for files the last scan
+           skipped because they're already in your library (so they're not staged). -->
+      <button v-if="skipped && skipped.length"
+        class="mx-2 mb-1 inline-flex items-center gap-1.5 px-2 py-1 text-[11px] font-medium rounded border border-border text-muted-fg hover:text-foreground hover:bg-muted/30 transition-colors"
+        @click="showSkipped = !showSkipped">
+        <component :is="showSkipped ? ChevronDown : ChevronRight" :size="12" />
+        Already imported · {{ skipped.length }}
+        <span class="ml-auto text-[10px] opacity-70">{{ showSkipped ? 'hide' : 'on your devices' }}</span>
+      </button>
+      <div v-if="showSkipped && skipped && skipped.length"
+        class="mx-2 mb-2 rounded border border-border bg-muted/10 divide-y divide-border max-h-48 overflow-y-auto">
+        <div v-for="e in skipped" :key="e.filename" class="flex items-center gap-2 px-2 py-1.5 text-[11px]">
+          <Bike :size="11" class="text-muted-fg shrink-0" />
+          <span class="truncate flex-1" :title="e.filename">{{ e.filename }}</span>
+          <span v-if="e.sourceLabel" class="text-[9px] px-1 rounded-full bg-sky-500/15 text-sky-600 border border-sky-500/40 shrink-0">{{ e.sourceLabel }}</span>
+          <RouterLink :to="`/tour/${e.activityId}`" class="text-[10px] text-primary hover:underline shrink-0">view</RouterLink>
+        </div>
       </div>
 
       <div v-if="isPending" class="p-3 text-xs text-muted-fg animate-pulse">Loading…</div>

@@ -96,6 +96,24 @@ public class InboxService {
 	 */
 	private final ConcurrentHashMap<String, String> origins = new ConcurrentHashMap<>();
 
+	/**
+	 * Filename → device source path, recorded only for delete-from-device sources
+	 * so import (or "Delete from device") can remove the original AFTER the store
+	 * copy succeeds — never before. Persisted in cache/inbox-sources.json so it
+	 * survives a restart between staging and import.
+	 */
+	private final ConcurrentHashMap<String, String> sourcePaths = new ConcurrentHashMap<>();
+
+	/**
+	 * What the last watch-folder scan skipped because the file is already in the
+	 * repository on a keep-on-device source — surfaced read-only by the inbox
+	 * "Already imported" (Ignored) filter so silent skipping isn't opaque.
+	 */
+	public record SkippedEntry(String filename, String sourceLabel, String activityId) {
+	}
+
+	private final java.util.concurrent.ConcurrentLinkedDeque<SkippedEntry> skipped = new java.util.concurrent.ConcurrentLinkedDeque<>();
+
 	/** When the warm job last completed a sweep (diagnostics). */
 	private volatile Instant lastWarmRun;
 
@@ -204,6 +222,90 @@ public class InboxService {
 			return;
 		origins.put(filename, label);
 		saveOrigins();
+	}
+
+	private Path sourcesFile() {
+		return storage.cacheDir().resolve("inbox-sources.json");
+	}
+
+	@PostConstruct
+	void loadSources() {
+		Path f = sourcesFile();
+		if (!Files.isRegularFile(f))
+			return;
+		try {
+			sourcePaths.putAll(objectMapper.readValue(Files.readAllBytes(f),
+					new TypeReference<Map<String, String>>() {
+					}));
+		} catch (Exception e) {
+			log.debug("[Inbox] sources load skipped: {}", e.getMessage());
+		}
+	}
+
+	private synchronized void saveSources() {
+		Path f = sourcesFile();
+		try {
+			Files.createDirectories(f.getParent());
+			Files.write(f, objectMapper.writeValueAsBytes(sourcePaths));
+		} catch (IOException e) {
+			log.debug("[Inbox] sources save failed: {}", e.getMessage());
+		}
+	}
+
+	/**
+	 * Remember the device original a staged file came from, so import (or "Delete
+	 * from device") can delete it after the store copy. Only called for
+	 * delete-from-device sources; keep-on-device files record nothing.
+	 */
+	public void recordSource(String filename, Path sourcePath) {
+		if (filename == null || sourcePath == null)
+			return;
+		sourcePaths.put(filename, sourcePath.toString());
+		saveSources();
+	}
+
+	/**
+	 * Delete the recorded device original for a staged file (best-effort), then
+	 * forget the mapping. Safe to call when nothing was recorded (no-op). Only
+	 * ever invoked AFTER the file is safely in {@code store/}.
+	 */
+	private void deleteRecordedSource(String filename) {
+		String p = sourcePaths.remove(filename);
+		if (p == null)
+			return;
+		saveSources();
+		try {
+			if (Files.deleteIfExists(Path.of(p)))
+				log.info("[Inbox] removed device original {} after import of {}", p, filename);
+		} catch (Exception e) {
+			log.warn("[Inbox] could not remove device original {}: {}", p, e.getMessage());
+		}
+	}
+
+	/**
+	 * The activity id whose source hash matches, if this content is in the repo.
+	 */
+	public Optional<String> importedActivityId(String sha256) {
+		return activityRepo.findBySourceHash(sha256).map(Activity::getId);
+	}
+
+	// ── "Already imported" (Ignored) filter: the scan records files it skipped
+	// because they're already in the repo. Read-only transparency. ──
+
+	/** Reset before a scan so the list reflects only the current device state. */
+	public void clearSkipped() {
+		skipped.clear();
+	}
+
+	public void recordSkipped(String filename, String sourceLabel, String activityId) {
+		skipped.removeIf(s -> s.filename().equals(filename));
+		skipped.addFirst(new SkippedEntry(filename, sourceLabel, activityId));
+		while (skipped.size() > 500)
+			skipped.removeLast();
+	}
+
+	public List<SkippedEntry> skippedEntries() {
+		return new java.util.ArrayList<>(skipped);
 	}
 
 	/**
@@ -412,6 +514,10 @@ public class InboxService {
 				: pc.suggestedName();
 		// "Processing" once parsed: has GPS but the geocode/tag-vote hasn't run yet.
 		boolean proposalPending = pred == null && pc.lat() != null;
+		// Exact-hash match (in the repo) or a same-route ride → duplicate; else ready.
+		var status = (pc.existingActivityId() != null || pc.dupId() != null)
+				? io.github.tourgaze.enums.InboxItemStatus.DUPLICATE
+				: io.github.tourgaze.enums.InboxItemStatus.READY;
 		return new InboxItemDto(
 				filename, pc.sha(), pc.size(), pc.format(), displayName,
 				pc.type() != null ? pc.type().wire() : null,
@@ -422,7 +528,7 @@ public class InboxService {
 				pred != null ? pred.country() : null,
 				pred != null ? proposedTagNames(pred) : List.of(),
 				proposalPending, false, origins.get(filename),
-				pc.hasHr(), pc.hasCadence(), pc.hasPower());
+				pc.hasHr(), pc.hasCadence(), pc.hasPower(), status);
 	}
 
 	/** A not-yet-parsed card: name/size/format only, {@code parsing: true}. */
@@ -437,7 +543,8 @@ public class InboxService {
 		return new InboxItemDto(
 				filename, null, size, io.github.tourgaze.parser.SourceFormat.from(extensionOf(filename)),
 				suggestedName, null, null, null, null, null, null, null, null, null, null, null, null, null,
-				null, null, null, List.of(), false, true, origins.get(filename), false, false, false);
+				null, null, null, List.of(), false, true, origins.get(filename), false, false, false,
+				io.github.tourgaze.enums.InboxItemStatus.PARSING);
 	}
 
 	/**
@@ -684,6 +791,9 @@ public class InboxService {
 		Optional<Activity> existing = activityRepo.findBySourceHash(hash);
 		if (existing.isPresent()) {
 			Files.deleteIfExists(source);
+			// It's already safely in the repo, so a delete-from-device original is
+			// now redundant — remove it (no-op for keep-on-device / uploads).
+			deleteRecordedSource(filename);
 			return existing.get();
 		}
 
@@ -890,6 +1000,11 @@ public class InboxService {
 		weatherService.fetchAndStoreAsync(a.getId(), trackPoints);
 		// Write the recovery sidecar after this import commits (async, off-thread).
 		events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(a.getId()));
+
+		// Now that the file is safely in store/, delete the device original for a
+		// delete-from-device source (no-op for keep-on-device / uploads). Only ever
+		// here — never at scan time — so a file is never single-homed off-repo.
+		deleteRecordedSource(filename);
 
 		log.info("Imported '{}' as activity {}", filename, a.getId());
 		return a;

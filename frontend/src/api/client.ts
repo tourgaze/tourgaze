@@ -126,6 +126,15 @@ export async function refreshInboxItem(filename: string): Promise<void> {
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
 }
 
+/** A file the last watch-folder scan skipped because it's already in the library. */
+export type SkippedInboxEntry = { filename: string; sourceLabel: string | null; activityId: string }
+/** Files skipped as already-imported on the last scan — powers the "Already imported" filter. */
+export async function getSkippedInbox(): Promise<SkippedInboxEntry[]> {
+  const r = await fetch('/api/inbox/skipped')
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+
 export async function importInbox(filename: string, req: Partial<InboxImportRequest>): Promise<{ activityId: string }> {
   const r = await fetch(`/api/inbox/${encodeURIComponent(filename)}/import`, {
     method: 'POST',
