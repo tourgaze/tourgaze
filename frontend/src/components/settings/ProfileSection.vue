@@ -36,9 +36,14 @@ const weightOption = computed(() => ({
     axisLine: { show: false }, axisTick: { show: false },
   },
   yAxis: {
-    type: 'value', scale: true,
+    type: 'value',
+    // Hug the data range (just ±1 kg of headroom) instead of rounding out to
+    // 0/100, and drop the distracting horizontal gridlines.
+    min: (v: { min: number }) => Math.floor(v.min - 1),
+    max: (v: { max: number }) => Math.ceil(v.max + 1),
     axisLabel: { fontSize: 9, color: '#9ca3af', formatter: '{value}' },
-    splitLine: { lineStyle: { color: '#f3f4f6', type: 'dashed' } },
+    axisLine: { show: false }, axisTick: { show: false },
+    splitLine: { show: false },
   },
   tooltip: {
     trigger: 'axis',
