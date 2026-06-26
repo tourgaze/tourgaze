@@ -35,7 +35,13 @@ machine; your data never leaves it.
 - **Custom attributes** — annotate any ride with free-form key/values (stored as
   JSON), editable in an Events tab on the ride.
 - **Elite stats** — best efforts, climbing & VAM, gradient distribution, HR zones,
-  training load (TRIMP), aerobic decoupling, and estimated cycling power (NP / VI).
+  training load (TRIMP), aerobic decoupling, estimated cycling power (NP / VI) and
+  **calorie burn** (mechanical work when power is present, otherwise a Keytel
+  heart-rate estimate).
+- **Raw data view** — every channel a ride recorded (elevation, HR, speed,
+  cadence, power) as per-channel charts and a **virtualised table of all
+  samples**, with the ride's summary totals; the per-ride sensor set is detected
+  on import. Reached from the **Raw** link in the viewer.
 - **Compare (ghost-chase)** — finds rides on the *same route* (GPS overlap, of a
   comparable length) and races them: a live HUD (distance / time / HR gap) and a
   Mario-Kart off-screen arrow when a ghost leaves the viewport.
@@ -136,8 +142,8 @@ No accounts, no cloud, no telemetry. Map tiles are fetched once and cached local
 > **⚠️ No authentication.** TourGaze is a single-user, local-first app — it has
 > no login. Run it on `localhost` or a trusted LAN. **Do not expose it directly
 > to the internet**; if you must, put it behind a reverse proxy that adds
-> authentication (and TLS). Encryption of the library at rest is on the roadmap,
-> not yet shipped.
+> authentication (and TLS). The library can be **encrypted at rest** (AES-GCM,
+> opt-in) so the store can safely sync to a cloud folder — see the Docker section.
 
 ## Tech stack
 
