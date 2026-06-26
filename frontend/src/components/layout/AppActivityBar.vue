@@ -36,7 +36,7 @@ function navigate(to: 'inbox' | 'tours' | 'dashboard' | 'markers' | 'settings' |
   <aside class="w-14 flex-shrink-0 flex flex-col items-center py-3 justify-between z-30 border-r border-border bg-background shadow-sm h-full">
     <div class="flex flex-col items-center gap-1 w-full px-1">
       <button class="btn-icon w-10 h-10" :class="active === 'tours' ? 'nav-active' : ''" title="Tours (browse + filter + group)" @click="navigate('tours')">
-        <ClimbingGoat :size="22" />
+        <ClimbingGoat :size="26" />
       </button>
 
       <button class="btn-icon w-10 h-10 relative" :class="active === 'inbox' ? 'nav-active' : ''" title="Inbox (pending review)" @click="navigate('inbox')">
