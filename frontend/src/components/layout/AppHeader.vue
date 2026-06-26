@@ -139,7 +139,7 @@ onClickOutside(menuRef, () => { menuOpen.value = false })
 
 const switchOpen = ref(false)
 function openSwitch() { menuOpen.value = false; switchOpen.value = true }
-function editProfile() { menuOpen.value = false; router.push('/settings') }
+function editProfile() { menuOpen.value = false; router.push('/settings?cat=profile') }
 function signOut() {
   menuOpen.value = false
   setActiveUserId(null)

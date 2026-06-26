@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, markRaw, onMounted, onUnmounted } from 'vue'
+import { computed, markRaw, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
@@ -42,12 +42,16 @@ const CATEGORIES: Category[] = [
 const activeId = layoutRef<CategoryId>(SETTINGS_LAYOUT_SLOT, 'activeCategory', 'profile')
 
 // Deep-link support: /settings?cat=gear opens that category (used by the
-// AddTour empty-state "add gear" link). Falls back to the persisted choice.
+// AddTour empty-state "add gear" link and the header's "Edit profile"). Falls
+// back to the persisted choice. Watched (immediate) so it also switches when
+// the view is already mounted — e.g. clicking "Edit profile" from another
+// settings category.
 const route = useRoute()
-const requestedCat = route.query.cat
-if (typeof requestedCat === 'string' && CATEGORIES.some(c => c.id === requestedCat)) {
-  activeId.value = requestedCat as CategoryId
-}
+watch(() => route.query.cat, (cat) => {
+  if (typeof cat === 'string' && CATEGORIES.some(c => c.id === cat)) {
+    activeId.value = cat as CategoryId
+  }
+}, { immediate: true })
 // auto-persist the sidebar separator / collapse (Save-layout still snapshots them).
 const sidebarSize = autoLayoutRef<number>(SETTINGS_LAYOUT_SLOT, 'sidebarSize', 22)
 const sidebarCollapsed = autoLayoutRef<boolean>(SETTINGS_LAYOUT_SLOT, 'sidebarCollapsed', false)

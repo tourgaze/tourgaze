@@ -16,7 +16,7 @@ import {
   Bike, PersonStanding, Waves, Footprints, Mountain, Activity as ActivityIcon,
   Filter, ChevronDown, ChevronRight, Ruler, Timer, Tag as TagIcon,
   PanelLeftClose, PanelLeftOpen, X, Pencil, Map as MapIcon, MapPin,
-  Bookmark, Save, Trash2, RotateCcw, ImagePlus,
+  Bookmark, Save, Trash2, RotateCcw, ImagePlus, Gauge,
   ChevronsUpDown, ChevronsDownUp, MoreVertical, ListTree,
 } from 'lucide-vue-next'
 import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
@@ -1042,7 +1042,15 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
         <!-- Tour title, centred next to the map; click to edit it in the details. -->
         <button class="flex-1 min-w-0 text-center text-[12px] font-semibold text-foreground truncate px-2 hover:text-primary transition-colors"
           title="Edit in tour details" @click="startEdit">{{ selectedName }}</button>
-        <div class="w-[96px] shrink-0"></div>
+        <!-- Quiet link to the per-point raw data view. Fixed width matches the
+             left button group so the title stays centred; view mode only. -->
+        <div class="w-[96px] shrink-0 flex justify-end">
+          <router-link v-if="rightMode === 'view'" :to="`/tour/${selectedId}/raw`"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-muted-fg hover:text-primary transition-colors"
+            title="Raw per-point data (elevation, HR, speed, cadence, power)">
+            <Gauge :size="11" /> Raw
+          </router-link>
+        </div>
       </div>
 
       <div class="flex-1 min-h-0">

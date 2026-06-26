@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useQuery } from '@tanstack/vue-query'
-import { Inbox, BarChart3, ListTree, Settings, Info, MapPin } from 'lucide-vue-next'
+import { Inbox, BarChart3, Bike, Settings, Info, MapPin } from 'lucide-vue-next'
 import { getInbox } from '@/api/client'
 
 const route = useRoute()
@@ -35,7 +35,7 @@ function navigate(to: 'inbox' | 'tours' | 'dashboard' | 'markers' | 'settings' |
   <aside class="w-14 flex-shrink-0 flex flex-col items-center py-3 justify-between z-30 border-r border-border bg-background shadow-sm h-full">
     <div class="flex flex-col items-center gap-1 w-full px-1">
       <button class="btn-icon w-10 h-10" :class="active === 'tours' ? 'nav-active' : ''" title="Tours (browse + filter + group)" @click="navigate('tours')">
-        <ListTree :size="20" />
+        <Bike :size="20" />
       </button>
 
       <button class="btn-icon w-10 h-10 relative" :class="active === 'inbox' ? 'nav-active' : ''" title="Inbox (pending review)" @click="navigate('inbox')">
