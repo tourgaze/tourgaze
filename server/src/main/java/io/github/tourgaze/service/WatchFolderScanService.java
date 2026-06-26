@@ -13,7 +13,9 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,6 +60,12 @@ public class WatchFolderScanService {
 
 	public static final String SETTING = "inbox.sources";
 
+	/**
+	 * Last-seen availability of each configured source path, so the mount detector
+	 * can spot an absent → present flip (a USB drive plugged in, a share mounted).
+	 */
+	private final Map<String, Boolean> sourcePresent = new ConcurrentHashMap<>();
+
 	/** One configured inbox folder: a display label, an absolute path, and whether
 	 *  to keep the original on the device (copy) vs move it out (delete after copy). */
 	public record InboxSource(String label, String path, Boolean keepOriginal) {
@@ -88,6 +96,32 @@ public class WatchFolderScanService {
 	@Scheduled(fixedDelayString = "${tourgaze.watch-scan-ms:60000}", initialDelay = 10000)
 	public void scheduledScan() {
 		scanNow();
+	}
+
+	/**
+	 * Fast mount detector: every few seconds, check whether each configured source
+	 * folder is reachable, and the moment one flips from absent to present — a USB
+	 * drive (Garmin) plugged in, a network share coming online — scan immediately
+	 * instead of waiting up to 60 s for the regular poll. Cross-platform: it just
+	 * tests the configured path, so a Windows drive letter and a Linux mount point
+	 * are handled the same. Cheap (a few {@code isDirectory} checks); the first
+	 * observation of each path only records a baseline, so startup doesn't double
+	 * scan.
+	 */
+	@Scheduled(fixedDelayString = "${tourgaze.mount-poll-ms:3000}", initialDelay = 4000)
+	public void detectNewMounts() {
+		boolean appeared = false;
+		for (InboxSource src : configuredSources()) {
+			Path dir = toPath(src.path());
+			boolean present = dir != null && Files.isDirectory(dir);
+			Boolean prev = sourcePresent.put(src.path(), present);
+			if (prev != null && !prev && present) {
+				log.info("[Inbox] source '{}' became available ({}) — scanning now", src.label(), src.path());
+				appeared = true;
+			}
+		}
+		if (appeared)
+			scanNow();
 	}
 
 	/** Scan all configured inbox folders; returns how many files were copied in. */
