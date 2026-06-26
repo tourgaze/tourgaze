@@ -40,7 +40,7 @@ public class RideMetadataMapper {
 				a.getId(), a.getName(), a.getDescription(),
 				a.getActivityType(),
 				a.getStartTime(), a.getEndTime(), a.getDurationS(), a.getMovingTimeS(),
-				a.getDistanceKm(), a.getElevationGainM(), a.getElevationLossM(),
+				a.getDistanceKm(), a.getElevationGainM(), a.getElevationLossM(), a.getCalories(),
 				a.getAvgHr(), a.getMaxHr(), a.getAvgSpeedKmh(), a.getMaxSpeedKmh(),
 				a.getStartLat(), a.getStartLon(),
 				a.getStartLocation(), a.getStartCountry(), a.getEndLocation(), a.getEndCountry(),

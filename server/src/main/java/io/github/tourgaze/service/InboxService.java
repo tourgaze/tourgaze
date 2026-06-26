@@ -904,6 +904,19 @@ public class InboxService {
 			}
 			// Warm tile cache for the route — non-blocking.
 			tileWarmer.warmAsync(r.points());
+			// Which sensor channels this ride actually carries → attributes json (no
+			// schema). Powers the ride-detail page and "rides with power" filtering.
+			java.util.List<String> sensors = new java.util.ArrayList<>();
+			if (r.avgHr() != null)
+				sensors.add("hr");
+			if (r.avgCadence() != null)
+				sensors.add("cadence");
+			if (r.avgPowerW() != null)
+				sensors.add("power");
+			if (!r.points().isEmpty() && (r.points().get(0).lat() != 0 || r.points().get(0).lon() != 0))
+				sensors.add("gps");
+			if (!sensors.isEmpty())
+				a.getAttributes().put("sensors", sensors);
 		}
 
 		// Apply form overrides.
@@ -995,6 +1008,12 @@ public class InboxService {
 			a.setWeightKg(a.getUser().getWeightKg());
 		}
 
+		// Estimated energy expenditure (kcal) from the best available signal —
+		// power meter on a bike, else heart rate + body profile (see CalorieEstimator).
+		a.setCalories(CalorieEstimator.estimate(a.getActivityType(), a.getAvgPowerW(), a.getAvgHr(),
+				a.getMovingTimeS(), a.getDurationS(), a.getWeightKg(), ageOf(a.getUser()),
+				a.getUser() != null ? a.getUser().getGender() : null));
+
 		a = activityRepo.save(a);
 
 		// Warm any uncovered map regions this ride touches → cached OSM peaks/
@@ -1041,6 +1060,13 @@ public class InboxService {
 
 		log.info("Imported '{}' as activity {}", filename, a.getId());
 		return a;
+	}
+
+	/** Whole years from the rider's date of birth to today, or null. */
+	private static Integer ageOf(User u) {
+		if (u == null || u.getDateOfBirth() == null)
+			return null;
+		return (int) java.time.temporal.ChronoUnit.YEARS.between(u.getDateOfBirth(), java.time.LocalDate.now());
 	}
 
 	/**

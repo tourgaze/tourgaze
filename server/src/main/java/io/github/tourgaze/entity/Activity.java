@@ -161,6 +161,14 @@ public class Activity extends BaseEntity {
 	@Column(name = "elevation_loss_m")
 	private Double elevationLossM;
 
+	/**
+	 * Estimated energy expenditure (kcal), computed at import: mechanical work
+	 * from a power meter on cycling rides, else a heart-rate estimate (Keytel).
+	 * Stored as a column so the dashboard can sum it. Null when neither signal.
+	 */
+	@Column(name = "calories")
+	private Integer calories;
+
 	@Column(name = "avg_hr")
 	private Integer avgHr;
 
@@ -411,6 +419,14 @@ public class Activity extends BaseEntity {
 
 	public void setElevationLossM(Double elevationLossM) {
 		this.elevationLossM = elevationLossM;
+	}
+
+	public Integer getCalories() {
+		return calories;
+	}
+
+	public void setCalories(Integer calories) {
+		this.calories = calories;
 	}
 
 	public Integer getAvgHr() {

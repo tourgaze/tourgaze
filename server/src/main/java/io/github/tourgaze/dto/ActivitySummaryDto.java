@@ -26,6 +26,7 @@ public record ActivitySummaryDto(
         Double distanceKm,
         Double elevationGainM,
         Double elevationLossM,
+        Integer calories,
         Integer avgHr,
         Integer maxHr,
         Double avgSpeedKmh,

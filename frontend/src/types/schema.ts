@@ -1239,6 +1239,8 @@ export interface components {
             /** Format: double */
             elevationLossM?: number;
             /** Format: int32 */
+            calories?: number;
+            /** Format: int32 */
             avgHr?: number;
             /** Format: int32 */
             maxHr?: number;
@@ -1517,6 +1519,8 @@ export interface components {
             elevationGainM?: number;
             /** Format: double */
             elevationLossM?: number;
+            /** Format: int32 */
+            calories?: number;
             /** Format: int32 */
             avgHr?: number;
             /** Format: int32 */

@@ -42,6 +42,7 @@ public record RideMetadataDto(
         Double distanceKm,
         Double elevationGainM,
         Double elevationLossM,
+        Integer calories,
         Integer avgHr,
         Integer maxHr,
         Double avgSpeedKmh,
