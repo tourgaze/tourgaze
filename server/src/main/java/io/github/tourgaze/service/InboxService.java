@@ -889,6 +889,7 @@ public class InboxService {
 			}
 			a.setDistanceKm(r.distanceM() != null ? r.distanceM() / 1000.0 : null);
 			a.setElevationGainM(r.ascentM());
+			a.setElevationLossM(r.descentM());
 			a.setAvgHr(r.avgHr());
 			a.setMaxHr(r.maxHr());
 			a.setAvgSpeedKmh(r.avgSpeedMs() != null ? r.avgSpeedMs() * 3.6 : null);

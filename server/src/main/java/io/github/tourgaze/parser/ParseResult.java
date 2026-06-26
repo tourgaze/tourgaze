@@ -21,6 +21,9 @@ public record ParseResult(
         String sport,
         Double distanceM,
         Double ascentM,
+        // Total descent (metres lost) — mirror of ascentM. For a loop ≈ ascent;
+        // for a point-to-point (shuttle descent) they diverge.
+        Double descentM,
         Instant startTime,
         Instant endTime,
         Integer durationS,
@@ -50,6 +53,7 @@ public record ParseResult(
         private String sport;
         private Double distanceM;
         private Double ascentM;
+        private Double descentM;
         private Instant startTime;
         private Instant endTime;
         private Integer durationS;
@@ -81,6 +85,11 @@ public record ParseResult(
 
         public Builder ascentM(Double v) {
             this.ascentM = v;
+            return this;
+        }
+
+        public Builder descentM(Double v) {
+            this.descentM = v;
             return this;
         }
 
@@ -150,7 +159,7 @@ public record ParseResult(
         }
 
         public ParseResult build() {
-            return new ParseResult(points, sport, distanceM, ascentM, startTime, endTime,
+            return new ParseResult(points, sport, distanceM, ascentM, descentM, startTime, endTime,
                     durationS, movingTimeS, avgHr, maxHr, avgSpeedMs, maxSpeedMs,
                     avgCadence, maxCadence, avgPowerW, maxPowerW, subSport);
         }

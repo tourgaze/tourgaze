@@ -99,6 +99,9 @@ public class FitParser implements TrackFileParser {
 			session.ascentM = mesg.getTotalAscent() != null
 					? mesg.getTotalAscent().doubleValue()
 					: null;
+			session.descentM = mesg.getTotalDescent() != null
+					? mesg.getTotalDescent().doubleValue()
+					: null;
 			session.elapsedS = mesg.getTotalElapsedTime() != null
 					? Math.round(mesg.getTotalElapsedTime())
 					: null;
@@ -142,6 +145,7 @@ public class FitParser implements TrackFileParser {
 				.sport(session.sport)
 				.distanceM(session.distanceM)
 				.ascentM(session.ascentM)
+				.descentM(session.descentM)
 				.startTime(startTime)
 				.endTime(endTime)
 				.durationS(durationS)
@@ -177,6 +181,7 @@ public class FitParser implements TrackFileParser {
 		Instant startTime;
 		Double distanceM;
 		Double ascentM;
+		Double descentM;
 		Integer elapsedS;
 		Integer movingS;
 		Integer avgHr;

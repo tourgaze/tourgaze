@@ -275,6 +275,7 @@ public class RideRecoveryService {
 		a.setMovingTimeS(dto.movingTimeS());
 		a.setDistanceKm(dto.distanceKm());
 		a.setElevationGainM(dto.elevationGainM());
+		a.setElevationLossM(dto.elevationLossM());
 		a.setAvgHr(dto.avgHr());
 		a.setMaxHr(dto.maxHr());
 		a.setAvgSpeedKmh(dto.avgSpeedKmh());

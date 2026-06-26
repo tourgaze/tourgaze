@@ -56,7 +56,7 @@ public class GpxParser implements TrackFileParser {
 		}
 
 		List<TrackPoint> points = new ArrayList<>(wps.size());
-		double distanceM = 0, ascentM = 0, maxSpeedMs = 0;
+		double distanceM = 0, ascentM = 0, descentM = 0, maxSpeedMs = 0;
 		Double prevLat = null, prevLon = null, prevEle = null;
 		Instant prevTime = null;
 		// Cadence / power live in each point's <extensions> (Garmin
@@ -78,6 +78,8 @@ public class GpxParser implements TrackFileParser {
 					double climb = ele - prevEle;
 					if (climb > ASCENT_NOISE_M)
 						ascentM += climb;
+					else if (climb < -ASCENT_NOISE_M)
+						descentM += -climb;
 				}
 				if (prevTime != null && time != null) {
 					double dt = (time.toEpochMilli() - prevTime.toEpochMilli()) / 1000.0;
@@ -119,6 +121,7 @@ public class GpxParser implements TrackFileParser {
 				.points(points)
 				.distanceM(distanceM > 0 ? distanceM : null)
 				.ascentM(ascentM > 0 ? ascentM : null)
+				.descentM(descentM > 0 ? descentM : null)
 				.startTime(startTime)
 				.endTime(endTime)
 				.durationS(durationS)

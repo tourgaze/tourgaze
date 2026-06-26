@@ -244,6 +244,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/map-providers/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["test"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inbox": {
         parameters: {
             query?: never;
@@ -270,22 +286,6 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["refreshOne"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/inbox/{filename}/processed": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: operations["moveToProcessed"];
         delete?: never;
         options?: never;
         head?: never;
@@ -760,6 +760,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/inbox/skipped": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["skipped"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/inbox/search-place": {
         parameters: {
             query?: never;
@@ -1037,6 +1053,8 @@ export interface components {
             restingHr?: number;
             /** Format: int32 */
             maxHr?: number;
+            /** Format: int32 */
+            ftpW?: number;
         };
         TagDto: {
             id?: string;
@@ -1218,6 +1236,8 @@ export interface components {
             distanceKm?: number;
             /** Format: double */
             elevationGainM?: number;
+            /** Format: double */
+            elevationLossM?: number;
             /** Format: int32 */
             avgHr?: number;
             /** Format: int32 */
@@ -1389,6 +1409,11 @@ export interface components {
          * @enum {string}
          */
         InboxStreamEvent: "connected" | "inbox-changed";
+        SkippedEntry: {
+            filename?: string;
+            sourceLabel?: string;
+            activityId?: string;
+        };
         PlaceProposal: {
             name?: string;
             country?: string;
@@ -1490,6 +1515,8 @@ export interface components {
             distanceKm?: number;
             /** Format: double */
             elevationGainM?: number;
+            /** Format: double */
+            elevationLossM?: number;
             /** Format: int32 */
             avgHr?: number;
             /** Format: int32 */
@@ -2232,6 +2259,32 @@ export interface operations {
             };
         };
     };
+    test: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapProviderDto"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: Record<string, never>;
+                    };
+                };
+            };
+        };
+    };
     list_2: {
         parameters: {
             query?: never;
@@ -2282,26 +2335,6 @@ export interface operations {
         };
     };
     refreshOne: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                filename: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description OK */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    moveToProcessed: {
         parameters: {
             query?: never;
             header?: never;
@@ -3168,6 +3201,26 @@ export interface operations {
             };
         };
     };
+    skipped: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["SkippedEntry"][];
+                };
+            };
+        };
+    };
     searchPlace: {
         parameters: {
             query: {
@@ -3296,7 +3349,7 @@ export interface operations {
                 };
                 content: {
                     "*/*": {
-                        [key: string]: number;
+                        [key: string]: Record<string, never>;
                     };
                 };
             };

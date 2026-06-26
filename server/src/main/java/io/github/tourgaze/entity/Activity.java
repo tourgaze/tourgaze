@@ -157,6 +157,10 @@ public class Activity extends BaseEntity {
 	@Column(name = "elevation_gain_m")
 	private Double elevationGainM;
 
+	/** Total descent (metres lost). Mirror of {@link #elevationGainM}. */
+	@Column(name = "elevation_loss_m")
+	private Double elevationLossM;
+
 	@Column(name = "avg_hr")
 	private Integer avgHr;
 
@@ -399,6 +403,14 @@ public class Activity extends BaseEntity {
 
 	public void setElevationGainM(Double elevationGainM) {
 		this.elevationGainM = elevationGainM;
+	}
+
+	public Double getElevationLossM() {
+		return elevationLossM;
+	}
+
+	public void setElevationLossM(Double elevationLossM) {
+		this.elevationLossM = elevationLossM;
 	}
 
 	public Integer getAvgHr() {

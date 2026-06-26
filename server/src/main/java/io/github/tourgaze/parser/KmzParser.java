@@ -69,7 +69,7 @@ public class KmzParser implements TrackFileParser {
 			throw new IllegalArgumentException("KML/KMZ file contains no track points");
 		}
 
-		double distanceM = 0, ascentM = 0, maxSpeedMs = 0;
+		double distanceM = 0, ascentM = 0, descentM = 0, maxSpeedMs = 0;
 		Double prevLat = null, prevLon = null, prevEle = null;
 		Instant prevTime = null;
 		for (TrackPoint p : points) {
@@ -80,6 +80,8 @@ public class KmzParser implements TrackFileParser {
 					double climb = p.altM() - prevEle;
 					if (climb > ASCENT_NOISE_M)
 						ascentM += climb;
+					else if (climb < -ASCENT_NOISE_M)
+						descentM += -climb;
 				}
 				if (prevTime != null && p.time() != null) {
 					double dt = (p.time().toEpochMilli() - prevTime.toEpochMilli()) / 1000.0;
@@ -119,6 +121,7 @@ public class KmzParser implements TrackFileParser {
 				.points(points)
 				.distanceM(distanceM > 0 ? distanceM : null)
 				.ascentM(ascentM > 0 ? ascentM : null)
+				.descentM(descentM > 0 ? descentM : null)
 				.startTime(startTime)
 				.endTime(endTime)
 				.durationS(durationS)

@@ -18,6 +18,7 @@ public record UserDto(
         Double weightKg,
         String gender,
         Integer restingHr,
-        Integer maxHr
+        Integer maxHr,
+        Integer ftpW
 ) {
 }

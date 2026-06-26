@@ -83,6 +83,7 @@ public class UserController {
 		u.setGender(dto.gender());
 		u.setRestingHr(dto.restingHr());
 		u.setMaxHr(dto.maxHr());
+		u.setFtpW(dto.ftpW());
 	}
 
 	private UserDto toDto(User u) {

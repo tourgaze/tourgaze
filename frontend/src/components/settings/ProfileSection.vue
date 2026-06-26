@@ -165,6 +165,11 @@ function fmtZoneRange(lo: number, hi: number) {
         <input v-model.number="profile.weightKg" type="number" step="0.1" min="20" max="300" @input="markDirty"
           class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none" />
       </label>
+      <label class="block text-sm">
+        <span class="text-xs font-medium text-muted-fg" title="Functional Threshold Power — your ~1-hour sustainable power. Anchors power zones, TSS and power-to-weight.">FTP (W)</span>
+        <input v-model.number="profile.ftpW" type="number" min="50" max="600" placeholder="threshold power" @input="markDirty"
+          class="mt-1 block w-full rounded-md border border-border bg-transparent px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+      </label>
     </div>
 
     <!-- ── Body-weight trend ──────────────────────────────────────────────── -->

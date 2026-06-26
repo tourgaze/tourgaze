@@ -47,6 +47,14 @@ public class User extends BaseEntity {
 	@Column(name = "max_hr")
 	private Integer maxHr;
 
+	/**
+	 * Functional Threshold Power (watts) — the rider's ~1-hour sustainable power.
+	 * The power-world equivalent of {@link #maxHr}: anchors power zones, TSS, IF
+	 * and power-to-weight. User-entered. Null until set.
+	 */
+	@Column(name = "ftp_w")
+	private Integer ftpW;
+
 	@PrePersist
 	void ensureId() {
 		if (id == null)
@@ -133,5 +141,13 @@ public class User extends BaseEntity {
 
 	public void setMaxHr(Integer maxHr) {
 		this.maxHr = maxHr;
+	}
+
+	public Integer getFtpW() {
+		return ftpW;
+	}
+
+	public void setFtpW(Integer ftpW) {
+		this.ftpW = ftpW;
 	}
 }
