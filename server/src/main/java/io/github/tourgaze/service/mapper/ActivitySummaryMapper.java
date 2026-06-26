@@ -41,6 +41,7 @@ public interface ActivitySummaryMapper {
 	@Mapping(target = "gearName", source = "gear.name")
 	@Mapping(target = "riderName", source = "user", qualifiedByName = "toRiderName")
 	@Mapping(target = "events", source = "attributes", qualifiedByName = "toEvents")
+	@Mapping(target = "sensors", source = "attributes", qualifiedByName = "toSensors")
 	ActivitySummaryDto toDto(Activity a);
 
 	@Named("toEvents")
@@ -55,6 +56,18 @@ public interface ActivitySummaryMapper {
 	}
 
 	ObjectMapper EVENT_JSON = new ObjectMapper().findAndRegisterModules();
+
+	@Named("toSensors")
+	static List<io.github.tourgaze.enums.SensorType> toSensors(Map<String, Object> attributes) {
+		if (attributes == null)
+			return List.of();
+		Object raw = attributes.get("sensors");
+		if (raw == null)
+			return List.of();
+		// Stored as wire strings ("hr", "power", …); coerce, dropping unknowns.
+		return EVENT_JSON.convertValue(raw, new TypeReference<List<String>>() {
+		}).stream().map(io.github.tourgaze.enums.SensorType::fromWire).filter(java.util.Objects::nonNull).toList();
+	}
 
 	@Named("toRiderName")
 	static String toRiderName(io.github.tourgaze.entity.User u) {

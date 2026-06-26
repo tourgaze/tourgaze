@@ -62,6 +62,48 @@ public class AdminController {
 	}
 
 	/**
+	 * Backfill the derived metadata that pre-feature rides are missing —
+	 * {@code calories} and {@code attributes.sensors} — recomputed from the columns
+	 * already on each activity (avg power/HR/cadence, GPS). Pure DB pass, no file
+	 * re-parse. Idempotent. Returns how many rows each value touched.
+	 */
+	@org.springframework.web.bind.annotation.PostMapping("/backfill-metadata")
+	@org.springframework.transaction.annotation.Transactional
+	public java.util.Map<String, Integer> backfillMetadata() {
+		int calories = 0, sensors = 0;
+		for (io.github.tourgaze.entity.Activity a : activityRepo.findAll()) {
+			java.util.List<io.github.tourgaze.enums.SensorType> ch = new java.util.ArrayList<>();
+			if (a.getAvgHr() != null)
+				ch.add(io.github.tourgaze.enums.SensorType.HEART_RATE);
+			if (a.getAvgCadence() != null)
+				ch.add(io.github.tourgaze.enums.SensorType.CADENCE);
+			if (a.getAvgPowerW() != null)
+				ch.add(io.github.tourgaze.enums.SensorType.POWER);
+			if (a.getStartLat() != null)
+				ch.add(io.github.tourgaze.enums.SensorType.GPS);
+			if (!ch.isEmpty()) {
+				a.getAttributes().put("sensors", ch);
+				sensors++;
+			}
+			Integer age = (a.getUser() != null && a.getUser().getDateOfBirth() != null)
+					? (int) java.time.temporal.ChronoUnit.YEARS.between(a.getUser().getDateOfBirth(),
+							java.time.LocalDate.now())
+					: null;
+			Integer kcal = io.github.tourgaze.service.CalorieEstimator.estimate(a.getActivityType(), a.getAvgPowerW(),
+					a.getAvgHr(), a.getMovingTimeS(), a.getDurationS(), a.getWeightKg(), age,
+					a.getUser() != null ? a.getUser().getGender() : null);
+			if (kcal != null) {
+				a.setCalories(kcal);
+				calories++;
+			}
+			activityRepo.save(a);
+		}
+		log.info("[Admin] backfill-metadata: {} calories, {} sensors over {} rides", calories, sensors,
+				activityRepo.count());
+		return java.util.Map.of("calories", calories, "sensors", sensors);
+	}
+
+	/**
 	 * DB ↔ store integrity check (matros-style, read-only): finds activities whose
 	 * ride file is missing, whose content no longer matches its recorded
 	 * {@code sourceHash} (bit-rot / cloud-sync damage — decrypted first when

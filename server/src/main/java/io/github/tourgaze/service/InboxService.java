@@ -905,16 +905,16 @@ public class InboxService {
 			// Warm tile cache for the route — non-blocking.
 			tileWarmer.warmAsync(r.points());
 			// Which sensor channels this ride actually carries → attributes json (no
-			// schema). Powers the ride-detail page and "rides with power" filtering.
-			java.util.List<String> sensors = new java.util.ArrayList<>();
+			// schema). Typed via SensorType (serialised to its wire value).
+			java.util.List<io.github.tourgaze.enums.SensorType> sensors = new java.util.ArrayList<>();
 			if (r.avgHr() != null)
-				sensors.add("hr");
+				sensors.add(io.github.tourgaze.enums.SensorType.HEART_RATE);
 			if (r.avgCadence() != null)
-				sensors.add("cadence");
+				sensors.add(io.github.tourgaze.enums.SensorType.CADENCE);
 			if (r.avgPowerW() != null)
-				sensors.add("power");
+				sensors.add(io.github.tourgaze.enums.SensorType.POWER);
 			if (!r.points().isEmpty() && (r.points().get(0).lat() != 0 || r.points().get(0).lon() != 0))
-				sensors.add("gps");
+				sensors.add(io.github.tourgaze.enums.SensorType.GPS);
 			if (!sensors.isEmpty())
 				a.getAttributes().put("sensors", sensors);
 		}

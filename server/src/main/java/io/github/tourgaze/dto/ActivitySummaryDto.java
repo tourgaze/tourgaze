@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
+import io.github.tourgaze.enums.SensorType;
 import io.github.tourgaze.parser.SourceFormat;
 
 public record ActivitySummaryDto(
@@ -64,5 +65,8 @@ public record ActivitySummaryDto(
         Map<String, Object> attributes,
         // Typed view of the notable events stored in attributes (rain showers, …),
         // ready for the replay map to pin. Derived from attributes — read-only.
-        List<RideEventDto> events
+        List<RideEventDto> events,
+        // Data channels this ride carries (hr, cadence, power, …). Derived from
+        // attributes.sensors — typed so the API publishes the constants.
+        List<SensorType> sensors
 ) {}

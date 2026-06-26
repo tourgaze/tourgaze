@@ -468,6 +468,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/backfill-metadata": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["backfillMetadata"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/activities/{id}/photos/discover": {
         parameters: {
             query?: never;
@@ -936,6 +952,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activities/{id}/raw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["raw"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/activities/{id}/metadata": {
         parameters: {
             query?: never;
@@ -1287,6 +1319,7 @@ export interface components {
                 [key: string]: Record<string, never>;
             };
             events?: components["schemas"]["RideEvent"][];
+            sensors?: components["schemas"]["SensorType"][];
         };
         /** @description A notable point-in-time event along a ride (rain shower, drink break, …). */
         RideEvent: {
@@ -1313,6 +1346,11 @@ export interface components {
              */
             time?: string;
         };
+        /**
+         * @description A data channel / sensor a ride carries.
+         * @enum {string}
+         */
+        SensorType: "hr" | "cadence" | "power" | "speed" | "altitude" | "temperature" | "barometer" | "radar" | "gps";
         /**
          * @description Supported ride-file formats for import.
          * @enum {string}
@@ -1475,6 +1513,18 @@ export interface components {
             matchType?: string;
             /** @description Owner of the ride (null if unassigned). Lets the picker label cross-user rides — compare spans all riders. */
             riderName?: string;
+        };
+        RawTrackDto: {
+            /** Format: int32 */
+            count?: number;
+            reduced?: boolean;
+            lat?: number[];
+            lon?: number[];
+            alt?: number[];
+            hr?: number[];
+            speed?: number[];
+            cadence?: number[];
+            power?: number[];
         };
         RideGearRef: {
             id?: string;
@@ -2692,6 +2742,28 @@ export interface operations {
             };
         };
     };
+    backfillMetadata: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": {
+                        [key: string]: number;
+                    };
+                };
+            };
+        };
+    };
     discoverPhotos: {
         parameters: {
             query?: never;
@@ -3441,6 +3513,31 @@ export interface operations {
                 };
                 content: {
                     "*/*": components["schemas"]["SimilarRideDto"][];
+                };
+            };
+        };
+    };
+    raw: {
+        parameters: {
+            query?: {
+                channels?: string;
+                reduced?: boolean;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "*/*": components["schemas"]["RawTrackDto"];
                 };
             };
         };

@@ -5,6 +5,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import App from './App.vue'
 import AppShell from './components/layout/AppShell.vue'
 import ActivityDetailView from './views/ActivityDetailView.vue'
+import ActivityRawView from './views/ActivityRawView.vue'
 import SettingsView from './views/SettingsView.vue'
 import SetupView from './views/SetupView.vue'
 import ToursView from './views/ToursView.vue'
@@ -28,6 +29,7 @@ const router = createRouter({
         { path: '', redirect: '/tours' },
         { path: 'tours', component: ToursView },
         { path: 'tour/:id', component: ActivityDetailView, props: true },
+        { path: 'tour/:id/raw', component: ActivityRawView, props: true },
         { path: 'compare/:a/:b', component: CompareView, props: true },
         { path: 'inbox', component: InboxView },
         { path: 'dashboard', component: DashboardView },

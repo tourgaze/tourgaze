@@ -44,6 +44,9 @@ public class ActivityController {
 
 	private static final Logger log = LoggerFactory.getLogger(ActivityController.class);
 
+	/** Plain reader for the on-disk track cache (default config is fine). */
+	private static final com.fasterxml.jackson.databind.ObjectMapper RAW_MAPPER = new com.fasterxml.jackson.databind.ObjectMapper();
+
 	private final ActivityRepository activityRepo;
 	private final GearRepository gearRepo;
 	private final TagRepository tagRepo;
@@ -120,6 +123,62 @@ public class ActivityController {
 			Path cache = trackCache.getOrBuildChart(id, opt.get().getSourceFilename());
 			StreamingResponseBody body = out -> Files.copy(cache, out);
 			return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);
+		} catch (IOException e) {
+			return ResponseEntity.internalServerError().build();
+		}
+	}
+
+	/**
+	 * Raw per-point channels for the ride-detail page, columnar so a chart binds a
+	 * channel directly. {@code channels} selects which (comma/space-separated:
+	 * lat,lon,alt,hr,speed,cadence,power; default all). {@code reduced=true} (the
+	 * default) serves the LTTB-reduced ride sidecar — the primary source the
+	 * detail page renders; {@code reduced=false} serves the full-resolution cache.
+	 */
+	@GetMapping("/{id}/raw")
+	public ResponseEntity<io.github.tourgaze.dto.RawTrackDto> raw(@PathVariable("id") String id,
+			@RequestParam(value = "channels", required = false) String channels,
+			@RequestParam(value = "reduced", defaultValue = "true") boolean reduced) {
+		Optional<Activity> opt = activityRepo.findById(id);
+		if (opt.isEmpty())
+			return ResponseEntity.notFound().build();
+		try {
+			// Primary source is the reduced ride sidecar; full-res only on demand.
+			Path cache = reduced
+					? trackCache.getOrBuildChart(id, opt.get().getSourceFilename())
+					: trackCache.getOrBuild(id, opt.get().getSourceFilename());
+			List<io.github.tourgaze.dto.TrackPointDto> pts = RAW_MAPPER.readValue(cache.toFile(),
+					new com.fasterxml.jackson.core.type.TypeReference<List<io.github.tourgaze.dto.TrackPointDto>>() {
+					});
+			java.util.Set<String> want = (channels == null || channels.isBlank()) ? null
+					: new java.util.HashSet<>(
+							java.util.Arrays.asList(channels.toLowerCase(java.util.Locale.ROOT).split("[,\\s]+")));
+			int n = pts.size();
+			List<Double> lat = want == null || want.contains("lat") ? new java.util.ArrayList<>(n) : null;
+			List<Double> lon = want == null || want.contains("lon") ? new java.util.ArrayList<>(n) : null;
+			List<Double> alt = want == null || want.contains("alt") ? new java.util.ArrayList<>(n) : null;
+			List<Integer> hr = want == null || want.contains("hr") ? new java.util.ArrayList<>(n) : null;
+			List<Double> speed = want == null || want.contains("speed") ? new java.util.ArrayList<>(n) : null;
+			List<Integer> cadence = want == null || want.contains("cadence") ? new java.util.ArrayList<>(n) : null;
+			List<Integer> power = want == null || want.contains("power") ? new java.util.ArrayList<>(n) : null;
+			for (io.github.tourgaze.dto.TrackPointDto p : pts) {
+				if (lat != null)
+					lat.add(p.lat());
+				if (lon != null)
+					lon.add(p.lon());
+				if (alt != null)
+					alt.add(p.altM());
+				if (hr != null)
+					hr.add(p.hr());
+				if (speed != null)
+					speed.add(p.speedMs());
+				if (cadence != null)
+					cadence.add(p.cadence());
+				if (power != null)
+					power.add(p.power());
+			}
+			return ResponseEntity.ok(new io.github.tourgaze.dto.RawTrackDto(n, reduced, lat, lon, alt, hr, speed,
+					cadence, power));
 		} catch (IOException e) {
 			return ResponseEntity.internalServerError().build();
 		}

@@ -15,6 +15,11 @@ export type TrackPoint = {
   power?: number | null
   rawIdx?: number | null
 }
+/** Columnar raw per-point channels for the ride-raw page (GET .../raw). Each
+ *  array lines up by point index; channels not requested come back undefined. */
+export type RawTrack = components['schemas']['RawTrackDto']
+/** A data channel a ride can carry (hr, cadence, power, …) — backend SensorType. */
+export type SensorType = components['schemas']['SensorType']
 export type Setting = components['schemas']['SettingDto']
 export type ActivityUpdate = components['schemas']['ActivityUpdateDto']
 export type User = components['schemas']['UserDto']
@@ -65,6 +70,22 @@ export async function getChartTrack(id: string): Promise<TrackPoint[]> {
   }
   if (!r.ok) throw new Error(`HTTP ${r.status}`)
   chartEndpointAvailable = true
+  return r.json()
+}
+
+/** Raw per-point channels for the ride-raw page. `channels` picks which columns
+ *  come back (omit for all); `reduced` (default) serves the LTTB ride sidecar —
+ *  the primary source — set false for the full-resolution track. */
+export async function getRawTrack(
+  id: string,
+  opts: { channels?: SensorType[] | string[]; reduced?: boolean } = {},
+): Promise<RawTrack> {
+  const p = new URLSearchParams()
+  if (opts.channels?.length) p.set('channels', opts.channels.join(','))
+  if (opts.reduced === false) p.set('reduced', 'false')
+  const qs = p.toString()
+  const r = await fetch(`/api/activities/${id}/raw${qs ? `?${qs}` : ''}`)
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
   return r.json()
 }
 
