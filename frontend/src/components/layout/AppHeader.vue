@@ -148,21 +148,19 @@ function signOut() {
 </script>
 
 <template>
-  <header class="flex items-center min-h-[52px] px-4 gap-3 bg-background border-b border-border shadow-sm flex-shrink-0 z-20">
+  <header class="grid grid-cols-[1fr_minmax(0,28rem)_1fr] items-center min-h-[52px] px-4 gap-3 bg-background border-b border-border shadow-sm flex-shrink-0 z-20">
     <div class="flex items-center gap-2 select-none">
       <GoatLogo :size="24" class="text-primary" />
       <div class="leading-tight">
         <div class="text-base font-bold tracking-tight text-foreground">TourGaze</div>
-        <div class="text-[10px] text-muted-fg hidden sm:block">io.github.tourgaze</div>
       </div>
     </div>
 
     <!-- ── Global search ──────────────────────────────────────────────── -->
-    <!-- Anchored to the left side of the header's slack space (not flex-1,
-         so it doesn't grow to the right and centre the rest of the controls).
-         The explicit spacer below the search pushes the layout group + user
-         menu hard to the right edge. -->
-    <div ref="searchBoxRef" class="relative w-full max-w-md">
+    <!-- Middle grid column → viewport-centred between the logo (col 1) and the
+         controls (col 3), which are equal-width tracks. The dropdown is absolutely
+         positioned to this box, so it stays anchored to the input. -->
+    <div ref="searchBoxRef" class="relative w-full">
       <div class="relative">
         <Search :size="13" class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-fg pointer-events-none" />
         <input
@@ -215,8 +213,8 @@ function signOut() {
       </div>
     </div>
 
-    <!-- Spacer that pushes everything from here onward to the right edge. -->
-    <div class="flex-1" />
+    <!-- Right-hand controls — third grid column, pinned to the edge. -->
+    <div class="flex items-center gap-3 justify-self-end">
 
     <!-- Layout group: Save + Restore as one control group. Save is always
          enabled — it commits the active view's layout when there is one, and
@@ -266,7 +264,7 @@ function signOut() {
           <UsersIcon :size="14" /> <span>Switch rider…</span>
         </button>
         <button class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50" @click="editProfile">
-          <UserCog :size="14" /> <span>Edit profile</span>
+          <UserCog :size="14" /> <span>View profile</span>
         </button>
         <div class="border-t border-border my-1" />
         <button class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/50 text-muted-fg" @click="signOut">
@@ -283,6 +281,7 @@ function signOut() {
       <Moon v-if="!dark" :size="18" />
       <Sun v-else :size="18" />
     </button>
+    </div>
   </header>
 
   <UserSwitchDialog :open="switchOpen" @close="switchOpen = false" />

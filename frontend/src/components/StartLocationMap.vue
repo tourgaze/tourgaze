@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch, ref } from 'vue'
+import { onMounted, onUnmounted, watch, ref, computed } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -79,16 +79,34 @@ function renderMarkers() {
     eventPin(props.eventDraft.lat, props.eventDraft.lon, props.eventDraft.type, true)
 }
 
-const { data: routePoints } = useQuery({
-  queryKey: ['minimap-track', () => props.activityId],
+const { data: routePoints, isFetching: routeFetching } = useQuery({
+  queryKey: computed(() => ['minimap-track', props.activityId]),
   queryFn: () => getChartTrack(props.activityId!),
   enabled: () => props.activityId != null,
   staleTime: 60 * 60 * 1000,
 })
 
+// Any drawable geometry? Explicit start coord, preview points, or a fetched
+// activity track. Drives whether we mount the map or show the empty placeholder.
+const hasGeometry = computed(() =>
+  (props.lat != null && props.lon != null)
+  || !!props.points?.length
+  || !!routePoints.value?.length,
+)
+
+// Where to centre the map: the explicit start point if we have one, else the
+// first point of whatever route we can draw (an already-imported doublette has
+// no parsed start coord, but its library activity's track does).
+function centerLngLat(): [number, number] | null {
+  if (props.lat != null && props.lon != null) return [props.lon, props.lat]
+  const p = props.points?.[0] ?? routePoints.value?.[0]
+  return p ? [p.lon, p.lat] : null
+}
+
 function ensureMap() {
-  if (!containerEl.value || props.lat == null || props.lon == null) return
-  if (map) return
+  if (!containerEl.value || map) return
+  const center = centerLngLat()
+  if (!center) return // nothing to show yet — a watcher re-calls when data lands
 
   map = new maplibregl.Map({
     container: containerEl.value,
@@ -129,17 +147,21 @@ function ensureMap() {
         },
       ],
     },
-    center: [props.lon, props.lat],
+    center,
     zoom: 11,
   })
 
   map.on('load', () => {
-    if (!map || props.lat == null || props.lon == null) return
-    const el = document.createElement('div')
-    el.className = 'map-hover-cursor'
-    marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-      .setLngLat([props.lon, props.lat])
-      .addTo(map)
+    if (!map) return
+    // Single start-point dot only when we actually have a start coord (a fresh
+    // inbox file); a doublette draws its whole route from the library activity.
+    if (props.lat != null && props.lon != null) {
+      const el = document.createElement('div')
+      el.className = 'map-hover-cursor'
+      marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([props.lon, props.lat])
+        .addTo(map)
+    }
     // Draw a route if we have one: explicit points (inbox preview) take
     // priority, else the activity's chart track if it's already cached.
     if (props.points?.length) drawRoute(props.points)
@@ -154,6 +176,9 @@ function ensureMap() {
 
 function drawRoute(points: { lat: number; lon: number }[]) {
   if (!map || !points.length) return
+  // Safe to call anytime: defer until the style is ready (the map may have just
+  // been created by a data watcher, before its 'load' fired).
+  if (!map.isStyleLoaded()) { map.once('load', () => drawRoute(points)); return }
   const coords = points.map(p => [p.lon, p.lat] as [number, number])
   const data: GeoJSON.FeatureCollection = {
     type: 'FeatureCollection',
@@ -223,21 +248,25 @@ watch(() => [props.lat, props.lon], ([lat, lon]) => {
 })
 
 // Draw the route whenever the track query lands (or a new activity is picked).
+// May also be the first geometry we have (doublette with no start coord), so
+// ensure the map exists before drawing.
 watch(routePoints, (pts) => {
+  ensureMap()
   if (!map || !pts?.length) return
   drawRoute(pts)
 })
 
 // Draw whenever explicit preview points arrive (inbox route preview).
 watch(() => props.points, (pts) => {
+  ensureMap()
   if (!map || !pts?.length) return
   drawRoute(pts)
 })
 </script>
 
 <template>
-  <div v-if="lat != null && lon != null" ref="containerEl" class="w-full rounded border border-border overflow-hidden" :class="heightClass" />
+  <div v-if="hasGeometry || (activityId && routeFetching)" ref="containerEl" class="w-full rounded border border-border overflow-hidden" :class="heightClass" />
   <div v-else class="w-full rounded border border-dashed border-border flex items-center justify-center text-[11px] text-muted-fg" :class="heightClass">
-    No GPS start point in this file
+    No GPS track to preview
   </div>
 </template>

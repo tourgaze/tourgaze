@@ -4,7 +4,7 @@ import { ref, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
-import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, Trash2, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Heart, Zap, Gauge } from 'lucide-vue-next'
+import { Bike, MapPin, Timer, Ruler, Tag as TagIcon, Save, Trash2, CloudSun, ArrowLeft, Scale, Plus, ChevronDown, ChevronRight, ImagePlus, X as XIcon, Heart, Zap, Gauge, ArrowUpRight } from 'lucide-vue-next'
 import {
   importInbox, discardInbox, getUsers, getGear, getInboxTrack, lookupWeather, getWeatherConditions,
   getPrediction, getInboxMedia, uploadInboxMedia, deleteInboxMedia, inboxMediaUrl, isVideoFile, getSports,
@@ -292,10 +292,10 @@ const removeMut = useMutation({
   mutationFn: () => discardInbox(props.item.filename!),
   onSuccess: () => {
     qc.invalidateQueries({ queryKey: ['inbox'] })
-    push.info({ title: 'Deleted from inbox' })
+    push.info({ title: 'Removed from inbox' })
     emit('done')
   },
-  onError: () => push.error('Could not delete from inbox'),
+  onError: () => push.error('Could not remove from inbox'),
 })
 </script>
 
@@ -393,6 +393,7 @@ const removeMut = useMutation({
               :key="item.filename ?? 'map'"
               :lat="item.startLat ?? null"
               :lon="item.startLon ?? null"
+              :activity-id="item.existingActivityId ?? null"
               :points="previewTrack ?? null"
               :interactive="addingPins"
               :markers="nearbyMarkers"
@@ -421,20 +422,9 @@ const removeMut = useMutation({
         </div>
       </div>
 
-      <!-- Already in the library (exact file): nothing to import — one click to
-           delete it from the inbox. -->
-      <div v-if="item.existingActivityId" class="text-[11px] p-2 rounded border border-amber-300 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 flex items-center justify-between gap-2">
-        <span>This exact ride is already in your library — nothing to import.</span>
-        <button class="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 font-medium"
-          title="Delete from inbox (kept for undo, won't re-stage)."
-          :disabled="removeMut.isPending.value" @click="removeMut.mutate()">
-          <Trash2 :size="11" /> {{ removeMut.isPending.value ? 'Deleting…' : 'Delete from inbox' }}
-        </button>
-      </div>
-
       <!-- Same route, different file: importable (keeps both) — just a heads-up,
            not a duplicate to dismiss. Delete is in the footer if you don't want it. -->
-      <div v-else-if="item.duplicateOfName" class="text-[11px] p-2 rounded border border-border bg-muted/10 text-muted-fg">
+      <div v-if="item.duplicateOfName && !item.existingActivityId" class="text-[11px] p-2 rounded border border-border bg-muted/10 text-muted-fg">
         Looks like the same <strong>route</strong> as “{{ item.duplicateOfName }}”. Fill in below and Import to keep both, or delete it from the inbox.
       </div>
 
@@ -584,16 +574,31 @@ const removeMut = useMutation({
 
     <!-- Footer -->
     <div class="flex items-center justify-between gap-2 px-4 py-3 border-t border-border bg-muted/10">
-      <div class="flex gap-2">
+      <div class="flex items-center gap-2">
         <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-amber-300 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-50"
-          title="Delete from inbox — moves to ~/.tourgaze/inbox-ignored/ (bytes kept, drag back to undo), won't re-stage from your device."
+          title="Remove from inbox — moves to ~/.tourgaze/inbox-ignored/ (bytes kept, drag back to undo), won't re-stage from your device. Does NOT delete the ride from your library."
           :disabled="removeMut.isPending.value" @click="removeMut.mutate()">
-          <Trash2 :size="12" /> Delete from inbox
+          <Trash2 :size="12" /> {{ removeMut.isPending.value ? 'Removing…' : 'Remove from inbox' }}
         </button>
+        <span v-if="item.existingActivityId" class="inline-flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
+          Already in your library —
+          <span class="font-mono select-all" :title="item.existingActivityId">{{ item.existingActivityId }}</span>
+          <button
+            type="button"
+            class="p-0.5 rounded hover:bg-amber-500/15 transition-colors"
+            title="Show this ride in the track list"
+            @click="router.push(`/tour/${item.existingActivityId}`)"
+          >
+            <ArrowUpRight :size="13" />
+          </button>
+        </span>
       </div>
       <div class="flex gap-2">
-        <button class="px-3 py-1.5 text-xs font-medium rounded border border-border text-muted-fg hover:text-foreground" @click="emit('cancel')">Cancel</button>
-        <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-primary text-primary-fg hover:bg-primary/90 disabled:opacity-50"
+        <button class="px-3 py-1.5 text-xs font-medium rounded border border-border text-muted-fg hover:text-foreground" @click="emit('cancel')">{{ item.existingActivityId ? 'Close' : 'Cancel' }}</button>
+        <!-- No Save for an already-imported file: importing again would duplicate /
+             override the existing ride. Delete-from-inbox (left) is the only action. -->
+        <button v-if="!item.existingActivityId"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-primary text-primary-fg hover:bg-primary/90 disabled:opacity-50"
           :disabled="importMut.isPending.value" @click="importMut.mutate()">
           <Save :size="12" /> {{ importMut.isPending.value ? 'Saving…' : 'Save' }}
         </button>

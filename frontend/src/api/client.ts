@@ -141,6 +141,14 @@ export async function scanWatchFolders(): Promise<{ copied: number }> {
   return r.json()
 }
 
+/** Wipe the inbox: clear every staged file at once (each moves to the recoverable
+ *  inbox-ignored area). The counterpart to "Import all". Returns the count. */
+export async function wipeInbox(): Promise<{ cleared: number }> {
+  const r = await fetch('/api/inbox/wipe', { method: 'POST' })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json()
+}
+
 /** Recompute proposals for a single inbox file. */
 export async function refreshInboxItem(filename: string): Promise<void> {
   const r = await fetch(`/api/inbox/${encodeURIComponent(filename)}/refresh`, { method: 'POST' })

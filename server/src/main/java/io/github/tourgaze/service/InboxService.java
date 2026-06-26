@@ -1164,6 +1164,38 @@ public class InboxService {
 	}
 
 	/**
+	 * "Wipe inbox" — clear everything currently staged in one go. Each file leaves
+	 * inbox/ for the recoverable inbox-ignored/ area (bytes never destroyed; drag
+	 * back or "Stage anyway" to re-stage), exactly like a per-file Dismiss. The
+	 * counterpart to "Import all": one clears the inbox, the other commits it.
+	 * Returns how many files were cleared.
+	 */
+	public int wipeAll() throws IOException {
+		List<String> names;
+		try (var stream = Files.list(storage.inboxDir())) {
+			names = stream.filter(Files::isRegularFile).filter(this::isSupported)
+					.map(p -> p.getFileName().toString()).toList();
+		}
+		int cleared = 0;
+		for (String name : names) {
+			try {
+				discard(name);
+				parseCache.remove(name);
+				if (origins.remove(name) != null)
+					saveOrigins();
+				cleared++;
+			} catch (IOException e) {
+				log.warn("[Inbox] wipe could not clear '{}': {}", name, e.getMessage());
+			}
+		}
+		if (cleared > 0) {
+			log.info("[Inbox] wiped {} file(s) into inbox-ignored/", cleared);
+			notifyChanged();
+		}
+		return cleared;
+	}
+
+	/**
 	 * Move a file out of inbox/ into {@code destDir}, never destroying bytes.
 	 * Collisions get a -1, -2, … suffix so a previously-parked same-named file is
 	 * never overwritten.

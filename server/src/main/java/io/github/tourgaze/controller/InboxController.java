@@ -81,6 +81,15 @@ public class InboxController {
 	}
 
 	/**
+	 * "Wipe inbox" — clear every staged file at once (each moves to the recoverable
+	 * inbox-ignored/ area). The counterpart to "Import all". Returns the count.
+	 */
+	@PostMapping("/wipe")
+	public Map<String, Integer> wipe() throws java.io.IOException {
+		return Map.of("cleared", inboxService.wipeAll());
+	}
+
+	/**
 	 * Files the last watch-folder scan skipped because they're already in the
 	 * repository (so they're not staged). Read-only; powers the inbox "Already
 	 * imported" filter so silent skipping isn't opaque.

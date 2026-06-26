@@ -2,6 +2,16 @@ spring:
   application:
     name: tourgaze
 
+  # ── Optional user config file ───────────────────────────────────────────────
+  # A home-directory override at ~/.config/tourgaze/tourgaze.yaml — handy for a
+  # desktop install where setting env vars is awkward. It can override any
+  # `tourgaze.*` setting (most usefully `tourgaze.data-dir`). `optional:` so a
+  # missing file is fine; the app scaffolds a commented template on first run
+  # (see HomeConfigScaffold). Precedence: env vars / -D flags > this file >
+  # the defaults below.
+  config:
+    import: optional:file:${user.home}/.config/tourgaze/tourgaze.yaml
+
   # ── H2 file-based database ──────────────────────────────────────────────────
   # MODE=PostgreSQL runs H2 with PostgreSQL-compatible SQL semantics so the
   # PostgreSQLDialect below applies cleanly (and a real Postgres stays a drop-in

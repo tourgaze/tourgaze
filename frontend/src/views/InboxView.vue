@@ -4,8 +4,8 @@ import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { Splitpanes, Pane } from 'splitpanes'
 import { push } from 'notivue'
-import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Trash2, Clock, Loader2, FolderInput, Sparkles, Search, X as XIcon, ChevronDown, ChevronRight } from 'lucide-vue-next'
-import { getInbox, refreshInbox, refreshInboxItem, scanWatchFolders, getSkippedInbox, importInbox, uploadFit, discardInbox, SOURCE_FORMATS, type InboxItem } from '@/api/client'
+import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Trash2, Clock, Loader2, FolderInput, Sparkles, Eraser, Search, X as XIcon, ChevronDown, ChevronRight, ArrowUpRight } from 'lucide-vue-next'
+import { getInbox, refreshInbox, refreshInboxItem, scanWatchFolders, getSkippedInbox, importInbox, uploadFit, discardInbox, wipeInbox, SOURCE_FORMATS, type InboxItem } from '@/api/client'
 import { InboxStreamEvent } from '@/enums/generated'
 import AddTourPanel from '@/components/AddTourPanel.vue'
 
@@ -144,6 +144,24 @@ async function refresh() {
   finally { refreshing.value = false }
 }
 
+// Wipe — clear the whole inbox in one click (counterpart to "Import all"). Each
+// file moves to the recoverable inbox-ignored area, never destroyed. Confirmed.
+const wiping = ref(false)
+async function wipe() {
+  const n = items.value?.length ?? 0
+  if (!n) return
+  if (!window.confirm(`Clear all ${n} file${n !== 1 ? 's' : ''} from the inbox? They move to the recoverable "already imported" area — drag back or "Stage anyway" to restore.`)) return
+  wiping.value = true
+  try {
+    const { cleared } = await wipeInbox()
+    selected.value = null
+    await qc.invalidateQueries({ queryKey: ['inbox'] })
+    await qc.invalidateQueries({ queryKey: ['inbox-skipped'] })
+    push.success({ title: `Wiped ${cleared} file${cleared !== 1 ? 's' : ''}`, message: 'Inbox cleared. Files are recoverable from the "already imported" area.' })
+  } catch { push.error('Wipe failed') }
+  finally { wiping.value = false }
+}
+
 // Bulk import — import every (filtered) pending ride using its proposed gear /
 // sport / location / tags. Sequential with progress so the backend isn't hit by
 // hundreds of parallel parses; skips already-imported (exact dup) files.
@@ -196,8 +214,8 @@ async function removeFromInbox(filename: string) {
   try {
     await discardInbox(filename)
     qc.invalidateQueries({ queryKey: ['inbox'] })
-    push.info({ title: 'Deleted from inbox' })
-  } catch { push.error('Could not delete from inbox') }
+    push.info({ title: 'Removed from inbox' })
+  } catch { push.error('Could not remove from inbox') }
 }
 </script>
 
@@ -217,6 +235,12 @@ async function removeFromInbox(filename: string) {
           :disabled="importingAll || refreshing || visibleItems.length === 0" @click="importAllVisible">
           <Upload :size="13" :class="importingAll ? 'animate-pulse' : ''" />
           {{ importingAll ? `${importDone}/${importTotal}` : 'Import all' }}
+        </button>
+        <button
+          class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border border-border hover:border-amber-500 hover:text-amber-500 transition-colors shrink-0 disabled:opacity-50"
+          title="Clear the whole inbox — every file moves to the recoverable 'already imported' area (nothing is destroyed)"
+          :disabled="wiping || importingAll || refreshing || (items?.length ?? 0) === 0" @click="wipe">
+          <Eraser :size="13" :class="wiping ? 'animate-pulse' : ''" /> {{ wiping ? '…' : 'Wipe' }}
         </button>
         <button class="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium rounded border border-border hover:border-primary hover:text-primary transition-colors shrink-0 disabled:opacity-50"
           title="Re-run smart proposals (gear, sport, duplicates) from your current ride history"
@@ -319,11 +343,24 @@ async function removeFromInbox(filename: string) {
                 <Sparkles :size="13" :class="refreshingItem === it.filename ? 'animate-pulse' : ''" />
               </button>
               <button type="button" class="p-1 rounded text-muted-fg hover:text-red-600 hover:bg-red-500/10"
-                title="Delete from inbox (kept for undo, won't re-stage)"
+                title="Remove from inbox — un-stages this file (kept for undo, won't re-stage). Does NOT delete the ride from your library."
                 @click.stop="removeFromInbox(it.filename!)">
                 <Trash2 :size="13" />
               </button>
             </span>
+          </div>
+          <!-- Already-imported: show the matched ride's id (selectable for marking)
+               + a jump icon into the track list. The id itself is not a link. -->
+          <div v-if="it.existingActivityId" class="flex items-center gap-1 mb-0.5 text-[9px] text-amber-600 dark:text-amber-400">
+            <span class="font-mono select-all truncate" :title="it.existingActivityId">{{ it.existingActivityId }}</span>
+            <RouterLink
+              :to="`/tour/${it.existingActivityId}`"
+              class="p-0.5 rounded hover:bg-amber-500/15 shrink-0"
+              title="Show this ride in the track list"
+              @click.stop
+            >
+              <ArrowUpRight :size="11" />
+            </RouterLink>
           </div>
           <div class="text-[10px] text-muted-fg flex flex-wrap gap-2">
             <span>{{ it.format?.toUpperCase() }}</span>
@@ -336,13 +373,12 @@ async function removeFromInbox(filename: string) {
           </div>
           <!-- Exact file already in the repository: nothing to import → a clear,
                always-visible one-click delete right on the row. -->
-          <div v-if="it.existingActivityId" class="mt-1.5 flex items-center gap-2 text-[10px]">
-            <span class="text-amber-600">Already in your library.</span>
+          <div v-if="it.existingActivityId" class="mt-1.5 flex justify-end text-[10px]">
             <button type="button"
-              class="px-2 py-0.5 rounded border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 inline-flex items-center gap-1"
-              title="Delete from inbox (kept for undo, won't re-stage)"
+              class="shrink-0 px-2 py-0.5 rounded border border-amber-500/40 text-amber-600 hover:bg-amber-500/10 inline-flex items-center gap-1"
+              title="Remove from inbox — un-stages this file (kept for undo, won't re-stage). Does NOT delete the ride from your library."
               @click.stop="removeFromInbox(it.filename!)">
-              <Trash2 :size="11" /> Delete
+              <Trash2 :size="11" /> Remove from inbox
             </button>
           </div>
           <!-- Same route (different file): importable, just a soft heads-up. -->
