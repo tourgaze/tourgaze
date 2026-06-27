@@ -753,6 +753,17 @@ function initMap(provider: string) {
 
   map.addControl(new maplibregl.NavigationControl(), 'top-right')
 
+  // Map event listeners are attached here — right after creation, NOT inside the
+  // load handler — so they survive even if an eager render in that handler throws.
+  // (They previously lived in load(); a render before them could abort the block,
+  // leaving the "Tours" overlay frozen on pan/zoom.) The callbacks themselves run
+  // only on user interaction, well after load, so attaching pre-load is safe.
+  map.on('move', updateGhostEdges)
+  // Re-pin the "Tours" overlay to whatever rides are now in view.
+  map.on('moveend', renderNearbyTours)
+  map.on('mousedown', onMapMouseDown)
+  map.on('contextmenu', onMapContextMenu)
+
   map.on('load', () => {
     mapLoaded = true
     applyProvider(provider)
@@ -768,12 +779,6 @@ function initMap(provider: string) {
     renderHighlightMarkers()
     renderNearbyTours()
     renderGhostLines()
-    // Keep the off-screen ghost arrows pinned to the edge as the camera moves.
-    map!.on('move', updateGhostEdges)
-    // Re-pin the "Tours" overlay to whatever rides are now in view.
-    map!.on('moveend', renderNearbyTours)
-    map!.on('mousedown', onMapMouseDown)
-    map!.on('contextmenu', onMapContextMenu)
   })
 
   // Only DELIBERATE panning disengages Follow — zoom + rotate + pitch are

@@ -48,3 +48,6 @@ mtb.png
 *.log
 .shot-*.png
 /frontend/tmp-*.mjs
+
+# ── Internal launch / marketing notes (local-only, not for the public repo) ─────
+marketing.md
