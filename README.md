@@ -59,9 +59,30 @@ machine; your data never leaves it.
   are written on every change, and a one-click ZIP export recreates the original
   dropped files.
 
-## Quick start
+## Download & run
 
-**Prerequisites:** JDK 21+, Node 20+.
+Grab a build from the **[latest release](https://github.com/tourgaze/tourgaze/releases/latest)** —
+no build tools required:
+
+- **Windows / Linux portable** (`*-windows-portable.zip`, `*-linux.tar.gz`) — a
+  self-contained app image with its **own bundled Java runtime**. Unpack and run;
+  **no Java and no Node needed.**
+- **Headless JAR** (`*-headless.jar`) — for a server / NAS. Needs only a **Java 21
+  runtime (JRE)** — no Node:
+
+  ```bash
+  java -jar TourGaze-*-headless.jar      # → http://localhost:8085
+  ```
+
+Or run it [with Docker](#run-with-docker) (below).
+
+Open the app, complete the first-run setup to create your rider profile, then
+drop a `.fit` / `.gpx` / `.tcx` / `.kmz` into `~/.tourgaze/inbox/` (or upload from
+the Inbox view) and click **Import**.
+
+## Run from source (development)
+
+**Prerequisites (source build only):** JDK 21+, Node 20+.
 
 ```bash
 # Backend  → http://localhost:8085
@@ -71,9 +92,7 @@ cd server && mvn spring-boot:run
 cd frontend && npm install && npm run dev
 ```
 
-Open <http://localhost:5173>, complete the first-run setup to create your rider
-profile, then drop a `.fit` / `.gpx` / `.tcx` / `.kmz` into `~/.tourgaze/inbox/`
-(or upload from the Inbox view) and click **Import**.
+Open <http://localhost:5173> and complete the first-run setup as above.
 
 ## Run with Docker
 
