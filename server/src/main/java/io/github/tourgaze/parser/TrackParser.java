@@ -32,9 +32,13 @@ public class TrackParser {
 	}
 
 	public ParseResult parse(byte[] data, String format) {
-		return provider(format)
+		ParseResult raw = provider(format)
 				.orElseThrow(() -> new IllegalArgumentException("No parser for format: " + format))
 				.parse(data);
+		// Repair GPS pre-lock clock garbage (sentinel ~1999 timestamps before the
+		// fix locks) centrally, so import, the track cache and export agree. No-op
+		// for clean files.
+		return TrackTimeSanitizer.sanitize(raw);
 	}
 
 	/** Convenience: pick the provider from a filename's extension. */
