@@ -1,0 +1,4 @@
+# Renders DatabaseTooNewException (old jar vs. newer DB) as a clean
+# "APPLICATION FAILED TO START" message instead of a stacktrace.
+org.springframework.boot.diagnostics.FailureAnalyzer=\
+  io.github.tourgaze.config.DatabaseTooNewFailureAnalyzer
