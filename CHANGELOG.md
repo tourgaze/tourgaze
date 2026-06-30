@@ -5,7 +5,16 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Replay "Free" mode keeps the rider findable** — when the camera is parked and the replay marker rides off the visible map, a red arrow pins to the nearest edge pointing at it; click to recenter without leaving Free mode (mirrors the compare-rider off-screen indicators).
+- **Viewer zoom/angle persists while Following** — your own zoom / pitch / rotate gestures during a cinematic follow are kept as a persistent offset on the camera path instead of being snapped back on the next frame.
+- **Periodic database flush** — H2 is checkpointed to disk on a fixed interval (`tourgaze.db.checkpoint-ms`, default 60 s), plus a final flush on shutdown, so a hard kill (force-closed console window, power loss) can't drop the last few seconds of just-saved metadata. A normal Ctrl-C was already safe via graceful shutdown.
+
+### Changed
+- **Refuse to start against a newer database** — if the local DB was already migrated by a newer build, the app now fails fast with a plain-language "application failed to start" message (and keeps the console window open so it can be read) rather than running against a schema it was never built for.
+
+### Fixed
+- **GPS pre-lock clock garbage** — tracks whose first standstill samples carry a sentinel clock (~1999, or the firmware epoch) before the GPS fix locks — which made the parse report a start decades before the end and a multi-year "duration" — are now repaired centrally on parse, so import, the track cache and export all agree. Clean files, including continuous multi-day tours, are left untouched.
 
 ## [1.0.0] — 2026-06-26
 
