@@ -124,6 +124,45 @@ let smoothedBearing = 0
 // track or switches cinematic profile mid-play.
 let cameraSettlingUntil = 0
 
+// Follow-with-offset: during follow + play the camera is director-driven, but a
+// viewer's own zoom / pitch / rotate gestures are honoured as a PERSISTENT offset
+// on top of the path rather than being snapped back every frame. We measure the
+// offset by diffing the live map against the value we ourselves last wrote in
+// applyPose — any difference must be the user's gesture (drag-pan is handled
+// separately and disengages follow). The deltas reset on each fresh cinematic
+// entry (play-start, strategy change, re-engaging follow) and on a new track.
+let userZoomDelta = 0
+let userPitchDelta = 0
+let userBearingDelta = 0
+let lastAppliedZoom: number | null = null
+let lastAppliedPitch: number | null = null
+let lastAppliedBearing: number | null = null
+// How far the viewer may push each offset; deriving deltas from already-clamped
+// map values keeps them bounded too, but these stop a determined scroll from
+// flinging the rider out of frame.
+const MAX_ZOOM_OUT = 5
+const MAX_ZOOM_IN = 3
+// Zoom levels per wheel-delta unit (one notch ≈ 100) — roughly matches MapLibre's
+// own scroll-zoom feel, applied to the offset during follow+play.
+const WHEEL_ZOOM_RATE = 0.0015
+
+/** Forget the last director write so the NEXT play frame re-anchors to the path
+ *  instead of folding a one-shot easeTo (button / click-to-point) into the offset. */
+function forgetLastApplied(): void {
+  lastAppliedZoom = lastAppliedPitch = lastAppliedBearing = null
+}
+
+/** Drop the viewer's manual offset back to the director's framing. */
+function resetCameraOffsets(): void {
+  userZoomDelta = userPitchDelta = userBearingDelta = 0
+  forgetLastApplied()
+}
+
+/** Smallest signed degrees to rotate from `from` to `to` (handles ±180 wrap). */
+function shortestAngleDiff(to: number, from: number): number {
+  return ((((to - from) % 360) + 540) % 360) - 180
+}
+
 // Which kind of basemap is currently loaded in MapLibre. Raster basemaps share
 // one `osm-raster` source whose tile URL we swap via `setTiles`; vector
 // basemaps require a full `setStyle` to the upstream style JSON, then we
@@ -184,6 +223,7 @@ function centerTour() {
 }
 
 function reset2D() {
+  forgetLastApplied()
   map?.easeTo({ pitch: 0, bearing: 0, duration: 600 })
 }
 
@@ -191,7 +231,13 @@ function reset2D() {
 // Mirrors the old toggleFollow() side effect (which was triggered by clicking
 // the magnet button — now hosted in the ActivityViewer playback toolbar).
 watch(() => props.isFollowing, (now) => {
+  // Entering Free shows the off-screen arrow (if the rider is out of frame);
+  // re-engaging Follow hides it. updateRiderEdge() reads isFollowing itself.
+  updateRiderEdge()
   if (!now) return
+  // Re-engaging Follow returns the viewer to the director's view — including
+  // clearing any manual zoom/angle offset they had built up before panning off.
+  resetCameraOffsets()
   if (trackBounds) centerTour()
   const idx = props.hoverIndex ?? 0
   followPoint(idx)
@@ -209,6 +255,7 @@ function animateToPoint(idx: number) {
   // map". Cancels any in-flight play camera (cameraSettlingUntil) so this
   // jump always wins.
   cameraSettlingUntil = 0
+  forgetLastApplied()
   map.easeTo({
     center: lngLat,
     zoom: Math.max(map.getZoom(), 14.5),
@@ -223,6 +270,7 @@ function animateToPoint(idx: number) {
 function flyToCoords(lon: number, lat: number) {
   if (!map || !mapLoaded) return
   cameraSettlingUntil = 0
+  forgetLastApplied()
   map.easeTo({ center: [lon, lat], zoom: Math.max(map.getZoom(), 15), duration: 800, easing: (t: number) => 1 - Math.pow(1 - t, 3) })
 }
 
@@ -759,6 +807,8 @@ function initMap(provider: string) {
   // leaving the "Tours" overlay frozen on pan/zoom.) The callbacks themselves run
   // only on user interaction, well after load, so attaching pre-load is safe.
   map.on('move', updateGhostEdges)
+  // Keep the Free-mode rider arrow pinned to the edge as the user pans/zooms.
+  map.on('move', updateRiderEdge)
   // Re-pin the "Tours" overlay to whatever rides are now in view.
   map.on('moveend', renderNearbyTours)
   map.on('mousedown', onMapMouseDown)
@@ -784,9 +834,26 @@ function initMap(provider: string) {
   // Only DELIBERATE panning disengages Follow — zoom + rotate + pitch are
   // viewing adjustments, not navigation intent. Drag = "I want the camera
   // somewhere else"; scroll-zoom = "I want a closer / wider look at the
-  // current spot". `dragstart` fires on left-button drag-pan only.
+  // current spot". The latter are kept while Follow stays on by folding them
+  // into a persistent offset on the director path (see applyPose), so the
+  // camera honours the viewer's zoom/angle instead of snapping it back every
+  // frame. `dragstart` fires on left-button drag-pan only.
   map.on('dragstart', (e: any) => {
     if (e && e.originalEvent) emit('userInteracted')
+  })
+
+  // Scroll-zoom during follow+play needs special handling: the per-frame jumpTo
+  // that follows the rider cancels MapLibre's (animated, deferred) scroll-zoom
+  // before it lands — so the wheel would feel dead. Instead we take the wheel
+  // ourselves and fold it straight into the persistent zoom offset; the native
+  // handler is disabled in that mode (see the follow-play watcher) to avoid the
+  // two fighting. Drag-rotate / drag-pitch ARE applied synchronously by MapLibre,
+  // so applyPose's diff picks those up without this treatment.
+  map.on('wheel', (e: any) => {
+    if (!props.isPlaying || !isFollowing.value) return
+    const dy = e?.originalEvent?.deltaY ?? 0
+    if (!dy) return
+    userZoomDelta = Math.max(-MAX_ZOOM_OUT, Math.min(MAX_ZOOM_IN, userZoomDelta - dy * WHEEL_ZOOM_RATE))
   })
 
   // Re-add our track overlays after any style swap (raster ↔ vector). MapLibre
@@ -1052,6 +1119,27 @@ function rebuildReplayPath(): void {
  */
 function applyPose(pose: ReplayPose, ease = false, durationMs = 0): void {
   if (!map) return
+
+  // Fold any zoom / pitch / rotate the viewer applied since our last write into a
+  // persistent offset (see the `userZoomDelta` block above). Only on the per-frame
+  // jumpTo path: an eased transition IS our own animation, so its intermediate
+  // frames must not be mistaken for user input. `lastApplied*` is null right after
+  // a one-shot button/click jump, which skips folding so the path re-anchors.
+  if (!ease) {
+    if (lastAppliedZoom != null) userZoomDelta += map.getZoom() - lastAppliedZoom
+    if (lastAppliedPitch != null) userPitchDelta += map.getPitch() - lastAppliedPitch
+    if (lastAppliedBearing != null) userBearingDelta += shortestAngleDiff(map.getBearing(), lastAppliedBearing)
+    userZoomDelta = Math.max(-MAX_ZOOM_OUT, Math.min(MAX_ZOOM_IN, userZoomDelta))
+    userPitchDelta = Math.max(map.getMinPitch() - pose.pitch, Math.min(map.getMaxPitch() - pose.pitch, userPitchDelta))
+  }
+
+  // Director path supplies position + motion; viewer offsets ride on top. Clamp to
+  // the map's own zoom/pitch limits so the value we store matches what MapLibre
+  // will actually hold (else the clamped readback looks like fresh user input).
+  const zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), pose.zoom + userZoomDelta))
+  const pitch = Math.max(map.getMinPitch(), Math.min(map.getMaxPitch(), pose.pitch + userPitchDelta))
+  const bearing = pose.bearing + userBearingDelta
+
   // jumpTo/easeTo take the screen CENTER; bake the rider-below-centre pixel
   // offset into the lngLat via project / shift / unproject.
   let center: maplibregl.LngLatLike = [pose.lng, pose.lat]
@@ -1068,14 +1156,17 @@ function applyPose(pose: ReplayPose, ease = false, durationMs = 0): void {
   }
   if (ease) {
     map.easeTo({
-      center, zoom: pose.zoom, pitch: pose.pitch, bearing: pose.bearing,
+      center, zoom, pitch, bearing,
       duration: durationMs,
       easing: (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
     })
     cameraSettlingUntil = performance.now() + durationMs
   } else {
-    map.jumpTo({ center, zoom: pose.zoom, pitch: pose.pitch, bearing: pose.bearing })
+    map.jumpTo({ center, zoom, pitch, bearing })
   }
+  lastAppliedZoom = zoom
+  lastAppliedPitch = pitch
+  lastAppliedBearing = bearing
 }
 
 /** Sample the precomputed path at `fracIdx` and apply the pose (instant). */
@@ -1094,6 +1185,9 @@ const TRANSITION_MS = 600
  * the path first so the target reflects the new mode.
  */
 function transitionToStrategy(idx: number): void {
+  // Fresh cinematic entry → start from the director's framing, not whatever
+  // zoom/angle the viewer had nudged the previous strategy to.
+  resetCameraOffsets()
   rebuildReplayPath()
   const pose = replayPath ? samplePath(replayPath, idx) : null
   if (pose) applyPose(pose, true, TRANSITION_MS)
@@ -1239,6 +1333,15 @@ watch(() => props.isPlaying, (playing) => {
   nextTick(() => transitionToStrategy(props.hoverIndex ?? 0))
 })
 
+// Hand wheel-zoom to our offset handler only while the rider is being followed
+// during playback (see the `wheel` listener); restore native scroll-zoom for
+// normal map browsing, hover/scrub, and when Follow is off.
+watch(() => [props.isPlaying, isFollowing.value] as const, ([playing, following]) => {
+  if (!map) return
+  if (playing && following) map.scrollZoom.disable()
+  else map.scrollZoom.enable()
+})
+
 // Re-pin photos whenever the manifest changes (new activity, discover, save)
 // or the show-photos toggle flips.
 watch(mediaItems, () => renderPhotoMarkers())
@@ -1256,6 +1359,7 @@ watch(points, (pts) => {
   bearingData = pts?.length ? precomputeSmoothedBearings(pts) : null
   cameraSettlingUntil = 0
   smoothedBearing = 0
+  resetCameraOffsets()   // a new track starts at the director's framing
   replayPath = null   // drop the old activity's path; rebuilt from the new track below
 
   if (!pts?.length) {
@@ -1399,6 +1503,72 @@ function clearGhosts() {
   if (map?.getSource('ghost-tracks')) map.removeSource('ghost-tracks')
 }
 
+// ── Off-screen indicator for the MAIN rider (Free mode) ──────────────────────
+// In Free mode the camera is parked where the user left it, so the replay marker
+// can ride clean off the visible map with no hint where it went. Mirror the
+// compare-rider "Mario-Kart" arrow for the main rider: a red arrow (matching the
+// .map-hover-cursor dot) pins to the nearest edge pointing at the rider, and
+// clicking it recenters — WITHOUT leaving Free mode, so the parked view is only
+// nudged on demand. Hidden whenever Follow is on (the camera keeps the rider
+// framed anyway) or the marker is already on-screen.
+let riderEdgeEl: HTMLElement | null = null
+let mainRiderLngLat: [number, number] | null = null
+
+function recenterOnRider() {
+  if (!map || !mainRiderLngLat) return
+  map.easeTo({ center: mainRiderLngLat, duration: 500 })   // keep the user's zoom / pitch / bearing
+}
+
+function createRiderEdgeEl(): HTMLElement {
+  const color = '#ef4444'   // matches .map-hover-cursor in style.css
+  const el = document.createElement('div')
+  el.className = 'map-rider-edge'
+  el.style.cssText = 'position:absolute;transform:translate(-50%,-50%);z-index:6;cursor:pointer;will-change:left,top'
+  el.title = 'Rider is off-screen — click to recenter'
+  const rot = document.createElement('div')
+  rot.style.cssText = 'position:relative;width:22px;height:22px'
+  rot.innerHTML =
+    `<span style="position:absolute;left:17px;top:50%;transform:translateY(-50%);width:0;height:0;border-top:7px solid transparent;border-bottom:7px solid transparent;border-left:11px solid ${color};filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))"></span>` +
+    `<span style="position:absolute;inset:0;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45)"></span>`
+  el.appendChild(rot)
+  el.addEventListener('click', (e) => { e.stopPropagation(); recenterOnRider() })
+  return el
+}
+
+function updateRiderEdge() {
+  if (!map) return
+  // Only relevant in Free mode with a live marker; otherwise keep it hidden.
+  if (isFollowing.value || !mainRiderLngLat) {
+    if (riderEdgeEl) riderEdgeEl.style.display = 'none'
+    return
+  }
+  const overlay = map.getCanvasContainer()
+  const W = overlay.clientWidth, H = overlay.clientHeight
+  const margin = 24
+  const p = map.project(mainRiderLngLat)
+  const onScreen = p.x >= 0 && p.x <= W && p.y >= 0 && p.y <= H
+  if (onScreen) {
+    if (riderEdgeEl) riderEdgeEl.style.display = 'none'
+    return
+  }
+  // Clamp toward the rider along the centre→target ray, inset by `margin`.
+  const cx = W / 2, cy = H / 2
+  const dx = p.x - cx, dy = p.y - cy
+  const scale = Math.min((W / 2 - margin) / Math.max(Math.abs(dx), 1e-3),
+                         (H / 2 - margin) / Math.max(Math.abs(dy), 1e-3))
+  const ex = cx + dx * scale, ey = cy + dy * scale
+  // isConnected guard: the element lives in MapLibre's canvas container, which is
+  // torn down on a full map rebuild (provider switch) — recreate if orphaned.
+  if (!riderEdgeEl || !riderEdgeEl.isConnected) {
+    riderEdgeEl = createRiderEdgeEl()
+    overlay.appendChild(riderEdgeEl)
+  }
+  riderEdgeEl.style.display = 'block'
+  riderEdgeEl.style.left = `${ex}px`
+  riderEdgeEl.style.top = `${ey}px`
+  ;(riderEdgeEl.firstElementChild as HTMLElement).style.transform = `rotate(${Math.atan2(dy, dx) * 180 / Math.PI}deg)`
+}
+
 // ── Auto-detected highlights (OSM passes / named peaks) ──────────────────────
 // Passes (crossed) get a labelled amber badge; peaks a slate triangle, labelled
 // only when summited so nearby-peak context doesn't clutter the map.
@@ -1500,6 +1670,10 @@ function placeCursor(lngLat: maplibregl.LngLatLike) {
   } else {
     cursorMarker.setLngLat(lngLat)
   }
+  // Track the rider's geo position so the Free-mode off-screen arrow can point
+  // at it; refresh the arrow on every move (this fires per frame during play).
+  mainRiderLngLat = maplibregl.LngLat.convert(lngLat).toArray() as [number, number]
+  updateRiderEdge()
 }
 
 // During playback we get fresh [lon,lat] every animation frame via hoverCoords;
@@ -1530,6 +1704,8 @@ watch(() => props.hoverIndex, (idx) => {
   if (idx == null) {
     cursorMarker?.remove()
     cursorMarker = null
+    mainRiderLngLat = null
+    updateRiderEdge()   // marker gone → hide the off-screen arrow
     setTrailProgress(0)
     return
   }
@@ -1658,6 +1834,7 @@ function renderTrack() {
 
 function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
   if (!map) return
+  forgetLastApplied()
   if (provider === 'terrain') {
     map.flyTo({
       center: bounds.getCenter(),

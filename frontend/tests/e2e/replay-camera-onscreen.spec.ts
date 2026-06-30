@@ -11,6 +11,8 @@ async function firstRideId(request: import('@playwright/test').APIRequestContext
 // drone / hollywood entirely (rider flew off-screen).
 for (const strategy of ['drone', 'follow', 'topdown'] as const) {
   test(`replay ${strategy} keeps the marker on-screen`, async ({ page, request }) => {
+    // Suppress the first-run welcome overlay — it covers the map and intercepts Play.
+    await page.addInitScript(() => localStorage.setItem('tourgaze.welcome.seen.v1', 'true'))
     const id = await firstRideId(request)
     test.skip(!id, 'need a ride with a track')
     const errors: string[] = []

@@ -78,6 +78,9 @@ async function mockApi(page: Page) {
 
 test.describe('replay', () => {
   test.beforeEach(async ({ page }) => {
+    // Suppress the first-run welcome overlay — it covers the map and intercepts
+    // the Play click. (vueuse useStorage persists it as the JSON literal `true`.)
+    await page.addInitScript(() => localStorage.setItem('tourgaze.welcome.seen.v1', 'true'))
     await mockApi(page)
   })
 
