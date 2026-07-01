@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, markRaw } from 'vue'
 import { useRouter } from 'vue-router'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
 import { getTrack, getActivityMedia, activityMediaUrl, isVideoFile,
@@ -282,6 +282,13 @@ defineExpose({ centerTour, animateToPoint, flyToCoords, openMarkerEditor })
 const { data: points, isPending } = useQuery({
   queryKey: computed(() => ['track', props.activityId]),
   queryFn: () => getTrack(props.activityId),
+  // Keep the (large, immutable) point array OUT of Vue's deep reactivity. Every
+  // downstream O(n) loop — bearings, renderTrack, distance accumulation — reads
+  // point props in tight loops; through a reactive Proxy each read hits the get
+  // trap, which a trace showed costing ~6s of self-time. markRaw makes reads
+  // plain-object cheap. Safe: the array is replaced wholesale per ride, never
+  // mutated in place, so reactivity buys nothing here.
+  select: (d) => markRaw(d),
 })
 
 // Geo-matched photos → camera pins on the map (click opens the image).
@@ -683,7 +690,12 @@ function applyProvider(provider: string) {
  * or 3D-extruded terrain.
  */
 function addTerrainOverlays() {
-  if (!map) return
+  // Guard on the STYLE being loaded, not just mapLoaded: during a setStyle swap
+  // (vector basemap switch) mapLoaded stays true while the new style is still
+  // loading, and addSource then throws "Style is not done loading". The
+  // style.load handler re-invokes this once the style is ready, so skipping here
+  // is safe and self-healing.
+  if (!map || !map.isStyleLoaded()) return
   if (!map.getSource('terrain-dem-hillshade')) {
     map.addSource('terrain-dem-hillshade', {
       type: 'raster-dem', tiles: [tileUrl('terrain')], tileSize: 256,
@@ -1401,7 +1413,9 @@ watch(points, (pts) => {
   }
 
   renderTrack()
-  rebuildReplayPath()
+  // NOT rebuildReplayPath() here: simulating the whole replay-camera path over the
+  // track is only needed once the user scrubs or hits Play. It's built lazily then
+  // (sampleCameraAt / transitionToStrategy), so keep it off the switch path.
 })
 
 // Helper: render the cursor at given [lon,lat], creating the DOM element lazily.
@@ -1863,7 +1877,11 @@ function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
       duration: 1200,
     })
   } else {
-    map.fitBounds(bounds, { padding: 48, pitch: 0, bearing: 0, duration: 800 })
+    // A short, snappy ease (not the old 0.8s glide, not a jarring 0ms teleport):
+    // fast enough to feel instant, but the camera visibly MOVES to the new ride so
+    // a switch — even back to a cached ride — reads as "something changed" instead
+    // of looking stale. The 3D/terrain path above keeps its cinematic fly-in.
+    map.fitBounds(bounds, { padding: 48, pitch: 0, bearing: 0, duration: 350 })
   }
 }
 </script>

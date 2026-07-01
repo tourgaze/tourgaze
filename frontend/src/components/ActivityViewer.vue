@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount, markRaw } from 'vue'
 import { Splitpanes, Pane } from 'splitpanes'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { getActivities, getSettings, saveSetting, getTrack, getChartTrack, getTileProviders, getActivityMedia, activityMediaUrl, deleteActivityMedia, uploadActivityMedia, discoverPhotos, makePhotoPersonal, isVideoFile, getAllMarkers, deleteMarker, getSections, getActivityHighlights, getGear, type ActivitySummary, type RideMedia, type Marker } from '@/api/client'
@@ -96,11 +96,27 @@ const { data: rawPoints, isLoading: trackLoading } = useQuery({
   queryKey: computed(() => ['track', activityId.value]),
   queryFn: () => getTrack(activityId.value!),
   enabled: computed(() => activityId.value != null),
+  // Non-reactive: the O(n) passes over these points (distance, breaks, chart,
+  // smoothing) otherwise pay a Vue proxy get-trap tax per property read — ~6s of
+  // self-time in a trace. markRaw keeps them plain; the array is never mutated.
+  select: (d) => markRaw(d),
 })
+// Always flash the loading cue briefly on a track switch — even when the ride is
+// served from the query cache (isLoading stays false then), so hitting a ride
+// never looks stale. Cleared after a short beat that overlaps the camera ease.
+const switching = ref(false)
+let switchTimer: ReturnType<typeof setTimeout> | undefined
+watch(activityId, (id) => {
+  clearTimeout(switchTimer)
+  if (id == null) { switching.value = false; return }
+  switching.value = true
+  switchTimer = setTimeout(() => { switching.value = false }, 400)
+}, { immediate: true })
 const { data: chartRawPoints } = useQuery({
   queryKey: computed(() => ['track-chart', activityId.value]),
   queryFn: () => getChartTrack(activityId.value!),
   enabled: computed(() => activityId.value != null),
+  select: (d) => markRaw(d),
 })
 
 // ── Geo-matched photos → fade in during replay when the rider hits the point ──

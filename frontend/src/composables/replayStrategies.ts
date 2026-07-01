@@ -388,15 +388,23 @@ export function precomputeSmoothedBearings(points: TrackPoint[]): SmoothedBearin
   // makes the camera (and thus the rider) flicker. We know the whole track, so we
   // look ahead to a point far enough away that the direction is stable — "where
   // you're going", computed in advance. The EMA below then just polishes it.
+  // Pull the coordinates into plain typed arrays ONCE up front. The three loops
+  // below make O(n·k) coordinate reads; if `points` is (or slips back into) a Vue
+  // reactive proxy, every read hits the get-trap — a trace showed ~2s of proxy
+  // overhead here even with markRaw upstream. Reading from Float64Arrays is
+  // proxy-free and cache-friendly, and makes this function robust to whatever the
+  // caller hands it. (Float64, not Float32: GPS needs ~7 decimals of precision.)
+  const lat = new Float64Array(N), lon = new Float64Array(N)
+  for (let i = 0; i < N; i++) { lat[i] = points[i].lat; lon[i] = points[i].lon }
+
   const LOOKAHEAD_M = 30
   for (let i = 0; i < N; i++) {
     let j = i + 1
-    while (j < N - 1 && distanceM(points[i].lat, points[i].lon, points[j].lat, points[j].lon) < LOOKAHEAD_M)
+    while (j < N - 1 && distanceM(lat[i], lon[i], lat[j], lon[j]) < LOOKAHEAD_M)
       j++
-    const a = points[i]
-    const b = points[Math.min(j, N - 1)]
-    const dLon = b.lon - a.lon
-    const dLat = b.lat - a.lat
+    const bi = Math.min(j, N - 1)
+    const dLon = lon[bi] - lon[i]
+    const dLat = lat[bi] - lat[i]
     raw[i] = (Math.abs(dLon) + Math.abs(dLat) > 1e-9)
       ? Math.atan2(dLon, dLat) * 180 / Math.PI
       : (i > 0 ? raw[i - 1] : 0)
@@ -419,7 +427,7 @@ export function precomputeSmoothedBearings(points: TrackPoint[]): SmoothedBearin
     let maxOut = 0
     let outAndBack = false
     for (let j = i + 3; j <= lastJ; j++) {
-      const d = distanceM(points[i].lat, points[i].lon, points[j].lat, points[j].lon)
+      const d = distanceM(lat[i], lon[i], lat[j], lon[j])
       if (d > maxOut) maxOut = d
       // Went meaningfully far out, then returned close to where it started.
       if (maxOut >= HOLD_EXCURSION_M && d < HOLD_RETURN_RADIUS_M) { outAndBack = true; break }
@@ -434,12 +442,11 @@ export function precomputeSmoothedBearings(points: TrackPoint[]): SmoothedBearin
   const generalRaw = new Float32Array(N)
   for (let i = 0; i < N; i++) {
     let j = i + 1
-    while (j < N - 1 && distanceM(points[i].lat, points[i].lon, points[j].lat, points[j].lon) < GENERAL_HEADING_M)
+    while (j < N - 1 && distanceM(lat[i], lon[i], lat[j], lon[j]) < GENERAL_HEADING_M)
       j++
-    const a = points[i]
-    const b = points[Math.min(j, N - 1)]
-    const dLon = b.lon - a.lon
-    const dLat = b.lat - a.lat
+    const bi = Math.min(j, N - 1)
+    const dLon = lon[bi] - lon[i]
+    const dLat = lat[bi] - lat[i]
     generalRaw[i] = (Math.abs(dLon) + Math.abs(dLat) > 1e-9)
       ? Math.atan2(dLon, dLat) * 180 / Math.PI
       : (i > 0 ? generalRaw[i - 1] : 0)
