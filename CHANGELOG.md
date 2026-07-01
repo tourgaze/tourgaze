@@ -12,8 +12,10 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ### Changed
 - **Refuse to start against a newer database** — if the local DB was already migrated by a newer build, the app now fails fast with a plain-language "application failed to start" message (and keeps the console window open so it can be read) rather than running against a schema it was never built for.
+- **Faster track loading** — per-activity JSON track/chart caches are now stored gzip-compressed on disk and streamed to the browser with `Content-Encoding: gzip` (compressed once when the cache is built, not re-compressed per request), and tagged with a strong `ETag` + long-lived private `Cache-Control` so a revisited ride re-fetches nothing (304 Not Modified). Cache building takes a per-activity lock instead of a single global monitor, so opening two different rides builds them concurrently rather than serialising behind one mutex.
 
 ### Fixed
+- **Tour switches no longer flood the browser with tile requests** — opening a ride pre-warmed its route tiles by firing every fetch at once (~1500 tiles × up to two providers), tripping `net::ERR_INSUFFICIENT_RESOURCES` and stalling the map for several seconds on every switch — and, because the flood never let the browser's immutable tile cache serve, switching back to a region got no faster. The prefetch now drains through a small bounded pool (only a handful of fetches in flight at once), and selecting a new ride abandons the previous ride's in-flight warm instead of stacking on top of it. A brief loading spinner now covers the map while the newly-selected ride's track loads.
 - **GPS pre-lock clock garbage** — tracks whose first standstill samples carry a sentinel clock (~1999, or the firmware epoch) before the GPS fix locks — which made the parse report a start decades before the end and a multi-year "duration" — are now repaired centrally on parse, so import, the track cache and export all agree. Clean files, including continuous multi-day tours, are left untouched.
 
 ## [1.0.0] — 2026-06-26

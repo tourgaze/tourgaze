@@ -10,7 +10,7 @@ import TimeInZone from '@/components/TimeInZone.vue'
 import RideStats from '@/components/RideStats.vue'
 import RideAttributesPanel from '@/components/RideAttributesPanel.vue'
 import { useRideStats } from '@/composables/useRideStats'
-import { Layers, Play, Pause, Check, Camera, ChevronDown, ChevronUp, Crosshair, LockOpen, ImagePlus, Globe, UserRound, Gauge, Swords, MapPin, Tags, Trash2, Pencil, X } from 'lucide-vue-next'
+import { Layers, Play, Pause, Check, Camera, ChevronDown, ChevronUp, Crosshair, LockOpen, ImagePlus, Globe, UserRound, Gauge, Swords, MapPin, Tags, Trash2, Pencil, X, LoaderCircle } from 'lucide-vue-next'
 import { push } from 'notivue'
 import { onClickOutside } from '@vueuse/core'
 import { REPLAY_STRATEGIES, type ReplayStrategy } from '@/composables/replayStrategies'
@@ -92,7 +92,7 @@ async function removeMarker(id: string) {
 }
 const markerCat = markerCategory
 
-const { data: rawPoints } = useQuery({
+const { data: rawPoints, isLoading: trackLoading } = useQuery({
   queryKey: computed(() => ['track', activityId.value]),
   queryFn: () => getTrack(activityId.value!),
   enabled: computed(() => activityId.value != null),
@@ -660,6 +660,16 @@ const activeColorLabel = computed(() =>
           class="absolute inset-0"
         />
         <div v-else class="text-sm text-muted-fg opacity-60 select-none">Pick a tour on the left</div>
+
+        <!-- Track still loading for the freshly-selected ride → a brief spinner so
+             a switch never looks frozen (the previous map frame stays beneath). -->
+        <div v-if="activityId && trackLoading"
+             class="absolute inset-0 z-[500] flex items-center justify-center bg-background/40 pointer-events-none select-none">
+          <div class="flex items-center gap-2 rounded-full bg-background/90 border border-border px-3 py-1.5 text-xs text-muted-fg shadow">
+            <LoaderCircle :size="14" class="animate-spin text-primary" />
+            Loading ride…
+          </div>
+        </div>
 
         <!-- Race banner — ghost rides overlaid on this map, moving with Play.
              "Details" opens the full side-by-side page for the first one. -->

@@ -6,10 +6,13 @@
 package io.github.tourgaze.service;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.zip.GZIPOutputStream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +46,13 @@ public class TrackCacheService {
 	private final StorageService storage;
 	private final io.github.tourgaze.parser.TrackParser trackParser;
 	private final ObjectMapper objectMapper;
+
+	/**
+	 * Per-activity build monitors so concurrent first-loads of DIFFERENT rides
+	 * build in parallel instead of serialising behind one global lock. Keyed by
+	 * activity id; the entry set is bounded by the number of activities.
+	 */
+	private final ConcurrentHashMap<String, Object> buildLocks = new ConcurrentHashMap<>();
 
 	public TrackCacheService(StorageService storage, io.github.tourgaze.parser.TrackParser trackParser,
 			ObjectMapper objectMapper) {
@@ -85,7 +95,17 @@ public class TrackCacheService {
 		}
 	}
 
-	private synchronized void ensureCache(String activityId, String sourceFilename, boolean chartOnly)
+	private void ensureCache(String activityId, String sourceFilename, boolean chartOnly)
+			throws IOException {
+		// Lock per activity (not a global monitor): two viewers opening two
+		// different rides now build concurrently. computeIfAbsent gives a stable
+		// monitor per id; the same id still serialises so a cache is built once.
+		synchronized (buildLocks.computeIfAbsent(activityId, k -> new Object())) {
+			ensureCacheLocked(activityId, sourceFilename, chartOnly);
+		}
+	}
+
+	private void ensureCacheLocked(String activityId, String sourceFilename, boolean chartOnly)
 			throws IOException {
 		Path fullCache = storage.cacheFile(activityId);
 		Path chartCache = storage.chartCacheFile(activityId);
@@ -118,10 +138,21 @@ public class TrackCacheService {
 
 		Files.createDirectories(fullCache.getParent());
 		if (fullMissing && !chartOnly) {
-			objectMapper.writeValue(fullCache.toFile(), fullPoints);
+			writeGzipJson(fullCache, fullPoints);
 		}
 		if (chartMissing) {
-			objectMapper.writeValue(chartCache.toFile(), chartPoints);
+			writeGzipJson(chartCache, chartPoints);
+		}
+	}
+
+	/**
+	 * Serialize {@code value} as JSON straight into a gzip stream on disk, so the
+	 * cache is stored pre-compressed and can be streamed to the browser as-is with
+	 * {@code Content-Encoding: gzip} (no per-request compression).
+	 */
+	private void writeGzipJson(Path file, Object value) throws IOException {
+		try (OutputStream out = new GZIPOutputStream(Files.newOutputStream(file))) {
+			objectMapper.writeValue(out, value);
 		}
 	}
 

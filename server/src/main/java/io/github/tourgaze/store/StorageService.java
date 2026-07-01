@@ -324,17 +324,23 @@ public class StorageService {
 		}
 	}
 
-	/** Lazy JSON track cache for a given activity ID. */
+	/**
+	 * Lazy track cache for a given activity ID — gzip-compressed on disk
+	 * ({@code .json.gz}) so it can be streamed straight to the browser with
+	 * {@code Content-Encoding: gzip} (compressed once at build, not per request)
+	 * and takes ~1/7th the disk of the raw JSON.
+	 */
 	public Path cacheFile(String activityId) {
-		return cacheDir().resolve(activityId + ".json");
+		return cacheDir().resolve(activityId + ".json.gz");
 	}
 
 	/**
-	 * LTTB-reduced chart cache (~800 pts) for a given activity ID.
-	 * Each point carries {@code rawIdx} pointing back into the full-res array.
+	 * LTTB-reduced chart cache (~800 pts) for a given activity ID, gzip-compressed
+	 * like {@link #cacheFile}. Each point carries {@code rawIdx} pointing back into
+	 * the full-res array.
 	 */
 	public Path chartCacheFile(String activityId) {
-		return cacheDir().resolve(activityId + "-chart.json");
+		return cacheDir().resolve(activityId + "-chart.json.gz");
 	}
 
 	/**

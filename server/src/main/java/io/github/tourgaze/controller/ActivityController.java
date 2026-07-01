@@ -6,14 +6,23 @@
 package io.github.tourgaze.controller;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPInputStream;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
@@ -101,31 +110,60 @@ public class ActivityController {
 	}
 
 	@GetMapping("/{id}/track")
-	public ResponseEntity<StreamingResponseBody> track(@PathVariable("id") String id) {
+	public ResponseEntity<StreamingResponseBody> track(@PathVariable("id") String id, HttpServletRequest request) {
 		Optional<Activity> opt = activityRepo.findById(id);
 		if (opt.isEmpty())
 			return ResponseEntity.notFound().build();
 		try {
 			Path cache = trackCache.getOrBuild(id, opt.get().getSourceFilename());
-			StreamingResponseBody body = out -> Files.copy(cache, out);
-			return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);
+			return streamCache(cache, request);
 		} catch (IOException e) {
 			return ResponseEntity.internalServerError().build();
 		}
 	}
 
 	@GetMapping("/{id}/track/chart")
-	public ResponseEntity<StreamingResponseBody> chartTrack(@PathVariable("id") String id) {
+	public ResponseEntity<StreamingResponseBody> chartTrack(@PathVariable("id") String id, HttpServletRequest request) {
 		Optional<Activity> opt = activityRepo.findById(id);
 		if (opt.isEmpty())
 			return ResponseEntity.notFound().build();
 		try {
 			Path cache = trackCache.getOrBuildChart(id, opt.get().getSourceFilename());
-			StreamingResponseBody body = out -> Files.copy(cache, out);
-			return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(body);
+			return streamCache(cache, request);
 		} catch (IOException e) {
 			return ResponseEntity.internalServerError().build();
 		}
+	}
+
+	/**
+	 * Stream a pre-gzipped track cache. Serves the compressed bytes as-is with
+	 * {@code Content-Encoding: gzip} when the client accepts gzip (every browser
+	 * does), else transparently inflates for the rare client that doesn't. Adds a
+	 * strong ETag (cache size + mtime) with a long-lived, private Cache-Control so
+	 * a revisit re-fetches nothing — a track never changes for an id, and a
+	 * re-import rewrites the cache, bumping the mtime and thus the ETag.
+	 */
+	private ResponseEntity<StreamingResponseBody> streamCache(Path gz, HttpServletRequest request) throws IOException {
+		String etag = "\"" + Files.size(gz) + "-" + Files.getLastModifiedTime(gz).toMillis() + "\"";
+		CacheControl cc = CacheControl.maxAge(365, TimeUnit.DAYS).cachePrivate();
+		if (etag.equals(request.getHeader(HttpHeaders.IF_NONE_MATCH))) {
+			return ResponseEntity.status(HttpStatus.NOT_MODIFIED).eTag(etag).cacheControl(cc).build();
+		}
+		var builder = ResponseEntity.ok().eTag(etag).cacheControl(cc)
+				.header(HttpHeaders.VARY, HttpHeaders.ACCEPT_ENCODING)
+				.contentType(MediaType.APPLICATION_JSON);
+		String accept = request.getHeader(HttpHeaders.ACCEPT_ENCODING);
+		if (accept != null && accept.toLowerCase(Locale.ROOT).contains("gzip")) {
+			// Cache is already gzip on disk → stream the bytes verbatim.
+			return builder.header(HttpHeaders.CONTENT_ENCODING, "gzip")
+					.body(out -> Files.copy(gz, out));
+		}
+		// Rare client without gzip: inflate on the way out.
+		return builder.body(out -> {
+			try (InputStream in = new GZIPInputStream(Files.newInputStream(gz))) {
+				in.transferTo(out);
+			}
+		});
 	}
 
 	/**
@@ -147,9 +185,12 @@ public class ActivityController {
 			Path cache = reduced
 					? trackCache.getOrBuildChart(id, opt.get().getSourceFilename())
 					: trackCache.getOrBuild(id, opt.get().getSourceFilename());
-			List<io.github.tourgaze.dto.TrackPointDto> pts = RAW_MAPPER.readValue(cache.toFile(),
-					new com.fasterxml.jackson.core.type.TypeReference<List<io.github.tourgaze.dto.TrackPointDto>>() {
-					});
+			List<io.github.tourgaze.dto.TrackPointDto> pts;
+			try (InputStream in = new GZIPInputStream(Files.newInputStream(cache))) {
+				pts = RAW_MAPPER.readValue(in,
+						new com.fasterxml.jackson.core.type.TypeReference<List<io.github.tourgaze.dto.TrackPointDto>>() {
+						});
+			}
 			java.util.Set<String> want = (channels == null || channels.isBlank()) ? null
 					: new java.util.HashSet<>(
 							java.util.Arrays.asList(channels.toLowerCase(java.util.Locale.ROOT).split("[,\\s]+")));

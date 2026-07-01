@@ -544,6 +544,15 @@ async function deleteEditingMarker() {
  * MapLibre keep them resident via the large maxTileCacheSize.
  */
 let prefetchedFor: string | null = null
+// Bounded prefetch. Firing all ~1500×(providers) tile fetches in one loop floods
+// the browser's connection pool and trips net::ERR_INSUFFICIENT_RESOURCES — the
+// map then stalls for seconds retrying, even though every tile is a fast
+// localhost cache hit. Keep only PREFETCH_CONCURRENCY in flight at a time; the
+// hits drain the list in well under a second without ever flooding. `prefetchGen`
+// lets a new ride/provider abandon the previous ride's in-flight drain instead of
+// stacking thousands of requests on top of it.
+const PREFETCH_CONCURRENCY = 6
+let prefetchGen = 0
 function prefetchRouteTiles() {
   const pts = points.value
   if (!pts?.length) return
@@ -575,14 +584,26 @@ function prefetchRouteTiles() {
       }
     }
   }
+  // Build the work-list first, then DRAIN it through a small bounded pool rather
+  // than firing every fetch at once (the ERR_INSUFFICIENT_RESOURCES storm).
   const base = window.location.origin
+  const urls: string[] = []
   let n = 0
   for (const t of tiles) {
     if (n++ > 1500) break    // safety cap for very long routes
     const [z, x, y] = t.split('/')
-    if (!isVector) void fetch(`${base}/api/tiles/${z}/${x}/${y}.png?providerid=${rasterId}`, { cache: 'force-cache' }).catch(() => {})
-    if (wants3D) void fetch(`${base}/api/tiles/${z}/${x}/${y}.png?providerid=terrain`, { cache: 'force-cache' }).catch(() => {})
+    if (!isVector) urls.push(`${base}/api/tiles/${z}/${x}/${y}.png?providerid=${rasterId}`)
+    if (wants3D) urls.push(`${base}/api/tiles/${z}/${x}/${y}.png?providerid=terrain`)
   }
+  const gen = ++prefetchGen   // a newer prefetch abandons this drain
+  let idx = 0
+  const drain = async () => {
+    while (idx < urls.length && gen === prefetchGen) {
+      const url = urls[idx++]
+      try { await fetch(url, { cache: 'force-cache' }) } catch { /* best-effort warm */ }
+    }
+  }
+  for (let i = 0; i < PREFETCH_CONCURRENCY; i++) void drain()
 }
 
 // (the previous single-provider buildStyle() was replaced by buildRasterStyle()
