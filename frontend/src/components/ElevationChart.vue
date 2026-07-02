@@ -357,6 +357,10 @@ const option = computed(() => {
 
   return {
     backgroundColor: 'transparent',
+    // Snappier draw-in: ECharts defaults to a 1s series animation on load, which
+    // reads as a slow left-to-right fill. 300ms still eases in but settles fast.
+    animationDuration: 300,
+    animationDurationUpdate: 150,
     grid: grids,
     xAxis: xAxes,
     yAxis: yAxes,
