@@ -6,6 +6,7 @@
 package io.github.tourgaze;
 
 import java.io.Console;
+import java.util.TimeZone;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -16,6 +17,14 @@ import io.github.tourgaze.exception.DatabaseTooNewException;
 public class TourgazeApplication {
 
 	public static void main(String[] args) {
+		// Persist and compute in UTC regardless of the host machine's timezone.
+		// Hibernate binds java.time.Instant to the DB's "timestamp with time zone"
+		// columns using the JVM default zone; on a machine set to e.g. Europe/Berlin
+		// that shifts every imported ride's stored time by the local offset (-2h in
+		// CEST). Pinning the JVM to UTC stores the exact GPS instant. The frontend
+		// still renders each time in the viewer's own local zone. (hibernate.jdbc.
+		// time_zone does NOT cover this Instant → TIMESTAMP WITH TIME ZONE path.)
+		TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
 		try {
 			SpringApplication.run(TourgazeApplication.class, args);
 		} catch (Throwable t) {
