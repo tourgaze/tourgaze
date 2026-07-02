@@ -208,6 +208,20 @@ function isMapReady(): boolean {
   return canvas.clientWidth > 0 && canvas.clientHeight > 0
 }
 
+// Flipped true only once the current track has actually been drawn (end of
+// renderTrack), and back to false the moment a switch starts. It's the single
+// explicit gate for MOUSE/scrub interaction: hover, cursor and the playback
+// camera only make sense once the map is up AND this ride's track is on screen.
+// Loading stays a non-reactive one-shot; reactivity to the pointer engages only
+// after that, so a stale hover can never act on a half-loaded / switching track.
+let trackRendered = false
+function ready(): boolean {
+  // Cheap (no canvas read — these gates run at 60fps during playback).
+  // trackRendered only flips true inside renderTrack, which already passed the
+  // full isMapReady() canvas check, so this implies a valid, laid-out map.
+  return !!map && mapLoaded && trackRendered && !!points.value?.length
+}
+
 // Off-main-thread segment builder (haversine + slope per pair).
 let segmentsWorker: Worker | null = null
 let segmentsJobId = 0
@@ -1389,6 +1403,7 @@ watch(points, (pts) => {
   // and a stale `cameraSettlingUntil` / old path block the new track's camera
   // from re-anchoring → user sees the new activity loaded but the camera sitting
   // on the old activity's last viewpoint until the timer expires.
+  trackRendered = false   // gate pointer interaction until the new track is drawn
   bearingData = pts?.length ? precomputeSmoothedBearings(pts) : null
   cameraSettlingUntil = 0
   smoothedBearing = 0
@@ -1714,7 +1729,7 @@ function placeCursor(lngLat: maplibregl.LngLatLike) {
 // During playback we get fresh [lon,lat] every animation frame via hoverCoords;
 // during hover/scrub we still drive the marker off hoverIndex (integer).
 watch(() => props.hoverCoords, (coords) => {
-  if (!map || !mapLoaded) return
+  if (!ready()) return
   if (coords) placeCursor(coords as maplibregl.LngLatLike)
 })
 
@@ -1722,7 +1737,7 @@ watch(() => props.hoverCoords, (coords) => {
 // the precomputed path BETWEEN points so the drone glides continuously in the
 // travel direction — never stepping/stopping per integer index.
 watch(() => props.playFrac, (frac) => {
-  if (!map || !mapLoaded || frac == null) return
+  if (!ready() || frac == null) return
   if (!props.isPlaying || !isFollowing.value) return
   if (performance.now() < cameraSettlingUntil) return
   sampleCameraAt(frac)
@@ -1735,7 +1750,7 @@ watch(() => props.highlights, () => { if (mapLoaded) renderHighlightMarkers() },
 watch(() => props.nearbyTours, () => { if (mapLoaded) renderNearbyTours() })
 
 watch(() => props.hoverIndex, (idx) => {
-  if (!map || !mapLoaded || !points.value?.length) return
+  if (!ready() || !points.value) return   // !points.value also narrows the type below
   if (idx == null) {
     cursorMarker?.remove()
     cursorMarker = null
@@ -1865,6 +1880,7 @@ function renderTrack() {
   flyToTrack(bounds, props.tileProvider ?? 'osm')
   // Warm the corridor tiles so replay doesn't stutter loading them.
   prefetchRouteTiles()
+  trackRendered = true   // track is on screen → pointer interaction may engage
 }
 
 function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
