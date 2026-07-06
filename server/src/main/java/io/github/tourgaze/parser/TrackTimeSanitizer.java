@@ -21,9 +21,11 @@ import java.util.List;
  * run in 2026).
  *
  * Detection targets exactly that artefact and nothing else: a leading (or
- * trailing) run of points that is a small fraction of the whole and is separated
+ * trailing) run of points that is a small fraction of the whole and is
+ * separated
  * from the bulk by an implausibly large ({@code > JUMP_THRESHOLD}) time jump.
- * That small side is retimed to sit immediately beside the real ride, preserving
+ * That small side is retimed to sit immediately beside the real ride,
+ * preserving
  * its internal spacing. Normal files — including legitimate multi-day tours,
  * which record continuously and so never contain a 30-day gap between
  * consecutive samples — are returned untouched.
@@ -32,7 +34,8 @@ import java.util.List;
  * before the first real point is also repaired, even when the points themselves
  * are already clean.
  *
- * Applied once, centrally, in {@link TrackParser} so import, the track cache and
+ * Applied once, centrally, in {@link TrackParser} so import, the track cache
+ * and
  * export all see the same corrected times.
  */
 public final class TrackTimeSanitizer {

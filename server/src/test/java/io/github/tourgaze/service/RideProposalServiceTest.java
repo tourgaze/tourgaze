@@ -13,7 +13,7 @@ import io.github.tourgaze.enums.ActivityType;
 
 class RideProposalServiceTest {
 
-	// proposeType doesn't touch the repository, so a null repo is fine here.
+	// proposeType doesn't touch the delegate, so a null predictor is fine here.
 	private final RideProposalService svc = new RideProposalService(null);
 
 	@Test

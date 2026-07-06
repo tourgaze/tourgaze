@@ -176,7 +176,8 @@ public class ActivityController {
 	@GetMapping("/{id}/raw")
 	public ResponseEntity<io.github.tourgaze.dto.RawTrackDto> raw(@PathVariable("id") String id,
 			@RequestParam(value = "channels", required = false) String channels,
-			@RequestParam(value = "reduced", defaultValue = "true") boolean reduced) {
+			@RequestParam(value = "reduced", defaultValue = "true") boolean reduced,
+			HttpServletRequest request) {
 		Optional<Activity> opt = activityRepo.findById(id);
 		if (opt.isEmpty())
 			return ResponseEntity.notFound().build();
@@ -185,6 +186,15 @@ public class ActivityController {
 			Path cache = reduced
 					? trackCache.getOrBuildChart(id, opt.get().getSourceFilename())
 					: trackCache.getOrBuild(id, opt.get().getSourceFilename());
+			// Same conditional-GET treatment as /track: the response is a pure
+			// function of the cache file + the query variant, and deserializing
+			// 20k points into boxed columns per revisit is the expensive part.
+			// A re-import rewrites the cache (new mtime) → new ETag.
+			String etag = "\"" + Files.size(cache) + "-" + Files.getLastModifiedTime(cache).toMillis()
+					+ "-" + (reduced ? "r" : "f") + "-" + (channels == null ? "" : channels.hashCode()) + "\"";
+			CacheControl cc = CacheControl.maxAge(365, TimeUnit.DAYS).cachePrivate();
+			if (etag.equals(request.getHeader(HttpHeaders.IF_NONE_MATCH)))
+				return ResponseEntity.status(HttpStatus.NOT_MODIFIED).eTag(etag).cacheControl(cc).build();
 			List<io.github.tourgaze.dto.TrackPointDto> pts;
 			try (InputStream in = new GZIPInputStream(Files.newInputStream(cache))) {
 				pts = RAW_MAPPER.readValue(in,
@@ -218,8 +228,9 @@ public class ActivityController {
 				if (power != null)
 					power.add(p.power());
 			}
-			return ResponseEntity.ok(new io.github.tourgaze.dto.RawTrackDto(n, reduced, lat, lon, alt, hr, speed,
-					cadence, power));
+			return ResponseEntity.ok().eTag(etag).cacheControl(cc)
+					.body(new io.github.tourgaze.dto.RawTrackDto(n, reduced, lat, lon, alt, hr, speed,
+							cadence, power));
 		} catch (IOException e) {
 			return ResponseEntity.internalServerError().build();
 		}
@@ -251,6 +262,11 @@ public class ActivityController {
 			} else {
 				gearRepo.findById(dto.gearId()).ifPresent(a::setGear);
 			}
+			// Provenance: a human deliberately chose this bike on the edit form, so
+			// it's ground truth — stronger than any import guess. GearPredictionService
+			// locks these rides (never re-classifies them) and trains its speed/watt
+			// profiles from them. The bulk import path does NOT stamp this.
+			a.getAttributes().put("gearSource", "user");
 		}
 		if (dto.weatherTempC() != null)
 			a.getWeather().setTempC(dto.weatherTempC());
@@ -406,8 +422,13 @@ public class ActivityController {
 
 	/**
 	 * Find CC photos along the route (Wikimedia Commons) and add them to this ride.
+	 * NOT_SUPPORTED: this runs ~10 geosearches + up to a dozen photo downloads
+	 * synchronously; the class-level read tx would pin a pool connection for the
+	 * whole minute. Only the plain sourceFilename column is read — no lazy
+	 * relations — so running outside a transaction is safe.
 	 */
 	@PostMapping("/{id}/photos/discover")
+	@Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
 	public ResponseEntity<?> discoverPhotos(@PathVariable("id") String id) {
 		Optional<Activity> opt = activityRepo.findById(id);
 		if (opt.isEmpty())
@@ -471,13 +492,13 @@ public class ActivityController {
 				? gearRepo.findById(req.gearId()).orElse(null)
 				: null;
 		int n = 0;
-		for (String id : req.ids()) {
-			Optional<Activity> opt = activityRepo.findById(id);
-			if (opt.isPresent()) {
-				opt.get().setGear(gear);
-				n++;
-				events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(id));
-			}
+		// One batched load instead of a findById per id (a 600-ride backfill was
+		// 600 selects); the per-ride Changed event stays — the sidecar-export
+		// listener needs the individual ids.
+		for (Activity a : activityRepo.findAllById(req.ids())) {
+			a.setGear(gear);
+			n++;
+			events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(a.getId()));
 		}
 		return ResponseEntity.ok(java.util.Map.of("updated", n));
 	}
@@ -491,21 +512,61 @@ public class ActivityController {
 		Optional<Activity> opt = activityRepo.findById(id);
 		if (opt.isEmpty())
 			return ResponseEntity.notFound().build();
-		Activity a = opt.get();
+		purge(opt.get());
+		return ResponseEntity.noContent().build();
+	}
 
+	/**
+	 * Junk-ride cleanup: GPS glitches and aborted recordings land as rides only a
+	 * few metres long that clutter the library. This lists (dry run) or deletes
+	 * every ride at/under {@code maxKm}.
+	 *
+	 * <pre>
+	 *   GET    /api/activities/tiny?maxKm=0.1              → preview the candidates
+	 *   DELETE /api/activities/tiny?maxKm=0.1              → delete them
+	 * </pre>
+	 *
+	 * Rides with no recorded distance are left alone (they may just be unparsed).
+	 */
+	@GetMapping("/tiny")
+	public List<TinyRide> listTiny(@RequestParam(value = "maxKm", defaultValue = "0.1") double maxKm) {
+		return tinyRides(maxKm);
+	}
+
+	@DeleteMapping("/tiny")
+	@Transactional
+	public java.util.Map<String, Object> deleteTiny(
+			@RequestParam(value = "maxKm", defaultValue = "0.1") double maxKm) {
+		List<TinyRide> victims = tinyRides(maxKm);
+		for (TinyRide t : victims)
+			activityRepo.findById(t.id()).ifPresent(this::purge);
+		return java.util.Map.of("maxKm", maxKm, "deleted", victims.size(), "rides", victims);
+	}
+
+	public record TinyRide(String id, String name, Double distanceKm, java.time.Instant startTime) {
+	}
+
+	private List<TinyRide> tinyRides(double maxKm) {
+		return activityRepo.findAll().stream()
+				.filter(a -> a.getDistanceKm() != null && a.getDistanceKm() <= maxKm)
+				.sorted(java.util.Comparator.comparing(Activity::getDistanceKm))
+				.map(a -> new TinyRide(a.getId(), a.getName(), a.getDistanceKm(), a.getStartTime()))
+				.toList();
+	}
+
+	/** Delete a ride's row, cached track, store/ folder, and fire the event. */
+	private void purge(Activity a) {
 		// Delete the ride's entire store/<id>/ folder (track + media + sidecar).
 		// Non-fatal if it's gone or locked — the DB row is deleted below either way;
 		// orphan bytes can be cleaned up by the storage-purge admin action.
 		try {
 			storage.deleteRide(a.getId());
 		} catch (IOException e) {
-			log.warn("Failed to delete ride folder for activity {}: {}", id, e.getMessage());
+			log.warn("Failed to delete ride folder for activity {}: {}", a.getId(), e.getMessage());
 		}
-
-		trackCache.evict(id);
-		activityRepo.deleteById(id);
-		events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Removed(id, a.getSourceFilename()));
-		return ResponseEntity.noContent().build();
+		trackCache.evict(a.getId());
+		activityRepo.deleteById(a.getId());
+		events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Removed(a.getId(), a.getSourceFilename()));
 	}
 
 	private ActivitySummaryDto toSummary(Activity a) {

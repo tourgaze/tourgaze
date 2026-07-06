@@ -25,7 +25,6 @@ import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -134,6 +133,7 @@ public class InboxService {
 	private final PeakPassService peakPass;
 	private final InboxStreamService inboxStream;
 	private final ObjectMapper objectMapper;
+	private final org.springframework.transaction.support.TransactionTemplate txTemplate;
 
 	public InboxService(StorageService storage,
 			io.github.tourgaze.parser.TrackParser trackParser,
@@ -151,7 +151,8 @@ public class InboxService {
 			RideProposalService proposalService,
 			PeakPassService peakPass,
 			InboxStreamService inboxStream,
-			ObjectMapper objectMapper) {
+			ObjectMapper objectMapper,
+			org.springframework.transaction.PlatformTransactionManager txManager) {
 		this.storage = storage;
 		this.trackParser = trackParser;
 		this.activityRepo = activityRepo;
@@ -169,6 +170,7 @@ public class InboxService {
 		this.peakPass = peakPass;
 		this.inboxStream = inboxStream;
 		this.objectMapper = objectMapper;
+		this.txTemplate = new org.springframework.transaction.support.TransactionTemplate(txManager);
 	}
 
 	private Path originsFile() {
@@ -469,7 +471,8 @@ public class InboxService {
 						? distanceKm / (r.durationS() / 3600.0)
 						: (r.avgSpeedMs() != null ? r.avgSpeedMs() * 3.6 : null);
 				var type = proposalService.proposeType(r.sport(), avgKmh, distanceKm);
-				var gear = proposalService.proposeGear(avgKmh, distanceKm, r.ascentM(), type);
+				var gear = proposalService.proposeGear(avgKmh, distanceKm, r.ascentM(),
+						r.avgPowerW(), r.subSport(), type);
 				RouteCandidate dup = findSameTrack(r.points(), candidates);
 				return new ParsedCard(mtime, sha, size, format, suggestedName, type, r.startTime(), distanceKm,
 						r.durationS(), lat, lon, endLat, endLon, existingId,
@@ -596,7 +599,7 @@ public class InboxService {
 					.filter(this::isSupported)
 					.anyMatch(p -> {
 						try {
-							return sha256Hex(Files.readAllBytes(p)).equals(sha256);
+							return hashOfFile(p).equals(sha256);
 						} catch (IOException e) {
 							return false;
 						}
@@ -618,7 +621,7 @@ public class InboxService {
 		try (var s = Files.list(dir)) {
 			s.filter(Files::isRegularFile).forEach(p -> {
 				try {
-					out.add(sha256Hex(Files.readAllBytes(p)));
+					out.add(hashOfFile(p));
 				} catch (IOException e) {
 					log.debug("Could not hash parked file {}: {}", p, e.getMessage());
 				}
@@ -801,15 +804,45 @@ public class InboxService {
 	}
 
 	/**
+	 * (size, mtime) fingerprint → sha, so rescans don't re-read unchanged files.
+	 */
+	private record HashEntry(long size, long mtime, String sha) {
+	}
+
+	private final java.util.concurrent.ConcurrentHashMap<String, HashEntry> fileHashCache = new java.util.concurrent.ConcurrentHashMap<>();
+
+	/**
+	 * SHA-256 of a file, memoized by (path, size, mtime). The watch-folder scan
+	 * runs every minute and used to re-read + re-hash every device, inbox and
+	 * ignored file each time — hundreds of full file reads per minute on
+	 * unchanged data. Entries are tiny; the cache is cleared if it ever grows
+	 * absurd (a runaway source folder).
+	 */
+	public String hashOfFile(Path p) throws IOException {
+		var attrs = Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.class);
+		String key = p.toAbsolutePath().toString();
+		HashEntry e = fileHashCache.get(key);
+		if (e != null && e.size() == attrs.size() && e.mtime() == attrs.lastModifiedTime().toMillis())
+			return e.sha();
+		if (fileHashCache.size() > 10_000)
+			fileHashCache.clear();
+		String sha = sha256Hex(Files.readAllBytes(p));
+		fileHashCache.put(key, new HashEntry(attrs.size(), attrs.lastModifiedTime().toMillis(), sha));
+		return sha;
+	}
+
+	/**
 	 * Confirm an inbox item → move into store/, create the Activity, apply the
 	 * user-supplied form overrides, fire-and-forget weather lookup.
 	 *
-	 * Transactional so the dedup check + activity save + tag attach all run
-	 * under one Hibernate session. Without it, the lazy many-to-many tag
-	 * collection mutation outside an open session causes the same
-	 * LazyInitializationException that bit us earlier on ActivityController.
+	 * The slow, session-free work — file read, track parse, and the Nominatim
+	 * location fallback (HTTP behind a global throttle) — runs BEFORE the
+	 * transaction; concurrent imports used to queue on the geocode lock while
+	 * each held a DB connection. Only the store move + row build + tag attach +
+	 * save run inside one short {@code TransactionTemplate} block (the lazy
+	 * many-to-many tag mutation still needs an open session), and the media
+	 * processing / cache warms follow after commit.
 	 */
-	@Transactional
 	public Activity importItem(String filename, InboxImportRequest req) throws IOException {
 		Path source = storage.inboxDir().resolve(filename);
 		if (!Files.isRegularFile(source))
@@ -829,6 +862,98 @@ public class InboxService {
 			return existing.get();
 		}
 
+		// Parse (pure CPU) outside the transaction.
+		ParseResult parsed = trackParser.canParse(ext) ? trackParser.parse(data, ext) : null;
+		List<io.github.tourgaze.parser.TrackPoint> trackPoints = parsed != null ? parsed.points() : List.of();
+
+		// Server-side location fallback, resolved BEFORE the transaction: if the
+		// frontend didn't pre-populate location strings via the predict endpoint
+		// (programmatic import, or the predict request failed), derive them from
+		// GPS. PredictionService caches Nominatim hits for a week, so this is a
+		// free read if the user already viewed the AddTour panel for this ride.
+		// endLat/endLon are null so only the start resolves — the common case for
+		// loop rides anyway.
+		PredictionDto geo = null;
+		boolean wantGeo = (req == null || req.startLocation() == null) && !trackPoints.isEmpty();
+		if (wantGeo) {
+			try {
+				geo = predictionService.predict(
+						trackPoints.get(0).lat(), trackPoints.get(0).lon(),
+						null, null,
+						parsed.distanceM() != null ? parsed.distanceM() / 1000.0 : null);
+			} catch (Exception ex) {
+				log.warn("Location lookup failed for {}: {}", filename, ex.getMessage());
+			}
+		}
+
+		final ParseResult parsedF = parsed;
+		final PredictionDto geoF = geo;
+		Activity saved;
+		try {
+			saved = txTemplate.execute(status -> {
+				try {
+					return importItemTx(filename, req, hash, ext, parsedF, geoF);
+				} catch (IOException e) {
+					throw new java.io.UncheckedIOException(e);
+				}
+			});
+		} catch (java.io.UncheckedIOException e) {
+			throw e.getCause();
+		}
+		Activity a = saved;
+
+		// ── Post-commit: async warms + media processing (file IO, no session). ──
+
+		// Warm any uncovered map regions this ride touches → cached OSM peaks/
+		// passes for auto-detected highlights. Async + best-effort (one Overpass
+		// call per new geohash cell), so the import POST returns immediately.
+		// After commit, so the async thread's findById can actually see the row.
+		peakPass.ensureRegionsForActivityAsync(a.getId());
+		// Warm tile cache for the route — non-blocking.
+		tileWarmer.warmAsync(trackPoints);
+
+		String storeFilename = a.getSourceFilename();
+		// Move any photos dropped during staging into the ride's media folder,
+		// plus any photos embedded in the source file itself (KMZ PhotoOverlays),
+		// then geo-match them all to the track → media.json. Embedded photos carry
+		// their KML coordinates (knownCoords), which win over EXIF.
+		moveStagedMedia(filename, storeFilename);
+		Path mediaDir = storage.activityMediaDir(storeFilename);
+		Map<String, double[]> knownCoords = extractEmbeddedPhotos(data, ext, mediaDir);
+		mediaManifest.build(mediaDir, trackPoints, knownCoords);
+		// Personal photos dropped on AddTour are authored by the ride's rider.
+		// (user was materialized inside the tx — safe to read detached.)
+		if (a.getUser() != null) {
+			String rider = a.getUser().getDisplayName() != null && !a.getUser().getDisplayName().isBlank()
+					? a.getUser().getDisplayName()
+					: a.getUser().getUsername();
+			for (var it : mediaManifest.read(mediaDir)) {
+				if (!"public".equals(it.origin()) && it.author() == null) {
+					mediaManifest.setAuthor(mediaDir, it.name(), rider);
+				}
+			}
+		}
+
+		// Virtual ride pre-cache: full-res track JSON + chart JSON both built
+		// async so the first browse to /tour/{id} streams from disk instead of
+		// re-parsing the FIT.
+		trackCache.prewarmAllAsync(a.getId(), a.getSourceFilename());
+		// Weather + a rain shower or two along the route (pinned as ride events).
+		weatherService.fetchAndStoreAsync(a.getId(), trackPoints);
+
+		// Now that the file is safely in store/, delete the device original for a
+		// delete-from-device source (no-op for keep-on-device / uploads). Only ever
+		// here — never at scan time — so a file is never single-homed off-repo.
+		deleteRecordedSource(filename);
+
+		log.info("Imported '{}' as activity {}", filename, a.getId());
+		return a;
+	}
+
+	/** The transactional core of an import: store move, row build, tags, save. */
+	private Activity importItemTx(String filename, InboxImportRequest req,
+			String hash, String ext, ParseResult parsed, PredictionDto geo) throws IOException {
+		Path source = storage.inboxDir().resolve(filename);
 		// Per-ride folder: store/<rideId>/<stem>.<ext>. The id is assigned up front
 		// so the folder name is known before save (a preset id survives @PrePersist).
 		// The original stem is preserved for file-tree recovery; the id folder makes
@@ -855,8 +980,8 @@ public class InboxService {
 		a.setImportedAt(Instant.now());
 
 		List<io.github.tourgaze.parser.TrackPoint> trackPoints = List.of();
-		if (trackParser.canParse(ext)) {
-			ParseResult r = trackParser.parse(data, ext);
+		if (parsed != null) {
+			ParseResult r = parsed;
 			trackPoints = r.points();
 			// Route fingerprint for "same route" / ghost-chase compare detection.
 			if (!trackPoints.isEmpty())
@@ -902,8 +1027,7 @@ public class InboxService {
 				a.setStartLat(r.points().get(0).lat());
 				a.setStartLon(r.points().get(0).lon());
 			}
-			// Warm tile cache for the route — non-blocking.
-			tileWarmer.warmAsync(r.points());
+			// (Tile-cache warming happens post-commit in importItem.)
 			// Which sensor channels this ride actually carries → attributes json (no
 			// schema). Typed via SensorType (serialised to its wire value).
 			java.util.List<io.github.tourgaze.enums.SensorType> sensors = new java.util.ArrayList<>();
@@ -966,30 +1090,16 @@ public class InboxService {
 			if (req.endCountry() != null)
 				a.setEndCountry(req.endCountry().toUpperCase());
 		}
-		// Server-side fallback: if the frontend didn't pre-populate location
-		// strings via the predict endpoint (e.g. when importing programmatically
-		// or when the predict request failed), derive them from GPS at import
-		// time. PredictionService caches Nominatim hits for a week, so this is
-		// a free read if the user already viewed the AddTour panel for this
-		// ride. End location goes through the same call — endLat/endLon are
-		// null here so it only resolves the start, which is the common case
-		// for loop rides anyway.
-		if (a.getStartLocation() == null && a.getStartLat() != null && a.getStartLon() != null) {
-			try {
-				var pred = predictionService.predict(
-						a.getStartLat(), a.getStartLon(),
-						null, null,
-						a.getDistanceKm());
-				a.setStartLocation(pred.startLocation());
-				if (a.getStartCountry() == null && pred.country() != null)
-					a.setStartCountry(pred.country());
-				if (a.getEndLocation() == null)
-					a.setEndLocation(pred.endLocation());
-				if (a.getEndCountry() == null && pred.country() != null)
-					a.setEndCountry(pred.country());
-			} catch (Exception ex) {
-				log.warn("Location lookup failed for {}: {}", a.getId(), ex.getMessage());
-			}
+		// Location fallback resolved pre-transaction (see importItem) — just
+		// apply it here, same precedence as before: form values win.
+		if (a.getStartLocation() == null && geo != null) {
+			a.setStartLocation(geo.startLocation());
+			if (a.getStartCountry() == null && geo.country() != null)
+				a.setStartCountry(geo.country());
+			if (a.getEndLocation() == null)
+				a.setEndLocation(geo.endLocation());
+			if (a.getEndCountry() == null && geo.country() != null)
+				a.setEndCountry(geo.country());
 		}
 		if (a.getName() == null || a.getName().isBlank()) {
 			a.setName(filename.replaceAll("(?i)\\.(fit|gpx|tcx|kmz|kml)$", ""));
@@ -1015,50 +1125,10 @@ public class InboxService {
 				a.getUser() != null ? a.getUser().getGender() : null));
 
 		a = activityRepo.save(a);
-
-		// Warm any uncovered map regions this ride touches → cached OSM peaks/
-		// passes for auto-detected highlights. Async + best-effort (one Overpass
-		// call per new geohash cell), so the import POST returns immediately.
-		peakPass.ensureRegionsForActivityAsync(a.getId());
-
-		// Virtual ride pre-cache: full-res track JSON + chart JSON both built
-		// async so the first browse to /tour/{id} streams from disk instead of
-		// re-parsing the FIT (the map endpoint hits the full-res cache, the
-		// elevation chart hits the chart cache). Tiles already warming above,
-		// weather fetched below — all fire-and-forget so the import POST
-		// returns immediately.
-		// Move any photos dropped during staging into the ride's media folder,
-		// plus any photos embedded in the source file itself (KMZ PhotoOverlays),
-		// then geo-match them all to the track → media.json. Embedded photos carry
-		// their KML coordinates (knownCoords), which win over EXIF.
-		moveStagedMedia(filename, storeFilename);
-		Path mediaDir = storage.activityMediaDir(storeFilename);
-		Map<String, double[]> knownCoords = extractEmbeddedPhotos(data, ext, mediaDir);
-		mediaManifest.build(mediaDir, trackPoints, knownCoords);
-		// Personal photos dropped on AddTour are authored by the ride's rider.
-		if (a.getUser() != null) {
-			String rider = a.getUser().getDisplayName() != null && !a.getUser().getDisplayName().isBlank()
-					? a.getUser().getDisplayName()
-					: a.getUser().getUsername();
-			for (var it : mediaManifest.read(mediaDir)) {
-				if (!"public".equals(it.origin()) && it.author() == null) {
-					mediaManifest.setAuthor(mediaDir, it.name(), rider);
-				}
-			}
-		}
-
-		trackCache.prewarmAllAsync(a.getId(), a.getSourceFilename());
-		// Weather + a rain shower or two along the route (pinned as ride events).
-		weatherService.fetchAndStoreAsync(a.getId(), trackPoints);
-		// Write the recovery sidecar after this import commits (async, off-thread).
+		// Write the recovery sidecar after this import commits: published INSIDE
+		// the transaction because the export listener is @TransactionalEventListener
+		// (AFTER_COMMIT) — an event published outside a tx would be dropped.
 		events.publishEvent(new io.github.tourgaze.event.ActivityEvents.Changed(a.getId()));
-
-		// Now that the file is safely in store/, delete the device original for a
-		// delete-from-device source (no-op for keep-on-device / uploads). Only ever
-		// here — never at scan time — so a file is never single-homed off-repo.
-		deleteRecordedSource(filename);
-
-		log.info("Imported '{}' as activity {}", filename, a.getId());
 		return a;
 	}
 

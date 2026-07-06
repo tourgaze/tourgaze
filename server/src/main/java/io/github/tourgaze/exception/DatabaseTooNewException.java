@@ -11,9 +11,12 @@ package io.github.tourgaze.exception;
  * migration this jar doesn't ship). Running an old jar against a newer schema
  * risks silently corrupting data, so we refuse to start.
  *
- * <p>Reported cleanly by
- * {@link io.github.tourgaze.config.DatabaseTooNewFailureAnalyzer} and handled in
- * {@link io.github.tourgaze.TourgazeApplication#main(String[])}, which keeps the
+ * <p>
+ * Reported cleanly by
+ * {@link io.github.tourgaze.config.DatabaseTooNewFailureAnalyzer} and handled
+ * in
+ * {@link io.github.tourgaze.TourgazeApplication#main(String[])}, which keeps
+ * the
  * console window open so the user can read the explanation.
  */
 public class DatabaseTooNewException extends RuntimeException {

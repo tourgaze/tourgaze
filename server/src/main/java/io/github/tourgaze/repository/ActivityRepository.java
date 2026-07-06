@@ -23,12 +23,23 @@ import io.github.tourgaze.entity.Activity;
 public interface ActivityRepository extends JpaRepository<Activity, String> {
 	// @EntityGraph eager-fetches tags in one join instead of N+1 lazy
 	// round-trips. The list endpoint accesses .getTags() on every row to
-	// build the summary DTO.
-	@EntityGraph(attributePaths = "tags")
+	// build the summary DTO — and the mapper also reads gear + user, which
+	// would otherwise lazy-init one proxy query per distinct gear/user.
+	@EntityGraph(attributePaths = { "tags", "gear", "user" })
 	List<Activity> findAllByOrderByStartTimeDesc();
 
 	/** Used for dedup — re-uploading the same .fit/.gpx is a no-op. */
 	Optional<Activity> findBySourceHash(String sourceHash);
+
+	/**
+	 * Full load with gear + user materialized, for the gear-reclassify sweep: it
+	 * classifies OUTSIDE any transaction (Overpass calls + politeness sleeps must
+	 * not pin a connection), so every relation it reads has to be fetched up
+	 * front — a detached lazy proxy would throw on first access.
+	 */
+	@EntityGraph(attributePaths = { "gear", "user" })
+	@Query("select a from Activity a")
+	List<Activity> findAllWithGearAndUser();
 
 	/**
 	 * Scalar projection of every ride except {@code excludeId}, for route-

@@ -11,6 +11,7 @@ import { useCurrentUser, setActiveUserId } from '@/composables/useCurrentUser'
 import { useCurrentLayoutSaver, resetAllLayouts } from '@/composables/useLayoutState'
 import { getActivities, getTags, type ActivitySummary, type Tag } from '@/api/client'
 import UserSwitchDialog from '@/components/UserSwitchDialog.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import GoatLogo from '@/components/GoatLogo.vue'
 
 defineProps<{ dark: boolean }>()
@@ -25,9 +26,9 @@ const { user } = useCurrentUser()
 // sections, pane sizes); on any other view there's no view-specific state to
 // persist — pane folds/sizes there auto-save as you change them — so Save just
 // confirms. Either way the button responds, never greys out. Restore wipes
-// every persisted `tourgaze.layout.*` key (matrosdms convention: native confirm
-// dialog so the user can't fat-finger it; reload picks up the defaults). They
-// share a visual group so the destructive action sits next to the constructive.
+// every persisted `tourgaze.layout.*` key behind the house ConfirmDialog so the
+// user can't fat-finger it; reload picks up the defaults. They share a visual
+// group so the destructive action sits next to the constructive.
 const currentSaver = useCurrentLayoutSaver()
 function runSave() {
   const saver = currentSaver.value
@@ -38,8 +39,10 @@ function runSave() {
     push.success({ title: 'Layout saved', message: 'This view has no extra layout to store — pane changes here save automatically.' })
   }
 }
-function runRestore() {
-  if (!confirm('Reset layout to defaults? This clears saved pane sizes, sidebar widths and view-specific state across all perspectives.')) return
+const restoreConfirmOpen = ref(false)
+function runRestore() { restoreConfirmOpen.value = true }
+function restoreConfirmed() {
+  restoreConfirmOpen.value = false
   resetAllLayouts()
   push.info({ title: 'Layout reset', message: 'Reload to apply.' })
 }
@@ -285,4 +288,8 @@ function signOut() {
   </header>
 
   <UserSwitchDialog :open="switchOpen" @close="switchOpen = false" />
+
+  <ConfirmDialog :open="restoreConfirmOpen" title="Reset layout?"
+    message="Reset layout to defaults? This clears saved pane sizes, sidebar widths and view-specific state across all perspectives."
+    confirm-label="Reset layout" @confirm="restoreConfirmed" @cancel="restoreConfirmOpen = false" />
 </template>

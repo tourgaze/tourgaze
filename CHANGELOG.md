@@ -6,6 +6,14 @@ All notable changes to TourGaze are documented here. Format loosely follows
 ## [Unreleased]
 
 ### Added
+- **Year totals in the Tours list** — the grouped results now end with a running summary row (total distance + ride count) pinned under the last group, so the library's totals stay in view while you scroll.
+
+### Fixed
+- **GPX elevation gain** — long rides from dense GPX (points a few metres apart) reported near-zero or no total ascent: climb was gated per point at 1 m, so a genuine but gradual sub-metre-per-point ascent was discarded entirely as GPS noise. Ascent/descent are now measured against a moving anchor with a cumulative hysteresis band, so steady climbs accumulate in full (FIT was unaffected — it uses the device's own recorded total). Existing GPX rides were recomputed.
+
+## [1.2.0] — 2026-07-02
+
+### Added
 - **Replay "Free" mode keeps the rider findable** — when the camera is parked and the replay marker rides off the visible map, a red arrow pins to the nearest edge pointing at it; click to recenter without leaving Free mode (mirrors the compare-rider off-screen indicators).
 - **Viewer zoom/angle persists while Following** — your own zoom / pitch / rotate gestures during a cinematic follow are kept as a persistent offset on the camera path instead of being snapped back on the next frame.
 - **Periodic database flush** — H2 is checkpointed to disk on a fixed interval (`tourgaze.db.checkpoint-ms`, default 60 s), plus a final flush on shutdown, so a hard kill (force-closed console window, power loss) can't drop the last few seconds of just-saved metadata. A normal Ctrl-C was already safe via graceful shutdown.

@@ -349,7 +349,14 @@ const playbackSpeed = computed(() => {
   // numbers above where the fine control no longer matters.
   return Math.max(SPEED_MIN, raw < 5 ? Math.round(raw * 2) / 2 : Math.round(raw))
 })
-const replayStrategy = ref<ReplayStrategy>('helicopter')
+// Persisted client-side (localStorage layout slot, like the pane sizes): the
+// camera profile is a viewing preference — losing it on every reload made it
+// look like "the drone stopped following" when the select had silently reset
+// to Helicopter.
+const replayStrategy = autoLayoutRef<ReplayStrategy>(VIEWER_LAYOUT_SLOT, 'replayStrategy', 'helicopter')
+// A stale persisted id (a strategy that no longer exists) must not reach the
+// camera factory — it would look up an undefined config and crash the replay.
+if (!REPLAY_STRATEGIES.some(s => s.id === replayStrategy.value)) replayStrategy.value = 'helicopter'
 
 // In-place multi-rider race — wired here now that the track + replay state it
 // reacts to exist. Exposes everything the Compare tab + map overlay bind to.
@@ -668,7 +675,7 @@ const activeColorLabel = computed(() =>
           :show-hillshade="showHillshade"
           :highlights="showHighlights ? (highlights ?? null) : null"
           :nearby-tours="nearbyTours"
-          :show-photos="showPhotos || bottomView === 'photos'"
+          :show-photos="showPhotos"
           :compare-lines="compareLines.length ? compareLines : null"
           :compare-cursors="compareCursors.length ? compareCursors : null"
           @user-interacted="isFollowing = false"
@@ -727,7 +734,7 @@ const activeColorLabel = computed(() =>
 
         <!-- Photo marker legend — explains the public vs personal pins on the map.
              Bottom-right, clear of the replay PiP (bottom-left) and layers menu. -->
-        <div v-if="activityId && (showPhotos || bottomView === 'photos') && hasPhotos"
+        <div v-if="activityId && showPhotos && hasPhotos"
           class="absolute bottom-3 right-3 z-[1000] flex flex-col gap-1
                  bg-background/85 backdrop-blur-sm border border-border rounded-lg px-2.5 py-1.5 shadow-sm text-[10px] text-foreground">
           <span v-if="hasPublic" class="inline-flex items-center gap-1.5">

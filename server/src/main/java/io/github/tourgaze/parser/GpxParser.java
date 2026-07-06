@@ -35,9 +35,17 @@ import io.jenetics.jpx.WayPoint;
 public class GpxParser implements TrackFileParser {
 
 	/**
-	 * Ignore sub-metre elevation wobble so GPS noise doesn't inflate total ascent.
+	 * Elevation hysteresis band (metres). Gain/loss is measured from a moving
+	 * anchor that only advances once the elevation has moved this far — so GPS/baro
+	 * jitter is ignored WITHOUT discarding gradual real climbs.
+	 *
+	 * <p>
+	 * This must be a CUMULATIVE band, not a per-point gate: dense GPX (points a few
+	 * metres apart) climbs sub-metre per step, so a per-segment
+	 * {@code climb > band}
+	 * test silently drops the entire steady ascent and reports ~0 m on long rides.
 	 */
-	private static final double ASCENT_NOISE_M = 1.0;
+	private static final double ELE_HYSTERESIS_M = 3.0;
 
 	@Override
 	public boolean supports(String format) {
@@ -57,7 +65,9 @@ public class GpxParser implements TrackFileParser {
 
 		List<TrackPoint> points = new ArrayList<>(wps.size());
 		double distanceM = 0, ascentM = 0, descentM = 0, maxSpeedMs = 0;
-		Double prevLat = null, prevLon = null, prevEle = null;
+		Double prevLat = null, prevLon = null;
+		// Moving elevation anchor for hysteresis gain/loss (see ELE_HYSTERESIS_M).
+		Double eleAnchor = null;
 		Instant prevTime = null;
 		// Cadence / power live in each point's <extensions> (Garmin
 		// TrackPointExtension <gpxtpx:cad>, power as <power>/PowerInWatts).
@@ -74,17 +84,29 @@ public class GpxParser implements TrackFileParser {
 			if (prevLat != null) {
 				double seg = Geo.distanceM(prevLat, prevLon, lat, lon);
 				distanceM += seg;
-				if (prevEle != null && ele != null) {
-					double climb = ele - prevEle;
-					if (climb > ASCENT_NOISE_M)
-						ascentM += climb;
-					else if (climb < -ASCENT_NOISE_M)
-						descentM += -climb;
-				}
 				if (prevTime != null && time != null) {
 					double dt = (time.toEpochMilli() - prevTime.toEpochMilli()) / 1000.0;
 					if (dt > 0)
 						maxSpeedMs = Math.max(maxSpeedMs, seg / dt);
+				}
+			}
+
+			// Elevation gain/loss with hysteresis: measure from an anchor that only
+			// advances once |Δ| clears the band. A steady climb of sub-band per-point
+			// steps still accumulates in full — the old per-segment gate dropped it
+			// entirely, zeroing ascent on dense GPX.
+			if (ele != null) {
+				if (eleAnchor == null) {
+					eleAnchor = ele;
+				} else {
+					double delta = ele - eleAnchor;
+					if (delta > ELE_HYSTERESIS_M) {
+						ascentM += delta;
+						eleAnchor = ele;
+					} else if (delta < -ELE_HYSTERESIS_M) {
+						descentM += -delta;
+						eleAnchor = ele;
+					}
 				}
 			}
 
@@ -104,7 +126,6 @@ public class GpxParser implements TrackFileParser {
 			points.add(new TrackPoint(time, lat, lon, ele, null, null, cad, pow));
 			prevLat = lat;
 			prevLon = lon;
-			prevEle = ele;
 			prevTime = time;
 		}
 

@@ -218,6 +218,10 @@ watch(() => props.item, async (it) => {
       it.distanceKm ?? null,
     ).catch(() => null)
     const [w, pred] = await Promise.all([wxPromise, predPromise])
+    // The user may have clicked another inbox file while these were in flight —
+    // applying the stale results would stamp the wrong weather/name/tags onto
+    // the newly selected ride's form.
+    if (props.item?.filename !== it.filename) return
     if (w) {
       weather.value = w
       weatherCondition.value = w.condition ?? ''

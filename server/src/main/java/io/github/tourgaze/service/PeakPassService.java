@@ -54,16 +54,19 @@ public class PeakPassService {
 	private final ActivityRepository activityRepo;
 	private final StorageService storage;
 	private final TrackParser trackParser;
+	private final org.springframework.transaction.support.TransactionTemplate tx;
 
 	public PeakPassService(GeoFeatureRepository featureRepo, GeoRegionRepository regionRepo,
 			OverpassClient overpass, ActivityRepository activityRepo,
-			StorageService storage, TrackParser trackParser) {
+			StorageService storage, TrackParser trackParser,
+			org.springframework.transaction.PlatformTransactionManager txManager) {
 		this.featureRepo = featureRepo;
 		this.regionRepo = regionRepo;
 		this.overpass = overpass;
 		this.activityRepo = activityRepo;
 		this.storage = storage;
 		this.trackParser = trackParser;
+		this.tx = new org.springframework.transaction.support.TransactionTemplate(txManager);
 	}
 
 	/** A matched highlight: the OSM feature plus where it sits on the ride. */
@@ -85,7 +88,14 @@ public class PeakPassService {
 		}
 	}
 
-	@Transactional
+	/**
+	 * Deliberately NOT {@code @Transactional} at method level: the loop makes up
+	 * to {@value #MAX_CELLS_PER_RUN} Overpass fetches with politeness pauses —
+	 * ~a minute of wall clock that must not pin a DB connection from the async
+	 * pool. Reads run in their own implicit transactions; each cell's results are
+	 * persisted in a short per-cell transaction (a crash mid-run then loses at
+	 * most the in-flight cell, which stays uncovered and is retried later).
+	 */
 	public void ensureRegionsForActivity(String activityId) {
 		Activity a = activityRepo.findById(activityId).orElse(null);
 		if (a == null)
@@ -119,9 +129,11 @@ public class PeakPassService {
 				f.setGeocell(GeoHash.encode(f.getLat(), f.getLon(), REGION_PRECISION));
 			// Keep only features that really fall in this cell (bbox edges round).
 			found.removeIf(f -> !cell.equals(f.getGeocell()));
-			if (!found.isEmpty())
-				featureRepo.saveAll(found);
-			regionRepo.save(new GeoRegion(cell, found.size()));
+			tx.executeWithoutResult(status -> {
+				if (!found.isEmpty())
+					featureRepo.saveAll(found);
+				regionRepo.save(new GeoRegion(cell, found.size()));
+			});
 			log.info("[Highlights] fetched {} features for cell {}", found.size(), cell);
 			fetched++;
 			if (fetched < MAX_CELLS_PER_RUN)

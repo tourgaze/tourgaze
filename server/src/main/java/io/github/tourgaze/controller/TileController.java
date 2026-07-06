@@ -154,7 +154,19 @@ public class TileController {
 				return ResponseEntity.status(HttpStatus.BAD_GATEWAY).build();
 			}
 			Files.createDirectories(cached.getParent());
-			Files.write(cached, tileData);
+			// Write-then-rename so a concurrent request for the same tile can never
+			// read a half-written file — the browser would cache the corrupt tile
+			// for a year (`immutable` below). Unique temp name: two concurrent
+			// misses must not truncate each other's temp file mid-copy either.
+			Path tmp = cached.resolveSibling(cached.getFileName() + "." + Thread.currentThread().threadId() + ".tmp");
+			Files.write(tmp, tileData);
+			try {
+				Files.move(tmp, cached, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+						java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			} catch (IOException e) {
+				// Lost the race to another writer — theirs is identical; clean up.
+				Files.deleteIfExists(tmp);
+			}
 
 			return tileResponse(tileData);
 		} catch (Exception e) {

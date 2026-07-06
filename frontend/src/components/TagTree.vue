@@ -447,13 +447,13 @@ function refreshTags() { qc.invalidateQueries({ queryKey: ['tags'] }) }
         <span v-if="!row.node.parentId" class="text-[9px] uppercase tracking-wide text-muted-fg/70 mr-1">root</span>
 
         <template v-if="mode === 'manage'">
-          <button class="btn-icon"
+          <button class="btn-icon focus-visible:opacity-100"
             :class="selectedId === row.node.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
             title="Add child tag"
             @click.stop="openNewChild(row.node.id!)">
             <Plus :size="12" />
           </button>
-          <button class="btn-icon"
+          <button class="btn-icon focus-visible:opacity-100"
             :class="selectedId === row.node.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
             title="Edit tag (rename, recolor, change parent, delete) — F2 / Enter"
             @click.stop="openEdit(row.node.id!)">

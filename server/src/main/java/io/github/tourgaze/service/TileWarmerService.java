@@ -40,6 +40,8 @@ public class TileWarmerService {
 
 	private static final int MIN_ZOOM = 10;
 	private static final int MAX_ZOOM = 14;
+	/** Hard ceiling of upstream fetches per warm run (~500 tiles ≈ 10 s paced). */
+	private static final int MAX_TILES_PER_WARM = 500;
 	private static final String[] SUBDOMAINS = { "a", "b", "c" };
 
 	private final StorageService storage;
@@ -74,13 +76,14 @@ public class TileWarmerService {
 		minLon -= margin;
 		maxLon += margin;
 
-		log.info("Tile warming: bbox [{:.4f},{:.4f}] – [{:.4f},{:.4f}], zooms {}-{}",
-				minLat, minLon, maxLat, maxLon, MIN_ZOOM, MAX_ZOOM);
+		log.info("Tile warming: bbox [{},{}] – [{},{}], zooms {}-{}",
+				String.format("%.4f", minLat), String.format("%.4f", minLon),
+				String.format("%.4f", maxLat), String.format("%.4f", maxLon), MIN_ZOOM, MAX_ZOOM);
 
 		int fetched = 0;
 		int skipped = 0;
 
-		for (String provider : PROVIDER_URLS.keySet()) {
+		outer: for (String provider : PROVIDER_URLS.keySet()) {
 			String urlTemplate = PROVIDER_URLS.get(provider);
 			for (int z = MIN_ZOOM; z <= MAX_ZOOM; z++) {
 				int xMin = lonToTile(minLon, z);
@@ -90,6 +93,15 @@ public class TileWarmerService {
 
 				for (int x = xMin; x <= xMax; x++) {
 					for (int y = yMin; y <= yMax; y++) {
+						// Bound the whole warm: a long ride's bbox at z14 alone is
+						// thousands of tiles × 2 providers — an "Import all" backlog
+						// would queue hours of upstream hammering on the async pool.
+						// The corridor prefetch in the frontend covers the replay
+						// path anyway; warming is best-effort, not exhaustive.
+						if (fetched >= MAX_TILES_PER_WARM) {
+							log.info("Tile warming stopped at cap ({} tiles) — bbox too large", MAX_TILES_PER_WARM);
+							break outer;
+						}
 						Path cached = storage.tileFile(provider, z, x, y);
 						if (Files.exists(cached)) {
 							skipped++;

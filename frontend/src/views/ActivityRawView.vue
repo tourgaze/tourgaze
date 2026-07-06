@@ -119,9 +119,15 @@ const series = computed<Series[]>(() => {
     const data = col.map(v => (v == null ? null : v))
     const present = data.filter((v): v is number => v != null)
     if (!present.length) continue
-    const min = Math.min(...present)
-    const max = Math.max(...present)
-    const avg = present.reduce((a, b) => a + b, 0) / present.length
+    // One loop, no spread — Math.min(...present) blows the call stack on
+    // full-resolution tracks with >~65k samples (each sample is an argument).
+    let min = Infinity, max = -Infinity, sum = 0
+    for (const v of present) {
+      if (v < min) min = v
+      if (v > max) max = v
+      sum += v
+    }
+    const avg = sum / present.length
     out.push({ ch, data, min, avg, max })
   }
   return out

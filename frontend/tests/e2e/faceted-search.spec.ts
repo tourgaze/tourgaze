@@ -23,9 +23,12 @@ test('faceted search filters and a preset round-trips', async ({ page, request }
   await bar.press('Enter')
   await expect(page.locator('text=sport:cycling')).toBeVisible()
 
-  // Save it as a preset (handle the native name prompt).
-  page.once('dialog', d => d.accept('Bike rides'))
+  // Save it as a preset via the in-app dialog (replaced window.prompt).
   await page.getByTitle('Save current search as preset').click()
+  const dialog = page.getByRole('dialog', { name: 'Save search preset' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox').fill('Bike rides')
+  await dialog.getByRole('button', { name: 'Save preset' }).click()
 
   // It should appear in the dropdown and be persisted server-side.
   await expect(page.locator('option', { hasText: 'Bike rides' })).toBeAttached()

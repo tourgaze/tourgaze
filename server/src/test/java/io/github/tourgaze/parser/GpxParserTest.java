@@ -33,4 +33,27 @@ class GpxParserTest {
 		assertThat(r.startTime()).isNotNull();
 		assertThat(r.endTime()).isNotNull();
 	}
+
+	@Test
+	void gradualSubMetreClimbStillAccumulatesAscent() {
+		// Regression: dense GPX climbs sub-metre per point. The old per-segment
+		// noise gate dropped every such step, reporting ~0 m ascent on long real
+		// climbs. Hysteresis must accumulate a steady 0.6 m/point rise (12 m total).
+		StringBuilder sb = new StringBuilder(
+				"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+						+ "<gpx version=\"1.1\" xmlns=\"http://www.topografix.com/GPX/1/1\"><trk><trkseg>\n");
+		double ele = 500.0;
+		for (int i = 0; i <= 20; i++) {
+			sb.append(String.format(java.util.Locale.ROOT,
+					"<trkpt lat=\"%.5f\" lon=\"11.5000\"><ele>%.1f</ele><time>2024-05-01T07:%02d:00Z</time></trkpt>%n",
+					47.5000 + i * 0.001, ele, i));
+			ele += 0.6; // every step < 1 m → the old gate counted NONE of it
+		}
+		sb.append("</trkseg></trk></gpx>");
+
+		var r = new GpxParser().parse(sb.toString().getBytes(StandardCharsets.UTF_8));
+		// 20 * 0.6 m = 12 m of genuine climb; hysteresis captures the bulk of it.
+		assertThat(r.ascentM()).as("gradual sub-metre climb must not be discarded")
+				.isNotNull().isGreaterThan(8.0);
+	}
 }

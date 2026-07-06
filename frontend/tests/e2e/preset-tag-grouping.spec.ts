@@ -33,10 +33,15 @@ test('tag-children grouping survives save-preset → switch → re-apply', async
   // Drop zone now shows "by <tag name> children".
   await expect(dropZone).toContainText(tag.name)
 
-  // Save as a preset and confirm the server stored the parent tag id.
-  page.once('dialog', d => d.accept('ByTag'))
+  // Save as a preset via the in-app dialog (replaced window.prompt) and
+  // confirm the server stored the parent tag id.
   await page.getByTitle('Save current search as preset').click()
-  await page.waitForResponse(r => r.url().includes('/api/filter-presets') && r.request().method() === 'POST')
+  const dialog = page.getByRole('dialog', { name: 'Save search preset' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('textbox').fill('ByTag')
+  const postDone = page.waitForResponse(r => r.url().includes('/api/filter-presets') && r.request().method() === 'POST')
+  await dialog.getByRole('button', { name: 'Save preset' }).click()
+  await postDone
   const saved = await (await request.get(`${API}/api/filter-presets`)).json()
   const mine = saved.find((p: any) => p.name === 'ByTag')
   expect(mine?.groupBy).toBe('tag-children')

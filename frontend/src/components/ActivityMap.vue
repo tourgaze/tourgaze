@@ -182,6 +182,8 @@ let savedView: { center: [number, number]; zoom: number; bearing: number; pitch:
 // Pre-baked bearings + hold hints. Re-computed once whenever the track
 // changes; per-point reads in followPoint are O(1).
 let bearingData: SmoothedBearings | null = null
+// Handle for the deferred (post-render, idle) bearing precompute — see scheduleBearingPrecompute.
+let bearingIdleHandle: number | null = null
 
 // The whole replay camera path, precomputed once per (strategy, track, viewport,
 // 3D) and then merely SAMPLED during playback — no per-frame camera state. This
@@ -1149,7 +1151,11 @@ function applyColorMode(mode: string) {
  * strategy, viewport, 3D). Sampling it in followPoint is then O(1) per tick.
  */
 function rebuildReplayPath(): void {
-  if (!isMapReady() || !points.value?.length || !bearingData) { replayPath = null; return }
+  if (!isMapReady() || !points.value?.length) { replayPath = null; return }
+  // Bearings are normally precomputed off the critical path shortly after the
+  // track renders (scheduleBearingPrecompute). If replay starts before that idle
+  // pass ran, compute them synchronously now — a one-off, not per switch.
+  if (!bearingData) bearingData = precomputeSmoothedBearings(points.value)
   const m = map!
   replayPath = simulateReplayPath(props.replayStrategy ?? 'helicopter', points.value, {
     bearings: bearingData,
@@ -1157,6 +1163,37 @@ function rebuildReplayPath(): void {
     viewportPxH: m.getCanvas().clientHeight,
     is3D: (props.tileProvider ?? 'osm') === 'terrain',
   })
+}
+
+/**
+ * Smoothed bearings drive ONLY the replay drone camera — never the static track,
+ * cursor, or markers. Computing them (an O(n) look-ahead haversine sweep over the
+ * whole track) synchronously on every track switch was blocking the main thread
+ * for seconds — the tour-switch regression. Defer it: the switch renders instantly,
+ * then this runs when the main thread next goes idle, so the data is ready by the
+ * time anyone hits Play. Guarded by track identity so a late fire after another
+ * switch is a no-op; rebuildReplayPath still computes synchronously if replay
+ * somehow starts inside the idle window.
+ */
+/** Cancel a pending idle bearing precompute (paired with how it was scheduled). */
+function cancelBearingIdle(): void {
+  if (bearingIdleHandle == null) return
+  if (window.cancelIdleCallback) window.cancelIdleCallback(bearingIdleHandle)
+  else clearTimeout(bearingIdleHandle)
+  bearingIdleHandle = null
+}
+
+function scheduleBearingPrecompute(): void {
+  cancelBearingIdle()
+  const pts = points.value
+  if (!pts?.length) return
+  const run = () => {
+    bearingIdleHandle = null
+    if (points.value === pts && !bearingData) bearingData = precomputeSmoothedBearings(pts)
+  }
+  bearingIdleHandle = (window.requestIdleCallback
+    ? window.requestIdleCallback(run, { timeout: 1000 })
+    : setTimeout(run, 0)) as unknown as number
 }
 
 /**
@@ -1315,6 +1352,8 @@ onMounted(() => {
     segSrc?.setData({ type: 'FeatureCollection', features: e.data.features })
     // A replay may already be mid-way (segments arrived after playback started);
     // rebuild the trail now so the ridden portion picks up the coloured segments.
+    // Reset the throttle marker first — same-index re-renders must not be skipped.
+    trailIdxApplied = -1
     if (props.hoverIndex != null) setTrailProgress(props.hoverIndex / Math.max(1, (points.value?.length ?? 1) - 1))
   }
 })
@@ -1325,6 +1364,7 @@ onUnmounted(() => {
   // early-returns before touching map.
   mapLoaded = false
   replayPath = null
+  cancelBearingIdle()
   photoMarkers.forEach(m => m.remove())
   photoMarkers = []
   clearGhosts()
@@ -1404,7 +1444,14 @@ watch(points, (pts) => {
   // from re-anchoring → user sees the new activity loaded but the camera sitting
   // on the old activity's last viewpoint until the timer expires.
   trackRendered = false   // gate pointer interaction until the new track is drawn
-  bearingData = pts?.length ? precomputeSmoothedBearings(pts) : null
+  // Bearings are replay-only; compute them AFTER the switch renders (idle), not
+  // synchronously here — that eager O(n) haversine sweep was the tour-switch
+  // slowdown. rebuildReplayPath falls back to a sync compute if Play beats idle.
+  // Bearings are replay-only; compute them AFTER the switch renders (idle), not
+  // synchronously here — that eager O(n) haversine sweep was the tour-switch
+  // slowdown. rebuildReplayPath falls back to a sync compute if Play beats idle.
+  bearingData = null
+  scheduleBearingPrecompute()
   cameraSettlingUntil = 0
   smoothedBearing = 0
   resetCameraOffsets()   // a new track starts at the director's framing
@@ -1743,10 +1790,13 @@ watch(() => props.playFrac, (frac) => {
   sampleCameraAt(frac)
 })
 
-// Compare ride added/removed/changed → redraw the ghost overlay.
-watch(() => props.compareLines, () => { if (mapLoaded) renderGhostLines() }, { deep: true })
+// Compare ride added/removed/changed → redraw the ghost overlay. No `deep`:
+// both props are computeds that produce a NEW array/object when content
+// changes, so identity is the signal — a deep walk over thousands of ghost
+// track points per trigger buys nothing.
+watch(() => props.compareLines, () => { if (mapLoaded) renderGhostLines() })
 watch(() => props.compareCursors, () => { if (mapLoaded) positionGhostMarkers() })
-watch(() => props.highlights, () => { if (mapLoaded) renderHighlightMarkers() }, { deep: true })
+watch(() => props.highlights, () => { if (mapLoaded) renderHighlightMarkers() })
 watch(() => props.nearbyTours, () => { if (mapLoaded) renderNearbyTours() })
 
 watch(() => props.hoverIndex, (idx) => {
@@ -1780,21 +1830,34 @@ watch(() => props.hoverIndex, (idx) => {
 // we trim [p, 1]. p=0 → fully hidden (start of replay); p=1 → fully visible
 // (end). Wrapped in a helper because we call it from both the hover watcher
 // and the track-render reset path.
+let trailIdxApplied = -1
 function setTrailProgress(p: number) {
   if (!isMapReady()) return
   const src = map!.getSource('track-trail') as maplibregl.GeoJSONSource | undefined
   if (!src) return
   const pts = points.value
   if (!pts?.length) {
+    trailIdxApplied = -1
     src.setData({ type: 'FeatureCollection', features: [] })
     return
   }
   const clamped = Math.max(0, Math.min(1, p))
   const lastIdx = Math.floor(clamped * (pts.length - 1))
   if (lastIdx < 1) {
+    trailIdxApplied = -1
     src.setData({ type: 'FeatureCollection', features: [] })
     return
   }
+  // Throttle: each update slices + re-parses the whole ridden FeatureCollection
+  // in MapLibre's worker, and during playback this is called for every integer
+  // index (up to ~60/s). Skip until the playhead has advanced a fraction of the
+  // track (~25 segments on a 20k-point ride, every segment on short rides) —
+  // invisible for a glow trail, but it stops the per-frame retile churn that
+  // competes with the 60 fps camera loop. Backward jumps (scrub/restart) always
+  // apply immediately.
+  const minStep = Math.max(1, Math.floor(pts.length / 800))
+  if (lastIdx >= trailIdxApplied && lastIdx - trailIdxApplied < minStep && lastIdx < pts.length - 1) return
+  trailIdxApplied = lastIdx
   // Preferred path: slice the cached per-segment features (point i→i+1 = segment
   // i), so the ridden trail carries { hr, slope } and the trail layers can be
   // coloured by the active mode exactly like the full-track segments. Covering

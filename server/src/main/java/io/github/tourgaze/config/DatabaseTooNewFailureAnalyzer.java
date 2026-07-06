@@ -15,7 +15,8 @@ import io.github.tourgaze.exception.DatabaseTooNewException;
  * START" block (description + action) instead of a Spring stacktrace, so a
  * non-technical user reading the console window understands what to do.
  *
- * <p>Registered via {@code META-INF/spring.factories}.
+ * <p>
+ * Registered via {@code META-INF/spring.factories}.
  */
 public class DatabaseTooNewFailureAnalyzer extends AbstractFailureAnalyzer<DatabaseTooNewException> {
 

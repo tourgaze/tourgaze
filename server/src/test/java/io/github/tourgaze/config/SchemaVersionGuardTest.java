@@ -16,7 +16,8 @@ import io.github.tourgaze.exception.DatabaseTooNewException;
 
 /**
  * Exercises the downgrade guard against a real Flyway + H2 database. The
- * production migrations live in {@code classpath:db/migration}; the test "future"
+ * production migrations live in {@code classpath:db/migration}; the test
+ * "future"
  * migration ({@code db/future/V9999}) stands in for a newer app having already
  * upgraded the schema.
  */
@@ -48,7 +49,9 @@ class SchemaVersionGuardTest {
 				});
 	}
 
-	/** Shared in-memory H2 (one named DB per test) in PostgreSQL compatibility mode. */
+	/**
+	 * Shared in-memory H2 (one named DB per test) in PostgreSQL compatibility mode.
+	 */
 	private static Flyway flyway(String db, String... locations) {
 		String url = "jdbc:h2:mem:" + db + ";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
 		return Flyway.configure().dataSource(url, "sa", "").locations(locations).load();

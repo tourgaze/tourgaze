@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { fmtDuration } from '@/lib/format'
 import { computed, nextTick, ref, watch } from 'vue'
+import { watchDebounced } from '@vueuse/core'
 import { useRoute, useRouter } from 'vue-router'
 import { Splitpanes, Pane } from 'splitpanes'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
@@ -24,6 +25,7 @@ import { TOURS_LAYOUT_SLOT, VIEWER_LAYOUT_SLOT, autoLayoutRef, registerLayoutSav
 import { useTourSearch } from '@/composables/useTourSearch'
 import ActivityViewer from '@/components/ActivityViewer.vue'
 import EditTourPanel from '@/components/EditTourPanel.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import TagTree from '@/components/TagTree.vue'
 import TagTreeSelect from '@/components/TagTreeSelect.vue'
 import ToursSearchBar from '@/components/ToursSearchBar.vue'
@@ -92,6 +94,12 @@ const showHighlights = autoLayoutRef<boolean>(VIEWER_LAYOUT_SLOT, 'showHighlight
 function startEdit() { if (selectedId.value) rightMode.value = 'edit' }
 function endEdit() { rightMode.value = 'view' }
 
+// EditTourPanel deleted the open tour → drop the ?id selection & return to map.
+function onTourDeleted() {
+  rightMode.value = 'view'
+  router.replace({ path: '/tours' })
+}
+
 // ── Keyboard navigation ────────────────────────────────────────────────────
 // Build a flat ordered list of selectable activities matching what the tree
 // renders (filtered + grouped order). Up/Down move selection, Enter opens
@@ -127,6 +135,9 @@ function onKeydown(e: KeyboardEvent) {
     const next = list[Math.max(0, curIdx <= 0 ? 0 : curIdx - 1)]
     openActivity(next?.id)
   } else if (e.key === 'Enter' && selectedId.value) {
+    // A focused button/link owns its own Enter (tree rows, toolbar actions) —
+    // stealing it here would activate "edit" instead of the focused control.
+    if (target?.closest('button, a, [role="button"]')) return
     e.preventDefault()
     startEdit()
   } else if (e.key === 'Escape' && rightMode.value === 'edit') {
@@ -278,10 +289,11 @@ watch(() => search.nearTerms.value, async (terms) => {
 // Seed the bar from the persisted layout query (load() runs once on mount).
 search.load(TOURS_LAYOUT_SLOT.load()?.query ?? '')
 // Auto-persist the filter so it survives a reload (no need to hit "Save layout").
-watch(() => search.serialize(), (q) => {
+// Debounced — no reason to hit localStorage on every keystroke of free text.
+watchDebounced(() => search.serialize(), (q) => {
   // merge-save just the query field (cast to the loose slot type, like autoLayoutRef)
   ;(TOURS_LAYOUT_SLOT as LayoutSlot<Record<string, unknown>>).save({ ...(TOURS_LAYOUT_SLOT.load() ?? {}), query: q })
-})
+}, { debounce: 400 })
 
 // Double-click / Enter on a tag in the tree → add it as a WHERE condition.
 // Matching is transitive (a parent tag matches all its descendants), handled
@@ -362,11 +374,16 @@ function applyPreset(id: string) {
   didAutoExpand = false
 }
 
-async function savePreset() {
-  const existing = (presets.value ?? []).find(x => x.id === selectedPresetId.value)
-  const suggested = existing?.name ?? ''
-  const name = window.prompt('Save search as — name:', suggested)?.trim()
+// Preset save/delete run through the house ConfirmDialog instead of the
+// blocking, unstyled window.prompt/confirm (which also froze the replay rAF
+// loop while open).
+const savePresetOpen = ref(false)
+const deletePresetOpen = ref(false)
+function savePreset() { savePresetOpen.value = true }
+async function savePresetAs(name: string) {
+  savePresetOpen.value = false
   if (!name) return
+  const existing = (presets.value ?? []).find(x => x.id === selectedPresetId.value)
   const body = {
     name,
     query: search.serialize(),
@@ -388,10 +405,12 @@ async function savePreset() {
   }
 }
 
-async function removePreset() {
-  const p = (presets.value ?? []).find(x => x.id === selectedPresetId.value)
+const selectedPreset = computed(() => (presets.value ?? []).find(x => x.id === selectedPresetId.value) ?? null)
+function removePreset() { if (selectedPreset.value) deletePresetOpen.value = true }
+async function removePresetConfirmed() {
+  deletePresetOpen.value = false
+  const p = selectedPreset.value
   if (!p) return
-  if (!window.confirm(`Delete preset “${p.name}”?`)) return
   try {
     await deleteFilterPreset(p.id!)
     await qc.invalidateQueries({ queryKey: ['filter-presets'] })
@@ -551,6 +570,12 @@ function fmtGroupKm(km: number | null | undefined) {
   return `${Math.round(km)} km`
 }
 
+// Grand total for the summary row under the last group. Summed over the distinct
+// FILTERED rides (not over groups) so tag grouping — where one ride can sit in
+// several buckets — doesn't double-count.
+const totalKm = computed(() => filtered.value.reduce((s, a) => s + (a.distanceKm ?? 0), 0))
+const totalKmLabel = computed(() => (totalKm.value ? `${Math.round(totalKm.value).toLocaleString()} km` : ''))
+
 // ── Expand state (session only — not persisted) ─────────────────────────────
 const expanded = ref(new Set<string>())
 function toggle(key: string) {
@@ -655,9 +680,11 @@ const firstResultActivity = computed<ActivitySummary | null>(() => {
 
 // Auto-select filtering: whenever the faceted query changes, open the top result
 // bucket and preview the first match. Driven off the serialized query so it
-// fires on every facet/text change but not on unrelated re-renders. Uses
+// fires on facet/text changes but not on unrelated re-renders. Debounced: while
+// the user is still typing, switching the open ride on every keystroke kicks
+// off a full track load + map fly-to per character — jank for nothing. Uses
 // router.replace (no history spam) and never steals focus from the search box.
-watch(() => search.serialize(), () => {
+watchDebounced(() => search.serialize(), () => {
   nextTick(() => {
     const g = grouped.value
     if (g.length) {
@@ -669,7 +696,7 @@ watch(() => search.serialize(), () => {
     const first = firstResultActivity.value
     if (first?.id && first.id !== selectedId.value) openActivity(first.id)
   })
-})
+}, { debounce: 300 })
 
 function sportIcon(t: ActivityType | null | undefined) {
   switch (t) {
@@ -999,6 +1026,21 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
               </template>
             </div>
           </div>
+
+          <!-- Grand total — a running km summary that sits under the last group
+               (and stays pinned to the bottom while the list scrolls). -->
+          <div v-if="grouped.length" class="sticky bottom-0 flex items-stretch border-t-2 border-border bg-background/95 backdrop-blur-sm font-semibold">
+            <div class="flex-1 min-w-0 flex items-center justify-between gap-2 px-2 py-1">
+              <div class="flex items-center gap-1">
+                <span class="inline-block w-3" aria-hidden="true"></span>
+                <span>Total</span>
+              </div>
+              <span class="flex items-center gap-1.5 text-[10px] text-muted-fg">
+                <span class="tabular-nums text-foreground">{{ totalKmLabel }}</span>
+                <span class="opacity-70">{{ filtered.length }}</span>
+              </span>
+            </div>
+          </div>
         </div>
       </template>
     </Pane>
@@ -1055,9 +1097,18 @@ const effectiveLeftSize = computed(() => leftCollapsed.value ? 2.4 : leftSize.va
 
       <div class="flex-1 min-h-0">
         <ActivityViewer v-if="rightMode === 'view'" :activity-id="selectedId" :show-nearby-tours="showNearbyTours" :show-photos="showPhotos" :show-highlights="showHighlights" />
-        <EditTourPanel v-else-if="selectedId" :activity-id="selectedId" @done="endEdit" @cancel="endEdit" />
+        <EditTourPanel v-else-if="selectedId" :activity-id="selectedId" @done="endEdit" @cancel="endEdit" @deleted="onTourDeleted" />
       </div>
     </Pane>
 
   </Splitpanes>
+
+  <!-- Preset save (prompt-with-input) + delete confirm — house dialogs, not window.prompt/confirm. -->
+  <ConfirmDialog :open="savePresetOpen" title="Save search preset" :danger="false" input
+    message="Name this search — an existing preset with the same name is overwritten."
+    :initial-value="selectedPreset?.name ?? ''" input-placeholder="e.g. Alpine 2024"
+    confirm-label="Save preset" @confirm="savePresetAs" @cancel="savePresetOpen = false" />
+  <ConfirmDialog :open="deletePresetOpen" title="Delete preset?"
+    :message="`Delete “${selectedPreset?.name ?? ''}”?`"
+    confirm-label="Delete preset" @confirm="removePresetConfirmed" @cancel="deletePresetOpen = false" />
 </template>

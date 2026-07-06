@@ -11,6 +11,7 @@ import {
 import VChart from 'vue-echarts'
 import { X, Layers } from 'lucide-vue-next'
 import { activeIndex } from '@/composables/useTrackData'
+import { useDarkMode } from '@/composables/useDarkMode'
 import { distanceM } from '@/lib/geo'
 
 /** A curated section (named span) to highlight where this ride's track passes it. */
@@ -104,8 +105,10 @@ function clearSelection() { selStart.value = null; selEnd.value = null }
 
 // Grid split-line style. Light mode keeps the (perfect) light-grey dashed look;
 // dark mode uses a SLIM SOLID GRAY so the lines don't disturb the dark chart.
+// Reads the reactive dark ref so the option computed rebuilds on theme toggle.
+const isDark = useDarkMode()
 function gridLineStyle(): Record<string, unknown> {
-  return document.documentElement.classList.contains('dark')
+  return isDark.value
     ? { color: 'rgba(156,163,175,0.22)', width: 0.5, type: 'solid' }
     : { color: '#f3f4f6', type: 'dashed' }
 }
@@ -262,7 +265,7 @@ const option = computed(() => {
 
   // Theme-aware chip behind axis labels so overlaid lines don't render over them
   // (especially in dark mode). Drawn in front of the series via a high z.
-  const dark = document.documentElement.classList.contains('dark')
+  const dark = isDark.value
   const labelBg = dark ? 'rgba(17,24,39,0.78)' : 'rgba(255,255,255,0.8)'
   const labelChip = { backgroundColor: labelBg, padding: [1, 3] as [number, number], borderRadius: 2 }
 
@@ -399,9 +402,9 @@ const option = computed(() => {
         }
         return s
       },
-      backgroundColor: 'rgba(255,255,255,0.96)',
-      borderColor: '#e5e7eb',
-      textStyle: { color: '#374151', fontSize: 11 },
+      backgroundColor: dark ? 'rgba(17,24,39,0.96)' : 'rgba(255,255,255,0.96)',
+      borderColor: dark ? '#374151' : '#e5e7eb',
+      textStyle: { color: dark ? '#d1d5db' : '#374151', fontSize: 11 },
       extraCssText: 'box-shadow:0 2px 8px rgba(0,0,0,.08);border-radius:8px;padding:6px 10px;',
     }
   }

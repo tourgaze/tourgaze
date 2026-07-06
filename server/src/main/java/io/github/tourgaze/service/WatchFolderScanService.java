@@ -198,8 +198,9 @@ public class WatchFolderScanService {
 
 	private boolean copyIfNew(Path source, Set<String> parkedHashes, boolean keepOriginal, String label) {
 		try {
-			byte[] data = Files.readAllBytes(source);
-			String sha = inboxService.hashOf(data);
+			// Memoized by (size, mtime): the every-minute scan must not re-read the
+			// same unchanged device files over and over.
+			String sha = inboxService.hashOfFile(source);
 			String filename = source.getFileName().toString();
 			// Dismissed (ignored/processed) or already staged → leave it alone.
 			if (parkedHashes.contains(sha) || inboxService.isAlreadyStaged(sha))

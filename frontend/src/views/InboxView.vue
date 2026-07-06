@@ -8,6 +8,7 @@ import { Inbox, Bike, MapPin, Timer, Ruler, Upload, Trash2, Clock, Loader2, Fold
 import { getInbox, refreshInbox, refreshInboxItem, scanWatchFolders, getSkippedInbox, importInbox, uploadFit, discardInbox, wipeInbox, SOURCE_FORMATS, type InboxItem } from '@/api/client'
 import { InboxStreamEvent } from '@/enums/generated'
 import AddTourPanel from '@/components/AddTourPanel.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 
 const qc = useQueryClient()
 
@@ -145,12 +146,15 @@ async function refresh() {
 }
 
 // Wipe — clear the whole inbox in one click (counterpart to "Import all"). Each
-// file moves to the recoverable inbox-ignored area, never destroyed. Confirmed.
+// file moves to the recoverable inbox-ignored area, never destroyed. Confirmed
+// via the house ConfirmDialog (window.confirm blocks the whole tab).
 const wiping = ref(false)
-async function wipe() {
-  const n = items.value?.length ?? 0
-  if (!n) return
-  if (!window.confirm(`Clear all ${n} file${n !== 1 ? 's' : ''} from the inbox? They move to the recoverable "already imported" area — drag back or "Stage anyway" to restore.`)) return
+const wipeConfirmOpen = ref(false)
+function wipe() {
+  if (items.value?.length) wipeConfirmOpen.value = true
+}
+async function wipeConfirmed() {
+  wipeConfirmOpen.value = false
   wiping.value = true
   try {
     const { cleared } = await wipeInbox()
@@ -168,10 +172,16 @@ async function wipe() {
 const importingAll = ref(false)
 const importDone = ref(0)
 const importTotal = ref(0)
-async function importAllVisible() {
-  const list = visibleItems.value.filter(i => !i.existingActivityId && i.filename)
-  if (!list.length) { push.info({ title: 'Nothing to import' }); return }
-  if (!window.confirm(`Import all ${list.length} pending ride${list.length > 1 ? 's' : ''} with their proposed gear, sport, location and tags?`)) return
+const importAllConfirmOpen = ref(false)
+const importAllList = computed(() => visibleItems.value.filter(i => !i.existingActivityId && i.filename))
+function importAllVisible() {
+  if (!importAllList.value.length) { push.info({ title: 'Nothing to import' }); return }
+  importAllConfirmOpen.value = true
+}
+async function importAllConfirmed() {
+  importAllConfirmOpen.value = false
+  const list = importAllList.value
+  if (!list.length) return
   importingAll.value = true
   importDone.value = 0
   importTotal.value = list.length
@@ -426,4 +436,11 @@ async function removeFromInbox(filename: string) {
       </div>
     </Pane>
   </Splitpanes>
+
+  <ConfirmDialog :open="wipeConfirmOpen" title="Clear inbox?"
+    :message="`Clear all ${items?.length ?? 0} file${(items?.length ?? 0) !== 1 ? 's' : ''} from the inbox?\n\nThey move to the recoverable “already imported” area — drag back or “Stage anyway” to restore.`"
+    confirm-label="Clear inbox" :busy="wiping" @confirm="wipeConfirmed" @cancel="wipeConfirmOpen = false" />
+  <ConfirmDialog :open="importAllConfirmOpen" title="Import all?" :danger="false"
+    :message="`Import all ${importAllList.length} pending ride${importAllList.length > 1 ? 's' : ''} with their proposed gear, sport, location and tags?`"
+    confirm-label="Import all" @confirm="importAllConfirmed" @cancel="importAllConfirmOpen = false" />
 </template>

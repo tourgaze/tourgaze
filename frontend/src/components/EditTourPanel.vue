@@ -4,23 +4,24 @@ import { ref, watch, computed } from 'vue'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/vue-query'
 import { push } from 'notivue'
 import {
-  Bike, Tag as TagIcon, Save, CloudSun, X as XIcon, ImagePlus,
+  Bike, Tag as TagIcon, Save, CloudSun, X as XIcon, ImagePlus, Trash2,
   MapPin, Timer, Ruler, Mountain, Activity as ActivityIcon, Gauge, FileText, Hash, Copy, Scale,
   Globe, UserRound, Zap, RotateCw, ChevronRight, ChevronDown, Tags,
 } from 'lucide-vue-next'
 import {
-  getActivities, getWeatherConditions, getGear, getSports, updateActivity,
+  getActivities, getWeatherConditions, getGear, getSports, updateActivity, deleteActivity,
   getActivityMedia, uploadActivityMedia, deleteActivityMedia, activityMediaUrl, isVideoFile, makePhotoPersonal,
   type ActivitySummary,
 } from '@/api/client'
 import { weatherIcon, weatherColor } from '@/composables/weatherIcon'
 import TagCombobox from '@/components/TagCombobox.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import StartLocationMap from '@/components/StartLocationMap.vue'
 import LocationAutocomplete from '@/components/LocationAutocomplete.vue'
 import RideAttributesPanel from '@/components/RideAttributesPanel.vue'
 
 const props = defineProps<{ activityId: string }>()
-const emit = defineEmits<{ done: []; cancel: [] }>()
+const emit = defineEmits<{ done: []; cancel: []; deleted: [] }>()
 
 const qc = useQueryClient()
 const { data: activities } = useQuery({ queryKey: ['activities'], queryFn: getActivities })
@@ -31,6 +32,21 @@ const { data: conditions } = useQuery({
 })
 const { data: gear } = useQuery({ queryKey: ['gear'], queryFn: () => getGear() })
 const { data: sports } = useQuery({ queryKey: ['sports'], queryFn: () => getSports(true) })
+
+// Delete the whole tour (DB row + track/photos on disk). Tucked bottom-left of
+// the edit footer, away from Save; asks before doing anything irreversible.
+const deleteMut = useMutation({
+  mutationFn: () => deleteActivity(props.activityId),
+  onSuccess: () => {
+    qc.invalidateQueries({ queryKey: ['activities'] })
+    push.success({ title: 'Tour deleted' })
+    emit('deleted')
+  },
+  onError: () => push.error('Could not delete tour'),
+})
+const tourName = computed(() =>
+  (activities.value ?? []).find(a => a.id === props.activityId)?.name || 'this tour')
+const showDeleteConfirm = ref(false)
 
 // ── Photos: drop onto an existing ride → store/<ride>_media/, geo-matched ────
 // Reactive value key (NOT a function) so it matches value-based invalidations
@@ -93,10 +109,16 @@ const startCountry = ref<string>('')
 const endLocation = ref<string>('')
 const endCountry = ref<string>('')
 
-// Re-seed whenever the underlying activity (or the id) changes.
+// Seed the form once per ride. NOT on every `activity` identity change: the
+// embedded attributes panel (and tag drag-drop, window-focus refetches, …)
+// invalidate ['activities'] while the user is typing here, and re-seeding then
+// would silently wipe their unsaved edits. Watching `activity` (not just the
+// id) is still needed — the query may resolve after mount.
+let seededFor: string | null = null
 watch([activity, () => props.activityId], () => {
   const a = activity.value
-  if (!a) return
+  if (!a || seededFor === props.activityId) return
+  seededFor = props.activityId
   name.value = a.name ?? ''
   description.value = a.description ?? ''
   activityType.value = a.activityType ?? 'cycling'
@@ -460,15 +482,28 @@ async function copyToClipboard(text: string | null | undefined) {
       </div>
     </div>
 
-    <div class="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-border bg-muted/10">
-      <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded border border-border text-muted-fg hover:text-foreground"
-        @click="emit('cancel')">
-        <XIcon :size="12" /> Cancel
+    <div class="flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border bg-muted/10">
+      <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded border border-transparent text-muted-fg hover:text-red-600 hover:border-red-300 dark:hover:text-red-400 dark:hover:border-red-900 disabled:opacity-50"
+        :disabled="deleteMut.isPending.value"
+        title="Delete this tour permanently (also removes its track and photos)"
+        @click="showDeleteConfirm = true">
+        <Trash2 :size="12" /> {{ deleteMut.isPending.value ? 'Deleting…' : 'Delete tour' }}
       </button>
-      <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-primary text-primary-fg hover:bg-primary/90 disabled:opacity-50"
-        :disabled="saveMut.isPending.value || !name.trim()" @click="saveMut.mutate()">
-        <Save :size="12" /> {{ saveMut.isPending.value ? 'Saving…' : 'Save' }}
-      </button>
+      <div class="flex items-center gap-2">
+        <button class="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium rounded border border-border text-muted-fg hover:text-foreground"
+          @click="emit('cancel')">
+          <XIcon :size="12" /> Cancel
+        </button>
+        <button class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-primary text-primary-fg hover:bg-primary/90 disabled:opacity-50"
+          :disabled="saveMut.isPending.value || !name.trim()" @click="saveMut.mutate()">
+          <Save :size="12" /> {{ saveMut.isPending.value ? 'Saving…' : 'Save' }}
+        </button>
+      </div>
     </div>
+
+    <ConfirmDialog :open="showDeleteConfirm" title="Delete tour?"
+      :message="`Delete “${tourName}”?\n\nThis permanently removes the tour and its track and photos from disk. This cannot be undone.`"
+      confirm-label="Delete tour" :busy="deleteMut.isPending.value"
+      @confirm="deleteMut.mutate()" @cancel="showDeleteConfirm = false" />
   </div>
 </template>

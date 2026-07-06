@@ -19,14 +19,18 @@ import io.github.tourgaze.exception.DatabaseTooNewException;
 /**
  * Downgrade guard: refuse to start when the database is newer than this build.
  *
- * <p>Flyway classifies a migration that is recorded in the DB's schema history
- * but absent from this jar's {@code db/migration} classpath as a <em>future</em>
+ * <p>
+ * Flyway classifies a migration that is recorded in the DB's schema history
+ * but absent from this jar's {@code db/migration} classpath as a
+ * <em>future</em>
  * migration ({@link MigrationState#FUTURE_SUCCESS} /
  * {@link MigrationState#FUTURE_FAILED}). By default Flyway only <em>warns</em>
  * about those and migrates anyway, which would let an old jar run against a
- * schema it was never built for. We treat any future migration as fatal instead.
+ * schema it was never built for. We treat any future migration as fatal
+ * instead.
  *
- * <p>Run from the {@link DatabaseConfig} {@code FlywayMigrationStrategy} bean,
+ * <p>
+ * Run from the {@link DatabaseConfig} {@code FlywayMigrationStrategy} bean,
  * <em>before</em> {@code flyway.migrate()}, so the abort happens prior to any
  * schema or data change.
  */
@@ -36,8 +40,9 @@ final class SchemaVersionGuard {
 	}
 
 	/**
-	 * @throws DatabaseTooNewException if the DB carries a schema version this build
-	 *                                 does not know about.
+	 * @throws DatabaseTooNewException
+	 *             if the DB carries a schema version this build
+	 *             does not know about.
 	 */
 	static void verifyNotNewerThanApp(MigrationInfoService info) {
 		MigrationInfo[] all = info.all();

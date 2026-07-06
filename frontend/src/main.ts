@@ -14,7 +14,6 @@ import InboxView from './views/InboxView.vue'
 import AboutView from './views/AboutView.vue'
 import CompareView from './views/CompareView.vue'
 import MarkersView from './views/MarkersView.vue'
-import 'leaflet/dist/leaflet.css'
 import './style.css'
 
 const router = createRouter({
@@ -46,13 +45,18 @@ const router = createRouter({
 })
 
 // First-run gate: on empty DB, redirect to /setup so a profile is created.
+// Once initialized, that's permanent for the app's lifetime — remember it so
+// every subsequent navigation (each tour click is a query-only route change)
+// doesn't block on a /api/users/status roundtrip.
+let userInitialized = false
 router.beforeEach(async (to) => {
-  if (to.meta.public) return true
+  if (to.meta.public || userInitialized) return true
   try {
     const r = await fetch('/api/users/status')
     if (r.ok) {
       const status = await r.json()
       if (!status.initialized) return { path: '/setup' }
+      userInitialized = true
     }
   } catch {
     // Backend unreachable — let the request fall through.
