@@ -9,7 +9,15 @@ machine; your data never leaves it.
 
 **🌐 Overview & screenshots: [tourgaze.github.io](https://tourgaze.github.io)**
 
-![TourGaze ghost-chase compare — racing a ride against your past self on the same route, with a live gap (metres + HR) and a Mario-Kart off-screen arrow when the ghost leaves the viewport.](doc/img/screenshot-ride-against-self.jpg)
+<a href="doc/app-screenshot.jpg" target="_blank" rel="noopener noreferrer">
+  <img src="doc/app-screenshot.jpg" width="100%" alt="TourGaze main view — a year-grouped, faceted tour library beside a 3D OpenStreetMap replay of a Mallorca ride, with helicopter-cam replay controls and synced elevation + speed charts. Click to open full size in a new tab.">
+</a>
+
+<sub>_The library, the map and the cinematic replay — one screen. Click any shot to open it full size._</sub>
+
+<a href="doc/chase-example.jpg" target="_blank" rel="noopener noreferrer">
+  <img src="doc/chase-example.jpg" width="100%" alt="TourGaze ghost-chase compare — racing a ride against your past self on the same route, with a live gap (metres + HR) and a Mario-Kart off-screen arrow when the ghost leaves the viewport. Click to open full size in a new tab.">
+</a>
 
 > License: **AGPL-3.0** · No account, no cloud, no telemetry.
 
