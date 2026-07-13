@@ -387,5 +387,56 @@
                 </plugins>
             </build>
         </profile>
+
+        <!-- Opt-in Spring Boot native-image spike. Inert unless `-Pnative` is
+             passed, so the default build/package is completely untouched.
+             `mvn -Pnative package` runs Spring AOT (process-aot) then GraalVM
+             native-image → server/target/tourgaze-server (a standalone binary,
+             est. ~0.1-0.3s cold start). Requires a GraalVM JDK with native-image
+             on PATH; without it the native:compile-no-fork step fails but the
+             process-aot step still runs and is a cheap "is the app AOT-clean?"
+             probe. The version is pinned explicitly because we import the Spring
+             Boot BOM (which manages dependencies, not plugin versions). -->
+        <profile>
+            <id>native</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.graalvm.buildtools</groupId>
+                        <artifactId>native-maven-plugin</artifactId>
+                        <version>0.10.6</version>
+                        <extensions>true</extensions>
+                        <executions>
+                            <execution>
+                                <id>add-reachability-metadata</id>
+                                <goals>
+                                    <goal>add-reachability-metadata</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>build-native</id>
+                                <goals>
+                                    <goal>compile-no-fork</goal>
+                                </goals>
+                                <phase>package</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.springframework.boot</groupId>
+                        <artifactId>spring-boot-maven-plugin</artifactId>
+                        <version>${spring-boot.version}</version>
+                        <executions>
+                            <execution>
+                                <id>process-aot</id>
+                                <goals>
+                                    <goal>process-aot</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 </project>
