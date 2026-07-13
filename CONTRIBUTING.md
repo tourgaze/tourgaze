@@ -5,7 +5,7 @@ changes are licensed under the same terms.
 
 ## Dev setup
 
-- **JDK 21+**, **Node 20+**.
+- **JDK 25+**, **Node 20+**.
 - Backend: `cd server && mvn spring-boot:run` (http://localhost:8085).
 - Frontend: `cd frontend && npm install && npm run dev` (http://localhost:5173, proxies `/api` → 8085).
 

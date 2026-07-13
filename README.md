@@ -75,7 +75,7 @@ no build tools required:
 - **Windows / Linux portable** (`*-windows-portable.zip`, `*-linux.tar.gz`) — a
   self-contained app image with its **own bundled Java runtime**. Unpack and run;
   **no Java and no Node needed.**
-- **Headless JAR** (`*-headless.jar`) — for a server / NAS. Needs only a **Java 21
+- **Headless JAR** (`*-headless.jar`) — for a server / NAS. Needs only a **Java 25
   runtime (JRE)** — no Node:
 
   ```bash
@@ -90,7 +90,7 @@ the Inbox view) and click **Import**.
 
 ## Run from source (development)
 
-**Prerequisites (source build only):** JDK 21+, Node 20+.
+**Prerequisites (source build only):** JDK 25+, Node 20+.
 
 ```bash
 # Backend  → http://localhost:8085
@@ -174,7 +174,7 @@ No accounts, no cloud, no telemetry. Map tiles are fetched once and cached local
 
 ## Tech stack
 
-Vue 3 + Vite + TypeScript · Spring Boot 3 (Java 21) · H2 · MapLibre GL · ECharts ·
+Vue 3 + Vite + TypeScript · Spring Boot 3 (Java 25) · H2 · MapLibre GL · ECharts ·
 TanStack Query · Tailwind · Garmin FIT SDK · jpx (GPX) · GeographicLib (distance) ·
 metadata-extractor + commons-imaging (EXIF) · MapStruct · Lucide.
 

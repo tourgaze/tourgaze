@@ -8,7 +8,7 @@ product overview see [README.md](README.md).
 A monorepo with three top-level pieces:
 
 ```
-server/     Spring Boot 3 (Java 21) — REST API + parsing + storage
+server/     Spring Boot 3 (Java 25) — REST API + parsing + storage
 frontend/   Vue 3 + Vite + TypeScript — the SPA
 spec/       openapi.json — generated from the backend, consumed by the frontend
 ```
@@ -38,7 +38,7 @@ segment builder).
 
 ## Running
 
-**Prerequisites:** JDK 21+, Node 20+.
+**Prerequisites:** JDK 25+, Node 20+.
 
 ```bash
 cd server   && mvn spring-boot:run          # → http://localhost:8085
@@ -120,6 +120,25 @@ cd server && mvn -Pwindows-portable package       # jpackage app-image (Windows)
 The frontend builds with `npm run build`; the `with-frontend`/portable profiles
 bundle it into the distributable.
 
+### Faster startup for `java -jar` (AOT cache)
+
+The Docker image and the jpackage app-image already build & use a JDK **AOT cache**
+(JEP 483/514) that memory-maps the app's classes + linked state instead of re-loading
+them — worth ~1s off cold start (≈3.0s vs ≈4.1s here). To get the same for a plain
+`java -jar` run, generate a cache once per jar build, then launch with it:
+
+```bash
+cd server
+# 1. Train — one boot that exits on context refresh, dumping target/app.aot
+java -XX:AOTCacheOutput=target/app.aot -Dspring.context.exit=onRefresh \
+     -jar target/tourgaze-server-*.jar --app.start-browser=false --app.backup.on-startup=false
+# 2. Run with the cache
+java -XX:AOTCache=target/app.aot -jar target/tourgaze-server-*.jar
+```
+
+Regenerate `app.aot` whenever the jar or the JDK changes — a stale/mismatched cache is
+ignored with a warning (never fatal), so it can't break startup. Requires JDK 24+.
+
 ## Docker & Helm
 
 TourGaze ships as a **single container** (matros convention): the fat JAR already
@@ -159,7 +178,7 @@ datastore).
 
 ## Tech stack
 
-Spring Boot 3 · Java 21 · H2 · MapStruct · Garmin FIT SDK · jpx · GeographicLib ·
+Spring Boot 3 · Java 25 · H2 · MapStruct · Garmin FIT SDK · jpx · GeographicLib ·
 metadata-extractor · commons-imaging · springdoc-openapi · Caffeine ·
 Vue 3 · Vite · TypeScript · TanStack Query · MapLibre GL · ECharts · Tailwind ·
 openapi-typescript · Playwright.

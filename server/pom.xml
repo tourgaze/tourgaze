@@ -309,6 +309,39 @@
                         <artifactId>exec-maven-plugin</artifactId>
                         <version>3.5.0</version>
                         <executions>
+                            <!-- AOT cache (JEP 483/514) for the bundled Java 25 runtime.
+                                 One training boot (context exits on refresh) records the
+                                 app's classes + their linked state into app.aot, which the
+                                 real launch memory-maps instead of re-loading/verifying —
+                                 ~1.3s off cold start. Runs AFTER the resources copy above
+                                 (plugin declaration order) so jpackage-input already holds
+                                 the fat JAR; writes app.aot alongside it so jpackage bundles
+                                 both into $APPDIR. Pinned to this build's JDK, which is the
+                                 same one jpackage bundles — a mismatch is ignored, not fatal.
+                                 A throwaway data dir keeps training H2/Flyway files out of
+                                 the build tree's way. -->
+                            <execution>
+                                <id>aot-cache-train</id>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <phase>package</phase>
+                                <configuration>
+                                    <executable>${java.home}/bin/java</executable>
+                                    <arguments>
+                                        <argument>-XX:AOTCacheOutput=${project.build.directory}/jpackage-input/app.aot</argument>
+                                        <argument>-Dspring.context.exit=onRefresh</argument>
+                                        <argument>-Dspring.profiles.active=prod</argument>
+                                        <argument>-Djava.awt.headless=true</argument>
+                                        <argument>-jar</argument>
+                                        <argument>${project.build.directory}/jpackage-input/${project.build.finalName}.jar</argument>
+                                        <argument>--server.port=0</argument>
+                                        <argument>--app.start-browser=false</argument>
+                                        <argument>--app.backup.on-startup=false</argument>
+                                        <argument>--tourgaze.data-dir=${project.build.directory}/aot-train</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
                             <execution>
                                 <id>jpackage-portable</id>
                                 <goals>
@@ -338,6 +371,13 @@
                                         <argument>-Xmx1024m</argument>
                                         <argument>--java-options</argument>
                                         <argument>-Dspring.profiles.active=prod</argument>
+                                        <!-- Use the AOT cache produced by aot-cache-train.
+                                             $APPDIR is a jpackage runtime token → the app's
+                                             image dir where app.aot was bundled from
+                                             jpackage-input. Not a Maven ${...}, so it passes
+                                             through literally. -->
+                                        <argument>--java-options</argument>
+                                        <argument>-XX:AOTCache=$APPDIR/app.aot</argument>
                                         <argument>--win-console</argument>
                                     </arguments>
                                 </configuration>

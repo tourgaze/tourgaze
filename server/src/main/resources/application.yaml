@@ -17,8 +17,15 @@ spring:
   # PostgreSQLDialect below applies cleanly (and a real Postgres stays a drop-in
   # swap later). No DATABASE_TO_LOWER: identifier casing stays as-is, so existing
   # file DBs keep validating.
+  #
+  # No AUTO_SERVER: it starts an H2 TCP server (hostname resolution + socket bind)
+  # on the first connection, which stalls ~5s on Windows — paid by every user on
+  # every launch, for a capability (external tool attaching to the *live* DB) that
+  # a single-user desktop app almost never needs. A tool can still open the file
+  # DB when the app is stopped. To re-enable (e.g. to inspect a running instance),
+  # override the url in ~/.config/tourgaze/tourgaze.yaml with AUTO_SERVER=TRUE.
   datasource:
-    url: jdbc:h2:file:${tourgaze.data-dir}/db/tourgaze;AUTO_SERVER=TRUE;MODE=PostgreSQL
+    url: jdbc:h2:file:${tourgaze.data-dir}/db/tourgaze;MODE=PostgreSQL
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
@@ -32,6 +39,16 @@ spring:
       ddl-auto: validate
     show-sql: false
     open-in-view: false
+
+  # Background the Hibernate EntityManagerFactory bootstrap (~1s) onto the task
+  # executor so it runs in parallel with the rest of context startup instead of
+  # blocking the main thread — shaves ~0.5s off boot. Safe: the first actual use
+  # of a repository transparently waits for the EMF to finish initialising.
+  # (Note: this is spring.DATA.jpa.*, a different tree from spring.jpa.* above.)
+  data:
+    jpa:
+      repositories:
+        bootstrap-mode: deferred
     properties:
       "[hibernate.jdbc.batch_size]": 200
       "[hibernate.order_inserts]": true
