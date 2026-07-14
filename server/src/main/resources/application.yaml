@@ -147,6 +147,13 @@ app:
   # build. Set false to disable.
   start-browser: true
 
+  # Show a system-tray icon (Open / Quit) so the desktop build can run without a
+  # console window. On by default but only activates when a desktop is present —
+  # skipped automatically when headless (containers, a plain `java -jar`, or a
+  # display-less server). The jpackage desktop bundle enables it by launching
+  # with -Djava.awt.headless=false. Set false to disable entirely.
+  system-tray: true
+
   # Online H2 snapshot (BACKUP TO zip) taken on startup + nightly, rotated and
   # written under repository-dir/db-backup (so they cloud-sync). Set false to skip.
   backup:

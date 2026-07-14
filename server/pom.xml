@@ -378,7 +378,14 @@
                                              through literally. -->
                                         <argument>--java-options</argument>
                                         <argument>-XX:AOTCache=$APPDIR/app.aot</argument>
-                                        <argument>--win-console</argument>
+                                        <!-- The win-console flag is intentionally absent: launch
+                                             as a windowed app so no console window pops up for the
+                                             end user. Logs still go to the rolling file appender
+                                             (logback-spring.xml, under data-dir/logs). The app
+                                             instead lives in the system tray (see TrayLauncher);
+                                             headless=false is what makes AWT + the tray usable. -->
+                                        <argument>--java-options</argument>
+                                        <argument>-Djava.awt.headless=false</argument>
                                     </arguments>
                                 </configuration>
                             </execution>
