@@ -7,9 +7,17 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ### Added
 - **Year totals in the Tours list** — the grouped results now end with a running summary row (total distance + ride count) pinned under the last group, so the library's totals stay in view while you scroll.
+- **Desktop app: system tray & no console window** — the portable app-image now launches as a proper windowed app instead of a console: a brief startup splash, the browser opens automatically, and it lives in the system tray with **Open TourGaze**, **Show Logs** (a live tail-follow log viewer — the console replacement) and **Quit** (a clean, graceful shutdown). The TourGaze goat now brands the tray, splash, window and taskbar/exe icon. Best-effort on Linux (shown on KDE / XFCE / MATE / Cinnamon; on GNOME or headless it self-disables and the app runs on). Toggle with `app.system-tray`.
+
+### Changed
+- **Java 25 runtime** — the backend now builds and runs on Java 25 (LTS). The portable app-images bundle it; the headless JAR now needs a Java 25 JRE.
+- **~3× faster cold start (~10 s → ~3 s)** — three fixes: dropped H2's `AUTO_SERVER` mode, which stalled the first DB connection ~5 s on Windows (an external tool can still open the file DB when the app is stopped); deferred the Hibernate bootstrap so it initialises in parallel with the rest of startup; and bundled a JDK AOT class-data cache in the Docker image and the jpackage app-image so classes are memory-mapped instead of re-loaded. A plain `java -jar` starts in ~4 s.
 
 ### Fixed
 - **GPX elevation gain** — long rides from dense GPX (points a few metres apart) reported near-zero or no total ascent: climb was gated per point at 1 m, so a genuine but gradual sub-metre-per-point ascent was discarded entirely as GPS noise. Ascent/descent are now measured against a moving anchor with a cumulative hysteresis band, so steady climbs accumulate in full (FIT was unaffected — it uses the device's own recorded total). Existing GPX rides were recomputed.
+
+### Security
+- **js-yaml DoS (GHSA-h67p-54hq-rp68, moderate)** — forced the transitive `js-yaml` up to 4.3.0. It entered only through the build-time OpenAPI type generator (not shipped to users), but the fix clears the advisory.
 
 ## [1.2.0] — 2026-07-02
 
