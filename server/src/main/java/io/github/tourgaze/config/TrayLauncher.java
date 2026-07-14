@@ -5,18 +5,14 @@
  */
 package io.github.tourgaze.config;
 
-import java.awt.BasicStroke;
-import java.awt.Color;
 import java.awt.Desktop;
-import java.awt.Dimension;
 import java.awt.GraphicsEnvironment;
 import java.awt.MenuItem;
 import java.awt.PopupMenu;
-import java.awt.RenderingHints;
 import java.awt.SystemTray;
 import java.awt.TrayIcon;
-import java.awt.image.BufferedImage;
 import java.net.URI;
+import java.nio.file.Path;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,17 +27,18 @@ import org.springframework.stereotype.Component;
 
 /**
  * Puts TourGaze in the OS system tray so the desktop build can run without a
- * console window ({@code jpackage} drops {@code --win-console}). The tray icon
- * is the app's control surface: re-open the UI in the browser, or quit cleanly
- * (graceful shutdown — no killing a console).
+ * console window ({@code jpackage} drops {@code --win-console}). The tray icon —
+ * the app's goat badge, drawn by {@link GoatBadge} — is the control surface:
+ * re-open the UI, view the logs (since there's no console), or quit cleanly.
  *
  * <p>
- * Only activates when a desktop is actually present: {@link SystemTray} needs a
+ * Only activates when a desktop is present: {@link SystemTray} needs a
  * non-headless AWT, which the desktop bundle enables via
  * {@code -Djava.awt.headless=false}. Under Docker/Kubernetes, a plain
  * {@code java -jar} (headless by default), or a display-less server, the guards
  * below no-op silently — so this never breaks a headless run. Companion to
- * {@link BrowserLauncher}, which still auto-opens the browser on startup.
+ * {@link BrowserLauncher} (auto-opens the browser) and {@link DesktopSplash}
+ * (the startup splash this closes on ready).
  */
 @Component
 public class TrayLauncher {
@@ -50,6 +47,9 @@ public class TrayLauncher {
 
 	@Value("${app.system-tray:true}")
 	private boolean enableTray;
+
+	@Value("${tourgaze.data-dir}")
+	private String dataDir;
 
 	private final ConfigurableApplicationContext context;
 
@@ -62,25 +62,29 @@ public class TrayLauncher {
 
 	@EventListener(ApplicationReadyEvent.class)
 	public void onReady(ApplicationReadyEvent event) {
-		if (!enableTray)
-			return;
-		// isHeadless() is true for containers, headless servers and a default
-		// `java -jar`; SystemTray.isSupported() catches desktops without a tray
-		// (e.g. some Linux DEs). Either way: skip quietly, never fail startup.
-		if (GraphicsEnvironment.isHeadless()) {
-			log.info("System tray skipped (headless). Run with -Djava.awt.headless=false to enable.");
-			return;
-		}
+		// The whole desktop-chrome path (splash + tray) is optional sugar and must
+		// NEVER break startup — a throwing ApplicationReadyEvent listener would.
+		// Catch Throwable, not just Exception: a broken/absent display throws
+		// AWTError (an Error). Covers Windows, macOS and every Linux DE — where the
+		// tray is unsupported (headless server, GNOME without AppIndicator, a plain
+		// `java -jar`) this simply logs and the app runs on unaffected.
 		try {
+			// Always dismiss the startup splash once we're up, tray or not.
+			DesktopSplash.close();
+
+			if (!enableTray)
+				return;
+			if (GraphicsEnvironment.isHeadless()) {
+				log.info("System tray skipped (headless). Run with -Djava.awt.headless=false to enable.");
+				return;
+			}
 			if (!SystemTray.isSupported()) {
-				log.info("System tray not supported on this platform — skipping.");
+				log.info("System tray not supported on this desktop — skipping (open the URL manually).");
 				return;
 			}
 			installTray("http://localhost:" + resolvePort(event.getApplicationContext()));
-		} catch (Exception e) {
-			// A tray is a convenience, never load-bearing — degrade gracefully.
-			log.warn("Could not install system tray ({}). App still running; open the URL manually.",
-					e.getMessage());
+		} catch (Throwable t) {
+			log.warn("Desktop tray/splash unavailable ({}); the app is running normally.", t.toString());
 		}
 	}
 
@@ -90,42 +94,28 @@ public class TrayLauncher {
 		PopupMenu menu = new PopupMenu();
 		MenuItem open = new MenuItem("Open TourGaze");
 		open.addActionListener(e -> openBrowser(url));
+		MenuItem logs = new MenuItem("Show Logs");
+		logs.addActionListener(e -> LogWindow.showOrFocus(logFile()));
 		MenuItem quit = new MenuItem("Quit TourGaze");
 		quit.addActionListener(e -> quit());
 		menu.add(open);
+		menu.add(logs);
 		menu.addSeparator();
 		menu.add(quit);
 
-		trayIcon = new TrayIcon(renderIcon(tray.getTrayIconSize()), "TourGaze", menu);
+		// Icon rendered at the platform's preferred tray size for crispness.
+		trayIcon = new TrayIcon(GoatBadge.image(tray.getTrayIconSize().width), "TourGaze", menu);
 		trayIcon.setImageAutoSize(true);
 		// Left-click / double-click the icon → open the UI, the expected gesture.
 		trayIcon.addActionListener(e -> openBrowser(url));
 
 		tray.add(trayIcon);
-		log.info("System tray installed — right-click the TourGaze icon for Open / Quit.");
+		log.info("System tray installed — right-click the TourGaze icon for Open / Show Logs / Quit.");
 	}
 
-	/** Draw a small brand glyph so no image asset needs to ship. */
-	private BufferedImage renderIcon(Dimension size) {
-		int w = Math.max(16, size.width);
-		int h = Math.max(16, size.height);
-		BufferedImage img = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-		var g = img.createGraphics();
-		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-		g.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
-		// Rounded green tile background.
-		g.setColor(new Color(0x2E, 0x7D, 0x32));
-		g.fillRoundRect(0, 0, w - 1, h - 1, w / 3, h / 3);
-		// A white "route" polyline with an end marker — the app's motif.
-		g.setColor(Color.WHITE);
-		g.setStroke(new BasicStroke(Math.max(1.5f, w / 12f), BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-		int[] xs = { w / 5, w / 2, (int) (w * 0.42), (int) (w * 0.78) };
-		int[] ys = { (int) (h * 0.72), (int) (h * 0.62), (int) (h * 0.3), (int) (h * 0.24) };
-		g.drawPolyline(xs, ys, xs.length);
-		int d = Math.max(3, w / 6);
-		g.fillOval(xs[xs.length - 1] - d / 2, ys[ys.length - 1] - d / 2, d, d);
-		g.dispose();
-		return img;
+	/** {@code <data-dir>/logs/tourgaze.log} — the file logback-spring.xml writes. */
+	private Path logFile() {
+		return Path.of(dataDir, "logs", "tourgaze.log");
 	}
 
 	private void openBrowser(String url) {

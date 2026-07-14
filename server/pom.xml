@@ -342,6 +342,26 @@
                                     </arguments>
                                 </configuration>
                             </execution>
+                            <!-- Render the TourGaze goat badge to a multi-size .ico from
+                                 the one vector source (GoatBadge), so jpackage brands the
+                                 app-image / taskbar / exe. Renders headless (offscreen
+                                 Java2D). Regenerated every build — no committed binary. -->
+                            <execution>
+                                <id>generate-icon</id>
+                                <goals>
+                                    <goal>exec</goal>
+                                </goals>
+                                <phase>package</phase>
+                                <configuration>
+                                    <executable>${java.home}/bin/java</executable>
+                                    <arguments>
+                                        <argument>-cp</argument>
+                                        <argument>${project.build.outputDirectory}</argument>
+                                        <argument>io.github.tourgaze.config.IconGenerator</argument>
+                                        <argument>${project.build.directory}/tourgaze.ico</argument>
+                                    </arguments>
+                                </configuration>
+                            </execution>
                             <execution>
                                 <id>jpackage-portable</id>
                                 <goals>
@@ -359,6 +379,8 @@
                                         <argument>${app.description}</argument>
                                         <argument>--vendor</argument>
                                         <argument>${app.vendor}</argument>
+                                        <argument>--icon</argument>
+                                        <argument>${project.build.directory}/tourgaze.ico</argument>
                                         <argument>--input</argument>
                                         <argument>${project.build.directory}/jpackage-input</argument>
                                         <argument>--main-jar</argument>

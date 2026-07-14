@@ -11,6 +11,7 @@ import java.util.TimeZone;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
+import io.github.tourgaze.config.DesktopSplash;
 import io.github.tourgaze.exception.DatabaseTooNewException;
 
 @SpringBootApplication
@@ -25,6 +26,10 @@ public class TourgazeApplication {
 		// still renders each time in the viewer's own local zone. (hibernate.jdbc.
 		// time_zone does NOT cover this Instant → TIMESTAMP WITH TIME ZONE path.)
 		TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+		// Instant feedback on the desktop build (no console window): show the
+		// splash before Spring boots. No-ops when headless (jar/container). It is
+		// dismissed on ApplicationReadyEvent by TrayLauncher.
+		DesktopSplash.showIfDesktop();
 		try {
 			SpringApplication.run(TourgazeApplication.class, args);
 		} catch (Throwable t) {
