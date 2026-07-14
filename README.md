@@ -73,10 +73,22 @@ Grab a build from the **[latest release](https://github.com/tourgaze/tourgaze/re
 no build tools required:
 
 - **Windows / Linux portable** (`*-windows-portable.zip`, `*-linux.tar.gz`) — a
-  self-contained app image with its **own bundled Java runtime**. Unpack and run;
-  **no Java and no Node needed.**
-- **Headless JAR** (`*-headless.jar`) — for a server / NAS. Needs only a **Java 25
-  runtime (JRE)** — no Node:
+  self-contained app image with its **own bundled Java runtime** (**no Java, no
+  Node needed**). Unpack and launch **`TourGaze`** (`TourGaze.exe` on Windows). It
+  starts in the background — **no console window** — shows a brief splash, opens
+  your browser at **http://localhost:8085**, and puts a **goat icon in your system
+  tray**:
+  - **Open TourGaze** — reopen the app in your browser
+  - **Show Logs** — live log viewer (handy now that there's no console)
+  - **Quit TourGaze** — shut it down cleanly
+
+  > **System tray:** Windows & macOS. On Linux it's best-effort — shown on KDE /
+  > XFCE / MATE / Cinnamon; on GNOME (which dropped the legacy tray) the app still
+  > runs fine, just use the browser tab. All data lives under `~/.tourgaze/`.
+
+- **Headless JAR** (`*-headless.jar`) — for a server / NAS, or if you prefer a
+  terminal. Needs only a **Java 25 runtime (JRE)**; runs in the foreground
+  (**Ctrl-C** to stop), no tray:
 
   ```bash
   java -jar TourGaze-*-headless.jar      # → http://localhost:8085

@@ -110,21 +110,32 @@ jobs:
         with:
           name: server-jar
           path: jpackage-input
+      - name: Generate app icon (.ico) from GoatBadge
+        shell: pwsh
+        run: |
+          javac -d icon-classes `
+            server/src/main/java/io/github/tourgaze/config/GoatBadge.java `
+            server/src/main/java/io/github/tourgaze/config/IconGenerator.java
+          java -cp icon-classes io.github.tourgaze.config.IconGenerator icon/tourgaze.ico
       - name: Create Windows portable app-image
         shell: pwsh
         run: |
           $version = "${{ env.APP_VERSION }}"
+          # No --win-console: windowed app (lives in the system tray, no console
+          # window). headless=false enables the tray + startup splash; branded
+          # with the generated multi-size .ico.
           jpackage `
             --name TourGaze `
             --app-version $version `
             --description "Local-first FIT file viewer with OpenStreetMap" `
             --vendor "TourGaze" `
+            --icon icon/tourgaze.ico `
             --input jpackage-input `
             --main-jar "tourgaze-server-$version.jar" `
             --dest portable `
             --type app-image `
             --java-options "-Xmx1024m" `
-            --win-console
+            --java-options "-Djava.awt.headless=false"
       - name: Zip portable app-image
         shell: pwsh
         run: |
@@ -157,19 +168,31 @@ jobs:
         with:
           name: server-jar
           path: jpackage-input
+      - name: Generate app icon (.png) from GoatBadge
+        run: |
+          javac -d icon-classes \
+            server/src/main/java/io/github/tourgaze/config/GoatBadge.java \
+            server/src/main/java/io/github/tourgaze/config/IconGenerator.java
+          java -cp icon-classes io.github.tourgaze.config.IconGenerator icon/tourgaze.png
       - name: Create Linux app-image with jpackage
         run: |
           VERSION=${{ env.APP_VERSION }}
+          # Best-effort desktop integration: headless=false lets the tray + splash
+          # appear on Linux DEs that support a system tray (KDE/XFCE/MATE/Cinnamon).
+          # On GNOME (no legacy tray) or headless it self-disables and the app runs
+          # on. Branded with the generated .png.
           jpackage \
             --name TourGaze \
             --app-version "$VERSION" \
             --description "Local-first FIT file viewer with OpenStreetMap" \
             --vendor "TourGaze" \
+            --icon icon/tourgaze.png \
             --input jpackage-input \
             --main-jar "tourgaze-server-$VERSION.jar" \
             --dest linux-image \
             --type app-image \
-            --java-options "-Xmx1024m"
+            --java-options "-Xmx1024m" \
+            --java-options "-Djava.awt.headless=false"
       - name: Create tar.gz
         run: |
           VERSION=${{ env.APP_VERSION }}
