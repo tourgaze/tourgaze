@@ -5,21 +5,37 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-07-14
+
 ### Added
-- **Year totals in the Tours list** — the grouped results now end with a running summary row (total distance + ride count) pinned under the last group, so the library's totals stay in view while you scroll.
 - **Desktop app: system tray & no console window** — the portable app-image now launches as a proper windowed app instead of a console: a brief startup splash, the browser opens automatically, and it lives in the system tray with **Open TourGaze**, **Show Logs** (a live tail-follow log viewer — the console replacement) and **Quit** (a clean, graceful shutdown). The TourGaze goat now brands the tray, splash, window and taskbar/exe icon. Best-effort on Linux (shown on KDE / XFCE / MATE / Cinnamon; on GNOME or headless it self-disables and the app runs on). Toggle with `app.system-tray`.
 
 ### Changed
 - **Java 25 runtime** — the backend now builds and runs on Java 25 (LTS). The portable app-images bundle it; the headless JAR now needs a Java 25 JRE.
 - **~3× faster cold start (~10 s → ~3 s)** — three fixes: dropped H2's `AUTO_SERVER` mode, which stalled the first DB connection ~5 s on Windows (an external tool can still open the file DB when the app is stopped); deferred the Hibernate bootstrap so it initialises in parallel with the rest of startup; and bundled a JDK AOT class-data cache in the Docker image and the jpackage app-image so classes are memory-mapped instead of re-loaded. A plain `java -jar` starts in ~4 s.
 
-### Fixed
-- **GPX elevation gain** — long rides from dense GPX (points a few metres apart) reported near-zero or no total ascent: climb was gated per point at 1 m, so a genuine but gradual sub-metre-per-point ascent was discarded entirely as GPS noise. Ascent/descent are now measured against a moving anchor with a cumulative hysteresis band, so steady climbs accumulate in full (FIT was unaffected — it uses the device's own recorded total). Existing GPX rides were recomputed.
-
 ### Security
 - **js-yaml DoS (GHSA-h67p-54hq-rp68, moderate)** — forced the transitive `js-yaml` up to 4.3.0. It entered only through the build-time OpenAPI type generator (not shipped to users), but the fix clears the advisory.
 
+## [1.3.0] — 2026-07-06
+
+### Added
+- **Year totals in the Tours list** — the grouped results now end with a running summary row (total distance + ride count) pinned under the last group, so the library's totals stay in view while you scroll.
+
+### Fixed
+- **GPX elevation gain** — long rides from dense GPX (points a few metres apart) reported near-zero or no total ascent: climb was gated per point at 1 m, so a genuine but gradual sub-metre-per-point ascent was discarded entirely as GPS noise. Ascent/descent are now measured against a moving anchor with a cumulative hysteresis band, so steady climbs accumulate in full (FIT was unaffected — it uses the device's own recorded total). Existing GPX rides were recomputed.
+
 ## [1.2.0] — 2026-07-02
+
+### Changed
+- **Faster track loading** — per-activity JSON track/chart caches are now stored gzip-compressed on disk and streamed to the browser with `Content-Encoding: gzip` (compressed once when the cache is built, not re-compressed per request), and tagged with a strong `ETag` + long-lived private `Cache-Control` so a revisited ride re-fetches nothing (304 Not Modified). Cache building takes a per-activity lock instead of a single global monitor, so opening two different rides builds them concurrently rather than serialising behind one mutex.
+
+### Fixed
+- **Ride times are stored in UTC** — imports previously persisted timestamps shifted by the server's local offset: Hibernate binds `java.time.Instant` to the DB's `timestamp with time zone` columns using the JVM default zone, so on e.g. Europe/Berlin every imported FIT/GPX ride landed 1–2 h early (`hibernate.jdbc.time_zone` does not cover this path). The app now pins the JVM to UTC at startup, so an import persists the exact GPS instant; the frontend still renders each time in the viewer's own local zone.
+- **Tour switches no longer flood the browser with tile requests** — opening a ride pre-warmed its route tiles by firing every fetch at once (~1500 tiles × up to two providers), tripping `net::ERR_INSUFFICIENT_RESOURCES` and stalling the map for several seconds on every switch — and, because the flood never let the browser's immutable tile cache serve, switching back to a region got no faster. The prefetch now drains through a small bounded pool (only a handful of fetches in flight at once), and selecting a new ride abandons the previous ride's in-flight warm instead of stacking on top of it. A brief loading spinner now covers the map while the newly-selected ride's track loads.
+- **Near-instant tour switching** — switching rides was blocked for seconds by Vue reactivity, not by real work: the replay-camera bearing precompute looped over the whole track reading `point.lat`/`point.lon` through reactive proxies, so millions of property reads each paid the proxy get-trap tax (~8 s in a trace, while the actual distance maths was ~200 ms). Track point arrays are now kept out of deep reactivity (`markRaw`), the hot bearing/hold-hint/direction loops read from plain `Float64Array`s, and the whole-track replay-camera simulation is deferred to the first scrub/Play instead of running on every switch. Combined with a snappy 350 ms camera ease, switching is now instant.
+
+## [1.1.0] — 2026-06-30
 
 ### Added
 - **Replay "Free" mode keeps the rider findable** — when the camera is parked and the replay marker rides off the visible map, a red arrow pins to the nearest edge pointing at it; click to recenter without leaving Free mode (mirrors the compare-rider off-screen indicators).
@@ -28,12 +44,8 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ### Changed
 - **Refuse to start against a newer database** — if the local DB was already migrated by a newer build, the app now fails fast with a plain-language "application failed to start" message (and keeps the console window open so it can be read) rather than running against a schema it was never built for.
-- **Faster track loading** — per-activity JSON track/chart caches are now stored gzip-compressed on disk and streamed to the browser with `Content-Encoding: gzip` (compressed once when the cache is built, not re-compressed per request), and tagged with a strong `ETag` + long-lived private `Cache-Control` so a revisited ride re-fetches nothing (304 Not Modified). Cache building takes a per-activity lock instead of a single global monitor, so opening two different rides builds them concurrently rather than serialising behind one mutex.
 
 ### Fixed
-- **Ride times are stored in UTC** — imports previously persisted timestamps shifted by the server's local offset: Hibernate binds `java.time.Instant` to the DB's `timestamp with time zone` columns using the JVM default zone, so on e.g. Europe/Berlin every imported FIT/GPX ride landed 1–2 h early (`hibernate.jdbc.time_zone` does not cover this path). The app now pins the JVM to UTC at startup, so an import persists the exact GPS instant; the frontend still renders each time in the viewer's own local zone.
-- **Tour switches no longer flood the browser with tile requests** — opening a ride pre-warmed its route tiles by firing every fetch at once (~1500 tiles × up to two providers), tripping `net::ERR_INSUFFICIENT_RESOURCES` and stalling the map for several seconds on every switch — and, because the flood never let the browser's immutable tile cache serve, switching back to a region got no faster. The prefetch now drains through a small bounded pool (only a handful of fetches in flight at once), and selecting a new ride abandons the previous ride's in-flight warm instead of stacking on top of it. A brief loading spinner now covers the map while the newly-selected ride's track loads.
-- **Near-instant tour switching** — switching rides was blocked for seconds by Vue reactivity, not by real work: the replay-camera bearing precompute looped over the whole track reading `point.lat`/`point.lon` through reactive proxies, so millions of property reads each paid the proxy get-trap tax (~8 s in a trace, while the actual distance maths was ~200 ms). Track point arrays are now kept out of deep reactivity (`markRaw`), the hot bearing/hold-hint/direction loops read from plain `Float64Array`s, and the whole-track replay-camera simulation is deferred to the first scrub/Play instead of running on every switch. Combined with a snappy 350 ms camera ease, switching is now instant.
 - **GPS pre-lock clock garbage** — tracks whose first standstill samples carry a sentinel clock (~1999, or the firmware epoch) before the GPS fix locks — which made the parse report a start decades before the end and a multi-year "duration" — are now repaired centrally on parse, so import, the track cache and export all agree. Clean files, including continuous multi-day tours, are left untouched.
 
 ## [1.0.0] — 2026-06-26
