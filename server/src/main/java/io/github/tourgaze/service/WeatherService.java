@@ -39,11 +39,14 @@ import io.github.tourgaze.repository.SettingRepository;
 
 /**
  * Fills in {@link Activity}'s weather columns from a historical-weather API.
- * Default provider is Open-Meteo's archive endpoint — no API key, free for
- * personal use, returns hourly data. Disabled if {@code weather.enabled}
- * setting is "false".
+ * Default provider is Open-Meteo — no API key, free for personal use, returns
+ * hourly data. Old rides use the archive endpoint; rides from the last
+ * {@link #ARCHIVE_LAG_DAYS} days use the forecast endpoint (same response
+ * shape) because the archive lags real time. Disabled if
+ * {@code weather.enabled} setting is "false".
  *
- * GET https://archive-api.open-meteo.com/v1/archive
+ * GET https://archive-api.open-meteo.com/v1/archive (or
+ * https://api.open-meteo.com/v1/forecast for recent rides)
  * ?latitude=…&longitude=…
  * &start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
  * &hourly=temperature_2m,relative_humidity_2m,windspeed_10m,weathercode
@@ -54,11 +57,22 @@ public class WeatherService {
 
 	private static final Logger log = LoggerFactory.getLogger(WeatherService.class);
 
-	private static final String OPEN_METEO_URL = "https://archive-api.open-meteo.com/v1/archive"
-			+ "?latitude=%.4f&longitude=%.4f"
+	private static final String OPEN_METEO_PARAMS = "?latitude=%.4f&longitude=%.4f"
 			+ "&start_date=%s&end_date=%s"
 			+ "&hourly=temperature_2m,relative_humidity_2m,windspeed_10m,weathercode"
 			+ "&timezone=UTC";
+	private static final String ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive" + OPEN_METEO_PARAMS;
+	private static final String FORECAST_URL = "https://api.open-meteo.com/v1/forecast" + OPEN_METEO_PARAMS;
+
+	/**
+	 * The archive endpoint (ERA5 reanalysis) lags real time by ~5 days: for a
+	 * ride recorded this week it answers 200 with all-null hourly values, which is
+	 * exactly the inbox case (you just rode, plugged in the Garmin) — the lookup
+	 * "worked" but every field stayed empty. Rides newer than this cutoff use the
+	 * forecast endpoint instead, which serves the recent past (up to 92 days) in
+	 * the same response shape.
+	 */
+	private static final int ARCHIVE_LAG_DAYS = 7;
 
 	private final ActivityRepository activityRepo;
 	private final SettingRepository settingRepo;
@@ -99,7 +113,8 @@ public class WeatherService {
 			return cached;
 		try {
 			LocalDate day = time.atZone(ZoneOffset.UTC).toLocalDate();
-			String url = String.format(java.util.Locale.ROOT, OPEN_METEO_URL, lat, lon, day, day);
+			boolean recent = day.isAfter(LocalDate.now(ZoneOffset.UTC).minusDays(ARCHIVE_LAG_DAYS));
+			String url = String.format(java.util.Locale.ROOT, recent ? FORECAST_URL : ARCHIVE_URL, lat, lon, day, day);
 			HttpRequest req = HttpRequest.newBuilder(URI.create(url))
 					.timeout(Duration.ofSeconds(10))
 					.GET().build();
