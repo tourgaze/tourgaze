@@ -55,7 +55,7 @@ public class BrowserLauncher {
 		return 8085; // configured default
 	}
 
-	private void openBrowser(String url) {
+	static void openBrowser(String url) {
 		if (isContainer()) {
 			log.info("Browser auto-open skipped (container). Open {} manually.", url);
 			return;
@@ -74,7 +74,7 @@ public class BrowserLauncher {
 	}
 
 	/** Docker/Kubernetes have no display — don't even try (and avoid the noise). */
-	private boolean isContainer() {
+	private static boolean isContainer() {
 		return Files.exists(Path.of("/.dockerenv"))
 				|| System.getenv("KUBERNETES_SERVICE_HOST") != null
 				|| System.getenv("CONTAINER") != null;

@@ -5,6 +5,10 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **Starting TourGaze twice now opens the running app** — double-clicking the launcher while TourGaze was already running booted a second instance that died on the port bind, leaving its splash stuck on "Starting…" with no explanation. The app now probes its port before starting: if a running TourGaze answers there, the browser opens at it and the second process exits cleanly. An unrelated program on the port still fails with the normal bind error instead of being silently "opened".
+- **Weather for fresh rides** — the inbox weather lookup (and the on-import weather fetch) always queried Open-Meteo's *archive* endpoint, whose reanalysis data lags real time by ~5 days — so a just-recorded ride, the normal inbox case, got an empty weather section and imported with no weather stored. Rides from the last 7 days now use the forecast endpoint (which covers the recent past in the same format); older rides keep using the archive. Also covers rain-event detection along the route.
+
 ## [1.4.0] — 2026-07-14
 
 ### Added

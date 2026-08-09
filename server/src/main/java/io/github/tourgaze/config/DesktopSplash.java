@@ -15,6 +15,8 @@ import java.awt.Graphics2D;
 import java.awt.GraphicsEnvironment;
 import java.awt.RenderingHints;
 import java.awt.Window;
+import java.io.InputStream;
+import java.util.Properties;
 
 /**
  * A lightweight startup splash for the desktop build. Shown as early as possible
@@ -33,7 +35,28 @@ public final class DesktopSplash {
 	private static volatile Window window;
 	private static volatile Frame owner;
 
+	/**
+	 * Read once at class-load: the splash paints before Spring exists, so the {@code BuildProperties}
+	 * bean is not available — but the file behind it is a plain classpath resource, written by the
+	 * {@code build-info} goal for both the fat jar and {@code target/classes} in dev. Empty when
+	 * absent (e.g. an IDE run that skipped the goal), in which case no version is drawn.
+	 */
+	private static final String VERSION = readVersion();
+
 	private DesktopSplash() {
+	}
+
+	private static String readVersion() {
+		try (InputStream in = DesktopSplash.class.getResourceAsStream("/META-INF/build-info.properties")) {
+			if (in == null)
+				return "";
+			Properties p = new Properties();
+			p.load(in);
+			String v = p.getProperty("build.version", "").trim();
+			return v.isEmpty() ? "" : "v" + v;
+		} catch (Exception ignore) {
+			return "";
+		}
 	}
 
 	/** Show the splash if a desktop is present; safe to call from {@code main}. */
@@ -111,6 +134,11 @@ public final class DesktopSplash {
 			g.setColor(new Color(0x64, 0x74, 0x8B));
 			g.setFont(new Font("SansSerif", Font.PLAIN, 13));
 			drawCentred(g, "Starting…", w, 30 + badge + 58);
+			if (!VERSION.isEmpty()) {
+				g.setColor(new Color(0x94, 0xA3, 0xB8));
+				g.setFont(new Font("SansSerif", Font.PLAIN, 11));
+				drawCentred(g, VERSION, w, 30 + badge + 80);
+			}
 		}
 
 		private void drawCentred(Graphics2D g, String s, int width, int y) {

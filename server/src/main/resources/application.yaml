@@ -29,6 +29,15 @@ spring:
     driver-class-name: org.h2.Driver
     username: sa
     password: ""
+    # Pool sized for a single-user desktop app: keep a couple of connections warm
+    # so the first request after an idle spell doesn't pay connection setup, and
+    # cap the pool well below anything an embedded H2 would struggle with.
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 10
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 30000
 
   # ── JPA ─────────────────────────────────────────────────────────────────────
   # Flyway owns the schema (see below); Hibernate only VALIDATES that the live
@@ -39,22 +48,33 @@ spring:
       ddl-auto: validate
     show-sql: false
     open-in-view: false
-
-  # Background the Hibernate EntityManagerFactory bootstrap (~1s) onto the task
-  # executor so it runs in parallel with the rest of context startup instead of
-  # blocking the main thread — shaves ~0.5s off boot. Safe: the first actual use
-  # of a repository transparently waits for the EMF to finish initialising.
-  # (Note: this is spring.DATA.jpa.*, a different tree from spring.jpa.* above.)
-  data:
-    jpa:
-      repositories:
-        bootstrap-mode: deferred
     properties:
+      # JDBC batching — collapses per-row inserts/updates (a FIT import writes
+      # thousands of trackpoints) into batched round-trips.
       "[hibernate.jdbc.batch_size]": 200
       "[hibernate.order_inserts]": true
       "[hibernate.order_updates]": true
       "[hibernate.jdbc.batch_versioned_data]": true
       "[hibernate.default_batch_fetch_size]": 50
+
+      # NOTE: do NOT set hibernate.boot.allow_jdbc_metadata_access=false here.
+      # It skips the boot-time JDBC probe (a small startup win, and the dialect
+      # is pinned above so detection is not needed) — but the probe is also what
+      # resolves the default catalog/schema, and without it `ddl-auto: validate`
+      # cannot find the Flyway-created tables: boot dies with
+      # "Schema-validation: missing table [activity]". Only safe with ddl-auto: none.
+
+  # Background the Hibernate EntityManagerFactory bootstrap (~1s) onto the task
+  # executor so it runs in parallel with the rest of context startup instead of
+  # blocking the main thread — shaves ~0.5s off boot. Safe: the first actual use
+  # of a repository transparently waits for the EMF to finish initialising.
+  # (Note: this is spring.DATA.jpa.*, a different tree from spring.jpa.* above —
+  # only `repositories.*` binds here. Hibernate properties must live under
+  # spring.jpa.properties or they are silently ignored.)
+  data:
+    jpa:
+      repositories:
+        bootstrap-mode: deferred
 
   # ── Flyway ──────────────────────────────────────────────────────────────────
   # V1__baseline.sql builds the schema on a fresh DB; schema changes ship as
