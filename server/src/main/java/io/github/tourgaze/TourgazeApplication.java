@@ -12,6 +12,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import io.github.tourgaze.config.DesktopSplash;
+import io.github.tourgaze.config.SingleInstanceGuard;
 import io.github.tourgaze.exception.DatabaseTooNewException;
 
 @SpringBootApplication
@@ -26,6 +27,14 @@ public class TourgazeApplication {
 		// still renders each time in the viewer's own local zone. (hibernate.jdbc.
 		// time_zone does NOT cover this Instant → TIMESTAMP WITH TIME ZONE path.)
 		TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+		// Double-start guard: if TourGaze already runs on the target port, open
+		// the browser at the running instance and exit instead of booting a second
+		// JVM that would die on the port bind (leaving the splash stuck on
+		// "Starting…"). System.exit, not return: opening the browser initialises
+		// AWT, whose non-daemon threads would otherwise keep the JVM alive.
+		if (SingleInstanceGuard.redirectToRunningInstance(args)) {
+			System.exit(0);
+		}
 		// Instant feedback on the desktop build (no console window): show the
 		// splash before Spring boots. No-ops when headless (jar/container). It is
 		// dismissed on ApplicationReadyEvent by TrayLauncher.
