@@ -181,7 +181,11 @@ No accounts, no cloud, no telemetry. Map tiles are fetched once and cached local
 > **⚠️ No authentication.** TourGaze is a single-user, local-first app — it has
 > no login. Run it on `localhost` or a trusted LAN. **Do not expose it directly
 > to the internet**; if you must, put it behind a reverse proxy that adds
-> authentication (and TLS). The library can be **encrypted at rest** (AES-GCM,
+> authentication (and TLS). Behind a reverse proxy, set `TOURGAZE_ALLOWED_ORIGINS`
+> to your public URL (e.g. `https://tourgaze.example.com`) — the app only knows
+> its own `localhost:8085`, so it can't tell your proxied domain is "the same
+> origin" on its own, even when the proxy serves frontend and API together.
+> The library can be **encrypted at rest** (AES-GCM,
 > opt-in) so the store can safely sync to a cloud folder — see the Docker section.
 
 ## Tech stack

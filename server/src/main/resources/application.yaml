@@ -159,6 +159,16 @@ tourgaze:
     #   - label: OpenTracks
     #     path: /data/opentracks
 
+  # ── CORS ───────────────────────────────────────────────────────────────────
+  # These two entries exist only so `vite dev` (5173/5174) can call the Spring
+  # backend (8085) during development. Any other deployment — including a
+  # reverse-proxied one where the proxy serves frontend and API on the same
+  # public origin — needs its own real origin(s) here via TOURGAZE_ALLOWED_ORIGINS
+  # (comma-separated, replaces this default rather than appending to it): Spring
+  # only sees its own localhost:8085, so it can't tell the proxy's domain is
+  # "the same origin" from the outside.
+  allowed-origins: ${TOURGAZE_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:5174}
+
 # ── App behaviour ─────────────────────────────────────────────────────────────
 app:
   # Open the default browser at the app URL once started (local-first desktop
