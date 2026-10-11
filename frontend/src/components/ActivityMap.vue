@@ -24,7 +24,7 @@ import {
   type ReplayPose,
 } from '@/composables/replaySimulator'
 import type { TileProvider } from '@/api/client'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 const props = defineProps<{

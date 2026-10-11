@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
 import { useQuery, useQueryClient } from '@tanstack/vue-query'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { push } from 'notivue'
 import { getAllMarkers, createMarker, updateMarker, deleteMarker, type Marker } from '@/api/client'
@@ -142,7 +142,7 @@ onMounted(() => {
     center: [11, 48], zoom: 6, attributionControl: { compact: true },
   })
   map.addControl(new maplibregl.NavigationControl(), 'top-right')
-  map.on('load', renderPins)
+  map.on('load', () => renderPins())   // not `renderPins` itself: the event would land in `fit`
   // Three ways to drop a new general marker, mirroring the ride map's gestures
   // so the muscle memory is consistent:
   //  • left-click empty map  (discoverable on this dedicated page; pin clicks

@@ -23,7 +23,7 @@
     "@vueuse/core": "^14.3.0",
     "echarts": "^6.1.0",
     "lucide-vue-next": "^1.0.0",
-    "maplibre-gl": "^5.24.0",
+    "maplibre-gl": "^6.14.0",
     "notivue": "^2.4.5",
     "openapi-fetch": "^0.17.0",
     "splitpanes": "^4.1.2",
