@@ -46,6 +46,11 @@ RUN java -XX:AOTCacheOutput=app.aot \
 ENV TOURGAZE_DATA_DIR=/data
 VOLUME /data
 
+# Trust X-Forwarded-Proto/-Host from a reverse proxy on a private network, so the
+# app sees the public https://… address it is served under and doesn't mistake the
+# browser's own requests for a foreign site (e.g. Caddy serving https://nas.local).
+ENV SERVER_FORWARDHEADERSSTRATEGY=native
+
 EXPOSE 8085
 
 ENTRYPOINT ["java", "-XX:AOTCache=app.aot", "-Djava.awt.headless=true", "-jar", "application.jar", "--app.start-browser=false"]

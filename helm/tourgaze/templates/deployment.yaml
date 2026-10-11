@@ -34,6 +34,12 @@ spec:
             - name: {{ $key }}
               value: {{ $value | quote }}
             {{- end }}
+            {{- if and .Values.ingress.enabled (not (hasKey .Values.env "TOURGAZE_ALLOWED_ORIGINS")) }}
+            # The ingress hosts are this instance's own addresses; anything else is
+            # refused as a foreign site. Override by setting env.TOURGAZE_ALLOWED_ORIGINS.
+            - name: TOURGAZE_ALLOWED_ORIGINS
+              value: {{ include "tourgaze.ingressHosts" . | quote }}
+            {{- end }}
           volumeMounts:
             - name: data
               mountPath: /data

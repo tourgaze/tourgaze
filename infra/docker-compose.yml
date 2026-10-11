@@ -10,6 +10,10 @@ services:
     environment:
       # H2 file DB, media, cache and tiles all live under this dir (volume below).
       - TOURGAZE_DATA_DIR=/data
+      # Reached under your own domain (e.g. behind a reverse proxy)? List it, or
+      # TourGaze refuses the requests as coming from a foreign site. localhost,
+      # IP addresses and LAN names like `nas` / `nas.local` work without this.
+      # - TOURGAZE_ALLOWED_ORIGINS=https://tourgaze.example.com
     volumes:
       # Named volume — inherits the image's /data ownership (writable by the
       # non-root container user). Inspect/back up with `docker volume`.

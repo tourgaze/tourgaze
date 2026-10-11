@@ -6,6 +6,7 @@
 package io.github.tourgaze;
 
 import java.io.Console;
+import java.util.Map;
 import java.util.TimeZone;
 
 import org.springframework.boot.SpringApplication;
@@ -40,7 +41,9 @@ public class TourgazeApplication {
 		// dismissed on ApplicationReadyEvent by TrayLauncher.
 		DesktopSplash.showIfDesktop();
 		try {
-			SpringApplication.run(TourgazeApplication.class, args);
+			SpringApplication app = new SpringApplication(TourgazeApplication.class);
+			app.setDefaultProperties(desktopDefaults());
+			app.run(args);
 		} catch (Throwable t) {
 			// The downgrade guard (old jar vs. newer DB) already printed a clean
 			// explanation via DatabaseTooNewFailureAnalyzer. On the bundled .exe the
@@ -52,6 +55,20 @@ public class TourgazeApplication {
 			}
 			throw t;
 		}
+	}
+
+	/**
+	 * The desktop bundle (launched with {@code -Djava.awt.headless=false}) runs on a
+	 * personal computer — often a laptop on someone else's Wi-Fi — and TourGaze has
+	 * no login, so it listens on this computer only. The headless JAR (server / NAS)
+	 * and the Docker image keep listening on the network. Default properties are
+	 * the weakest config source, so {@code SERVER_ADDRESS=0.0.0.0} or
+	 * {@code server.address} in the user config file still opt in to LAN access.
+	 */
+	static Map<String, Object> desktopDefaults() {
+		return "false".equals(System.getProperty("java.awt.headless"))
+				? Map.of("server.address", "127.0.0.1")
+				: Map.of();
 	}
 
 	private static boolean hasCause(Throwable t, Class<? extends Throwable> type) {

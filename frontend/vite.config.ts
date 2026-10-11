@@ -19,7 +19,10 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8085',
-        changeOrigin: true,
+        // Keep the browser's Host (localhost:5173) so the backend sees these as
+        // same-origin requests. With changeOrigin it would see Origin :5173 vs
+        // Host :8085 and refuse them as a foreign site (see ForeignSiteFilter).
+        changeOrigin: false,
         timeout: 120000,
         proxyTimeout: 120000,
         configure: (proxy, _options) => {

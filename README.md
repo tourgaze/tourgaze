@@ -82,13 +82,17 @@ no build tools required:
   - **Show Logs** — live log viewer (handy now that there's no console)
   - **Quit TourGaze** — shut it down cleanly
 
+  It listens on **this computer only**. To open it from your phone or another PC
+  on a trusted home network, set `server.address: 0.0.0.0` in
+  `~/.config/tourgaze/tourgaze.yaml` (or the env var `SERVER_ADDRESS=0.0.0.0`).
+
   > **System tray:** Windows & macOS. On Linux it's best-effort — shown on KDE /
   > XFCE / MATE / Cinnamon; on GNOME (which dropped the legacy tray) the app still
   > runs fine, just use the browser tab. All data lives under `~/.tourgaze/`.
 
 - **Headless JAR** (`*-headless.jar`) — for a server / NAS, or if you prefer a
   terminal. Needs only a **Java 25 runtime (JRE)**; runs in the foreground
-  (**Ctrl-C** to stop), no tray:
+  (**Ctrl-C** to stop), no tray, and listens on your network:
 
   ```bash
   java -jar TourGaze-*-headless.jar      # → http://localhost:8085
@@ -133,6 +137,13 @@ That mounts a named `tourgaze-data` volume (swap for a bind mount
 at rest — so the volume can safely sync to a cloud folder — add
 `-e TOURGAZE_STORE_CRYPTOR=AES-GCM -e TOURGAZE_STORE_PASSWORD=… -e TOURGAZE_STORE_SALT=…`;
 **lose the password or salt and the data is unrecoverable.**
+
+**Behind a reverse proxy under your own domain**, tell TourGaze its public
+address with `-e TOURGAZE_ALLOWED_ORIGINS=https://tourgaze.example.com`
+(comma-separate several). It refuses requests addressed to names it doesn't
+know, so other websites can't reach your library through your browser.
+`localhost`, IP addresses and LAN names (`nas`, `nas.local`) work without it, and
+the Helm chart sets it from the ingress hosts automatically.
 
 Or build the image from source (for development):
 
@@ -181,7 +192,10 @@ No accounts, no cloud, no telemetry. Map tiles are fetched once and cached local
 > **⚠️ No authentication.** TourGaze is a single-user, local-first app — it has
 > no login. Run it on `localhost` or a trusted LAN. **Do not expose it directly
 > to the internet**; if you must, put it behind a reverse proxy that adds
-> authentication (and TLS). The library can be **encrypted at rest** (AES-GCM,
+> authentication (and TLS), and set `TOURGAZE_ALLOWED_ORIGINS` to your public URL
+> (see the Docker section). TourGaze refuses requests from other websites —
+> including DNS-rebinding tricks — so a page you visit can't read or change your
+> library through your browser. The library can be **encrypted at rest** (AES-GCM,
 > opt-in) so the store can safely sync to a cloud folder — see the Docker section.
 
 ## Tech stack
