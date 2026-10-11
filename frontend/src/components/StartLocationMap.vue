@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, watch, ref, computed } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
-import maplibregl from 'maplibre-gl'
+import * as maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { getChartTrack, type EventType } from '@/api/client'
 import { tileUrl } from '@/lib/mapStyle'

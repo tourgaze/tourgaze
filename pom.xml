@@ -29,14 +29,12 @@
         <maven.compiler.release>25</maven.compiler.release>
 
         <!-- Versions -->
-        <spring-boot.version>3.4.13</spring-boot.version>
+        <spring-boot.version>3.5.16</spring-boot.version>
         <spotless.version>2.43.0</spotless.version>
 
-        <!-- Override Spring Boot 3.4's managed test-mock stack for Java 25: the BOM
-             pins ByteBuddy 1.15.11, which predates class-file v69 and makes Mockito's
-             inline mock maker fail to instrument classes on a 25 JVM. Bump ByteBuddy
-             (and Mockito to match) to Java-25-aware releases. -->
-        <byte-buddy.version>1.17.6</byte-buddy.version>
+        <!-- Mockito for Java 25: the Spring Boot 3.5 BOM still pins 5.17.0; 5.18.0 is
+             the Java-25-aware release. (ByteBuddy needed the same override under Boot
+             3.4; the 3.5 BOM's 1.17.8 is newer than what we pinned, so it's dropped.) -->
         <mockito.version>5.18.0</mockito.version>
 
         <!-- Test Config -->
@@ -46,21 +44,11 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- Java 25 mock stack — declared BEFORE the Spring Boot BOM import so
+            <!-- Java 25 mock stack (Mockito) — declared BEFORE the Spring Boot BOM import so
                  these versions win. A property override alone does NOT work here: we
                  import spring-boot-dependencies (not the starter parent), and imported
                  BOMs resolve their entries with the BOM's own properties, ignoring ours.
                  Explicit management entries ahead of the import are the supported fix. -->
-            <dependency>
-                <groupId>net.bytebuddy</groupId>
-                <artifactId>byte-buddy</artifactId>
-                <version>${byte-buddy.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>net.bytebuddy</groupId>
-                <artifactId>byte-buddy-agent</artifactId>
-                <version>${byte-buddy.version}</version>
-            </dependency>
             <dependency>
                 <groupId>org.mockito</groupId>
                 <artifactId>mockito-core</artifactId>

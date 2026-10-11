@@ -13,6 +13,11 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // maplibre-gl 6's worker is an ES module (see src/lib/maplibreWorker.ts); the
+  // default classic/iife worker build can't load it in dev.
+  worker: {
+    format: 'es',
+  },
   server: {
     port: 5173,
     strictPort: true,

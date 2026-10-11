@@ -14,6 +14,7 @@ import InboxView from './views/InboxView.vue'
 import AboutView from './views/AboutView.vue'
 import CompareView from './views/CompareView.vue'
 import MarkersView from './views/MarkersView.vue'
+import './lib/maplibreWorker'
 import './style.css'
 
 const router = createRouter({

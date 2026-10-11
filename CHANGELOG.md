@@ -5,7 +5,20 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ## [Unreleased]
 
-## [1.4.3] — 2026-10-11
+## [1.5.0] — 2026-10-11
+
+### Security
+- **Map library XSS (maplibre-gl, GHSA-jrc7-96c5-q579, critical)** — maplibre-gl ≤ 6.4.0 can be tricked past its HTML sanitizer (used e.g. for map attribution text). Upgraded to maplibre-gl 6; there is no fixed 5.x.
+- **All other npm advisories cleared** — Vue 3.5.43 (`@vue/server-renderer`, high), postcss, nanoid, js-yaml, brace-expansion, source-map-js and others; `npm audit` now reports none.
+- **Bouncy Castle 1.86** — the crypto library behind at-rest encryption of the store.
+
+### Changed
+- **Spring Boot 3.5** (3.4 is out of open-source support) — Spring 6.2, Hibernate 6.6, Flyway 11, Tomcat 10.1.55. The database format is unchanged (H2 2.3.232); existing libraries open as before.
+- **maplibre-gl 6** — the map now needs WebGL 2, which every current browser has. Tracks, pins, replay and terrain look as before.
+- **Library updates** — Garmin FIT SDK 21.218, jpx 4 (GPX), metadata-extractor 2.21 (photo EXIF), springdoc 2.8.17.
+
+### Fixed
+- **"Center tour" map button never showed** — its visibility followed a variable Vue doesn't track, so the button only appeared if something else happened to redraw the map; it now shows as soon as a track has loaded.
 
 ### Fixed
 - **Desktop app stuck on "Starting…"** — when it couldn't start, most often because port 8085 was taken or *reserved by Windows* (WSL, Docker and Hyper-V reserve blocks of ports around 8000), the splash stayed up forever and the reason was only in the log. It now closes the splash, shows a dialog saying what went wrong and how to move TourGaze to another port (`server.port` in `~/.config/tourgaze/tourgaze.yaml`), and exits. Starting it a second time honours that port too and opens the running app.
