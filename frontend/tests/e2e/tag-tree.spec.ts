@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const API = 'http://localhost:8085/api/tags'
+const API = 'http://localhost:18085/api/tags'
 
 // The redesigned tag pane: matros-style header actions + filter box, and a
 // per-tag Lucide icon that persists to the backend.

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const API = 'http://localhost:8085/api'
+const API = 'http://localhost:18085/api'
 
 test('Settings → Map providers: add a custom raster basemap, it appears in the catalog', async ({ page, request }) => {
   // clean any prior test rows

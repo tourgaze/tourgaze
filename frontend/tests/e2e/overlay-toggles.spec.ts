@@ -6,9 +6,9 @@ import { test, expect } from '@playwright/test'
 // tab is persisted, photo pins showed forever once the gallery had been
 // opened, no matter what the checkbox said.
 async function rideWithOverlays(request: import('@playwright/test').APIRequestContext): Promise<string | null> {
-  const acts = await (await request.get('http://localhost:8085/api/activities')).json()
+  const acts = await (await request.get('http://localhost:18085/api/activities')).json()
   for (const a of acts) {
-    const media = await (await request.get(`http://localhost:8085/api/activities/${a.id}/media`)).json().catch(() => [])
+    const media = await (await request.get(`http://localhost:18085/api/activities/${a.id}/media`)).json().catch(() => [])
     if (media?.length) return a.id
   }
   return null

@@ -6,13 +6,16 @@
 package io.github.tourgaze;
 
 import java.io.Console;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.TimeZone;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.web.server.PortInUseException;
 
 import io.github.tourgaze.config.DesktopSplash;
+import io.github.tourgaze.config.HomeConfigScaffold;
 import io.github.tourgaze.config.SingleInstanceGuard;
 import io.github.tourgaze.exception.DatabaseTooNewException;
 
@@ -45,16 +48,50 @@ public class TourgazeApplication {
 			app.setDefaultProperties(desktopDefaults());
 			app.run(args);
 		} catch (Throwable t) {
+			// Desktop launch: no console to read the failure in, and the splash window
+			// would keep the JVM alive on "Starting…" forever — say why, then exit.
+			if (DesktopSplash.isShowing()) {
+				DesktopSplash.showStartupFailure(startupFailureMessage(t));
+				System.exit(1);
+			}
 			// The downgrade guard (old jar vs. newer DB) already printed a clean
-			// explanation via DatabaseTooNewFailureAnalyzer. On the bundled .exe the
-			// console window would otherwise slam shut before the user can read it,
-			// so pause until they acknowledge. No System.exit: just let main return.
-			if (hasCause(t, DatabaseTooNewException.class)) {
+			// explanation via DatabaseTooNewFailureAnalyzer. In a console window that
+			// would otherwise slam shut before the user can read it, pause until they
+			// acknowledge. No System.exit: just let main return.
+			if (findCause(t, DatabaseTooNewException.class) != null) {
 				waitForAcknowledgement();
 				return;
 			}
 			throw t;
 		}
+	}
+
+	/** What the startup-failure dialog says: the fix for the common cases, else the root cause. */
+	static String startupFailureMessage(Throwable t) {
+		PortInUseException portInUse = findCause(t, PortInUseException.class);
+		if (portInUse != null) {
+			int port = portInUse.getPort();
+			return """
+					Port %d is already in use — by another program, or reserved by
+					Windows (WSL, Docker and Hyper-V often reserve ports around 8000).
+
+					To use a different port, add these lines to
+					%s
+					and start TourGaze again:
+
+					server:
+					  port: %d
+					""".formatted(port, HomeConfigScaffold.userConfigFile(), port == 18085 ? 18086 : 18085);
+		}
+		DatabaseTooNewException tooNew = findCause(t, DatabaseTooNewException.class);
+		if (tooNew != null)
+			return tooNew.getMessage();
+		Throwable root = t;
+		while (root.getCause() != null)
+			root = root.getCause();
+		String reason = root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
+		return reason + "\n\nDetails are in logs/tourgaze.log inside the TourGaze data folder\n(default: "
+				+ Path.of(System.getProperty("user.home"), ".tourgaze") + ").";
 	}
 
 	/**
@@ -71,11 +108,11 @@ public class TourgazeApplication {
 				: Map.of();
 	}
 
-	private static boolean hasCause(Throwable t, Class<? extends Throwable> type) {
+	private static <T extends Throwable> T findCause(Throwable t, Class<T> type) {
 		for (Throwable c = t; c != null; c = c.getCause())
 			if (type.isInstance(c))
-				return true;
-		return false;
+				return type.cast(c);
+		return null;
 	}
 
 	/**

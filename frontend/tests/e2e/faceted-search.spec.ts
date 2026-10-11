@@ -3,9 +3,9 @@ import { test, expect } from '@playwright/test'
 // Smoke test for the JIRA-style faceted Tours search + saved presets.
 test('faceted search filters and a preset round-trips', async ({ page, request }) => {
   // Clean slate for OUR preset only — other specs share this global table.
-  const existing = await (await request.get('http://localhost:8085/api/filter-presets')).json()
+  const existing = await (await request.get('http://localhost:18085/api/filter-presets')).json()
   for (const p of existing) {
-    if (p.name === 'Bike rides') await request.delete(`http://localhost:8085/api/filter-presets/${p.id}`)
+    if (p.name === 'Bike rides') await request.delete(`http://localhost:18085/api/filter-presets/${p.id}`)
   }
 
   await page.goto('/tours')
@@ -32,6 +32,6 @@ test('faceted search filters and a preset round-trips', async ({ page, request }
 
   // It should appear in the dropdown and be persisted server-side.
   await expect(page.locator('option', { hasText: 'Bike rides' })).toBeAttached()
-  const saved = await (await request.get('http://localhost:8085/api/filter-presets')).json()
+  const saved = await (await request.get('http://localhost:18085/api/filter-presets')).json()
   expect(saved.some((p: any) => p.name === 'Bike rides' && p.query.includes('sport:cycling'))).toBeTruthy()
 })

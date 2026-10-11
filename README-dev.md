@@ -41,12 +41,12 @@ segment builder).
 **Prerequisites:** JDK 25+, Node 20+.
 
 ```bash
-cd server   && mvn spring-boot:run          # → http://localhost:8085
-cd frontend && npm install && npm run dev    # → http://localhost:5173 (proxies /api → 8085)
+cd server   && mvn spring-boot:run          # → http://localhost:18085
+cd frontend && npm install && npm run dev    # → http://localhost:5173 (proxies /api → 18085)
 ```
 
 The Vite dev server proxies **`/api/**`** only — hit the backend directly on
-`:8085` for `/v3/api-docs`, etc.
+`:18085` for `/v3/api-docs`, etc.
 
 ## Database & schema
 
@@ -69,11 +69,11 @@ The backend is the source of truth for API types. Regenerate after any DTO/enum/
 endpoint change — **don't hand-edit `schema.ts`**:
 
 ```bash
-# 1. Spec — boots the app on a throwaway in-memory DB (port 8089), pulls
-#    /v3/api-docs, writes spec/openapi.json, stops. Doesn't touch :8085 or real data.
+# 1. Spec — boots the app on a throwaway in-memory DB (port 18089), pulls
+#    /v3/api-docs, writes spec/openapi.json, stops. Doesn't touch :18085 or real data.
 cd server && mvn -Pspec verify -DskipTests
 
-#    (manual fallback: curl -s http://localhost:8085/v3/api-docs -o ../spec/openapi.json)
+#    (manual fallback: curl -s http://localhost:18085/v3/api-docs -o ../spec/openapi.json)
 
 # 2. Types — schema.ts (openapi-typescript) + enums/generated/* (per OpenAPI enum)
 cd frontend && npm run generate          # = gen:api + gen:enums
@@ -122,7 +122,7 @@ bundle it into the distributable.
 
 ### Faster startup for `java -jar` (AOT cache)
 
-The Docker image and the jpackage app-image already build & use a JDK **AOT cache**
+A locally built jpackage app-image (`server/pom.xml`) builds & uses a JDK **AOT cache**
 (JEP 483/514) that memory-maps the app's classes + linked state instead of re-loading
 them — worth ~1s off cold start (≈3.0s vs ≈4.1s here). To get the same for a plain
 `java -jar` run, generate a cache once per jar build, then launch with it:
@@ -136,8 +136,10 @@ java -XX:AOTCacheOutput=target/app.aot -Dspring.context.exit=onRefresh \
 java -XX:AOTCache=target/app.aot -jar target/tourgaze-server-*.jar
 ```
 
-Regenerate `app.aot` whenever the jar or the JDK changes — a stale/mismatched cache is
-ignored with a warning (never fatal), so it can't break startup. Requires JDK 24+.
+Regenerate `app.aot` whenever the jar or the JDK changes; a stale cache is ignored with a
+warning. Requires JDK 24+. **Only use a cache on the machine (CPU) that trained it:** the
+1.4.2 Docker image shipped one trained on a CI runner, and on CPUs without that runner's
+instruction set the JVM died with `SIGILL` instead of ignoring it — so the image ships none.
 
 ## Docker & Helm
 

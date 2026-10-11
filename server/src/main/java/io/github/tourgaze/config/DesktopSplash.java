@@ -18,6 +18,10 @@ import java.awt.Window;
 import java.io.InputStream;
 import java.util.Properties;
 
+import javax.swing.JDialog;
+import javax.swing.JOptionPane;
+import javax.swing.UIManager;
+
 /**
  * A lightweight startup splash for the desktop build. Shown as early as possible
  * in {@code main()} — before Spring boots — so the user gets instant feedback
@@ -68,6 +72,40 @@ public final class DesktopSplash {
 		} catch (Throwable ignore) {
 			// A splash is pure sugar — never let it hold up (or break) startup.
 			// Throwable, not Exception: a broken display throws AWTError (an Error).
+		}
+	}
+
+	/** Whether the splash is up — i.e. a desktop launch, with no console to read errors in. */
+	public static boolean isShowing() {
+		return window != null;
+	}
+
+	/**
+	 * Startup failed: replace the splash with a dialog saying why, returning once the
+	 * user has dismissed it (the caller then exits). Without this the splash stayed up
+	 * forever on "Starting…" — its window kept the JVM alive after {@code main} died —
+	 * with the reason only in the log. Swing's JOptionPane is fine here: unlike the
+	 * splash, this path isn't startup-time critical.
+	 */
+	public static void showStartupFailure(String message) {
+		close();
+		try {
+			EventQueue.invokeAndWait(() -> {
+				try {
+					UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+				} catch (Exception ignore) {
+					// Swing's own look is fine too.
+				}
+				JDialog dialog = new JOptionPane(message, JOptionPane.ERROR_MESSAGE)
+						.createDialog("TourGaze could not start");
+				// If the user clicked elsewhere during startup, Windows' focus-stealing
+				// guard would otherwise open it behind other windows — unseen.
+				dialog.setAlwaysOnTop(true);
+				dialog.setVisible(true); // modal: returns once dismissed
+				dialog.dispose();
+			});
+		} catch (Throwable ignore) {
+			// No usable display after all — the log still has the details.
 		}
 	}
 
