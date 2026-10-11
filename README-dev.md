@@ -122,7 +122,7 @@ bundle it into the distributable.
 
 ### Faster startup for `java -jar` (AOT cache)
 
-The Docker image and the jpackage app-image already build & use a JDK **AOT cache**
+A locally built jpackage app-image (`server/pom.xml`) builds & uses a JDK **AOT cache**
 (JEP 483/514) that memory-maps the app's classes + linked state instead of re-loading
 them — worth ~1s off cold start (≈3.0s vs ≈4.1s here). To get the same for a plain
 `java -jar` run, generate a cache once per jar build, then launch with it:
@@ -136,8 +136,10 @@ java -XX:AOTCacheOutput=target/app.aot -Dspring.context.exit=onRefresh \
 java -XX:AOTCache=target/app.aot -jar target/tourgaze-server-*.jar
 ```
 
-Regenerate `app.aot` whenever the jar or the JDK changes — a stale/mismatched cache is
-ignored with a warning (never fatal), so it can't break startup. Requires JDK 24+.
+Regenerate `app.aot` whenever the jar or the JDK changes; a stale cache is ignored with a
+warning. Requires JDK 24+. **Only use a cache on the machine (CPU) that trained it:** the
+1.4.2 Docker image shipped one trained on a CI runner, and on CPUs without that runner's
+instruction set the JVM died with `SIGILL` instead of ignoring it — so the image ships none.
 
 ## Docker & Helm
 

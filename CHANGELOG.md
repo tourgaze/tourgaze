@@ -5,6 +5,9 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Fixed
+- **Docker image crashing ~4 s after start (1.4.2)** — the image shipped a JDK AOT cache trained on the CI machine at build time; with the newer Temurin 25.0.4.1 base image, CPUs lacking that machine's instruction set (e.g. a 12th-gen Intel Core i7) hit `SIGILL` and the container exited (code 127) instead of the cache being ignored. The image no longer ships a cache — cold start goes from ~3 s to ~4.3 s, irrelevant for a long-running server. Desktop and headless-JAR downloads were not affected.
+
 ## [1.4.2] — 2026-10-11
 
 ### Fixed
