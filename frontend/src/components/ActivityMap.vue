@@ -117,6 +117,9 @@ let mapLoaded = false
 let cursorMarker: maplibregl.Marker | null = null
 let resizeObserver: ResizeObserver | null = null
 let trackBounds: maplibregl.LngLatBounds | null = null
+// Reactive mirror for the template ("Center tour" button) — trackBounds itself is a
+// plain variable, which Vue doesn't track.
+const hasTrackBounds = ref(false)
 let smoothedBearing = 0
 // Brief window after play-start / strategy-change where we let an easeTo
 // finish before resuming the per-frame jumpTo loop. Stops the camera from
@@ -1471,6 +1474,7 @@ watch(points, (pts) => {
       cursorMarker = null
     }
     trackBounds = null
+    hasTrackBounds.value = false
     return
   }
 
@@ -1940,6 +1944,7 @@ function renderTrack() {
     new maplibregl.LngLatBounds(coords[0], coords[0]),
   )
   trackBounds = bounds
+  hasTrackBounds.value = true
   flyToTrack(bounds, props.tileProvider ?? 'osm')
   // Warm the corridor tiles so replay doesn't stutter loading them.
   prefetchRouteTiles()
@@ -1999,7 +2004,7 @@ function flyToTrack(bounds: maplibregl.LngLatBounds, provider: string) {
         @click="reset2D()"
       >2D</button>
       <button
-        v-if="trackBounds"
+        v-if="hasTrackBounds"
         class="bg-background/90 backdrop-blur-sm border border-border rounded-md px-2.5 py-1 text-[11px] font-medium text-muted-fg hover:text-foreground shadow-sm transition-colors"
         title="Center tour"
         @click="centerTour()"
