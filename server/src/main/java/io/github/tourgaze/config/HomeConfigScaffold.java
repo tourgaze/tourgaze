@@ -56,6 +56,12 @@ public class HomeConfigScaffold {
 			#  # sidecars. Point it at a synced folder (Dropbox, Google Drive, etc.) to
 			#  # back it up off-machine. Default: <data-dir>/repository
 			#  repository-dir: /path/to/cloud-synced/tourgaze
+			#
+			#server:
+			#  # Open the desktop app from your phone or another computer on a trusted
+			#  # home network. Default: 127.0.0.1 (this computer only). TourGaze has no
+			#  # login, so never enable this on public or shared Wi-Fi.
+			#  address: 0.0.0.0
 			""";
 
 	@PostConstruct

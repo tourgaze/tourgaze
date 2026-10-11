@@ -37,3 +37,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- define "tourgaze.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
+
+{{/* Comma-separated ingress host names (TOURGAZE_ALLOWED_ORIGINS accepts bare hosts). */}}
+{{- define "tourgaze.ingressHosts" -}}
+{{- $hosts := list }}
+{{- range .Values.ingress.hosts }}
+{{- $hosts = append $hosts .host }}
+{{- end }}
+{{- join "," $hosts }}
+{{- end }}
