@@ -20,6 +20,8 @@ All notable changes to TourGaze are documented here. Format loosely follows
 ### Fixed
 - **"Center tour" map button never showed** — its visibility followed a variable Vue doesn't track, so the button only appeared if something else happened to redraw the map; it now shows as soon as a track has loaded.
 
+## [1.4.3] — 2026-10-11
+
 ### Fixed
 - **Desktop app stuck on "Starting…"** — when it couldn't start, most often because port 8085 was taken or *reserved by Windows* (WSL, Docker and Hyper-V reserve blocks of ports around 8000), the splash stayed up forever and the reason was only in the log. It now closes the splash, shows a dialog saying what went wrong and how to move TourGaze to another port (`server.port` in `~/.config/tourgaze/tourgaze.yaml`), and exits. Starting it a second time honours that port too and opens the running app.
 - **Docker image crashing ~4 s after start (1.4.2)** — the image shipped a JDK AOT cache trained on the CI machine at build time; with the newer Temurin 25.0.4.1 base image, CPUs lacking that machine's instruction set (e.g. a 12th-gen Intel Core i7) hit `SIGILL` and the container exited (code 127) instead of the cache being ignored. The image no longer ships a cache — cold start goes from ~3 s to ~4.3 s, irrelevant for a long-running server. Desktop and headless-JAR downloads were not affected.
