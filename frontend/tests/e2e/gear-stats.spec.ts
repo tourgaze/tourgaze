@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const API = 'http://localhost:8085/api'
+const API = 'http://localhost:18085/api'
 
 test('dashboard shows a per-gear breakdown for each bike', async ({ page, request }) => {
   const mtb = await (await request.post(`${API}/gear`, { data: { name: 'Zzz MTB', type: 'mtb' } })).json()

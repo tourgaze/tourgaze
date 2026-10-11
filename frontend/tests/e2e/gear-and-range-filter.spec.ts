@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const API = 'http://localhost:8085/api'
+const API = 'http://localhost:18085/api'
 
 test('gear: facet filters the Tours list by gear name', async ({ page, request }) => {
   // Create gear and attach it to the first activity.

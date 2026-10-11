@@ -216,7 +216,7 @@
 
     <profiles>
         <!-- `mvn -Pspec verify -DskipTests` → boots the app on a throwaway in-memory
-             DB (port 8089), pulls /v3/api-docs, writes ../spec/openapi.json, stops.
+             DB (port 18089), pulls /v3/api-docs, writes ../spec/openapi.json, stops.
              Refreshes the OpenAPI spec without a manual run+curl; feed `npm run
              generate` afterwards for the TS types. -->
         <profile>
@@ -236,7 +236,7 @@
                                 <phase>pre-integration-test</phase>
                                 <configuration>
                                     <arguments>
-                                        <argument>--server.port=8089</argument>
+                                        <argument>--server.port=18089</argument>
                                         <argument>--spring.datasource.url=jdbc:h2:mem:specgen;DB_CLOSE_DELAY=-1</argument>
                                         <argument>--spring.jpa.hibernate.ddl-auto=create</argument>
                                         <argument>--app.start-browser=false</argument>
@@ -257,7 +257,7 @@
                         <artifactId>springdoc-openapi-maven-plugin</artifactId>
                         <version>1.4</version>
                         <configuration>
-                            <apiDocsUrl>http://localhost:8089/v3/api-docs</apiDocsUrl>
+                            <apiDocsUrl>http://localhost:18089/v3/api-docs</apiDocsUrl>
                             <outputFileName>openapi.json</outputFileName>
                             <outputDir>${project.basedir}/../spec</outputDir>
                         </configuration>

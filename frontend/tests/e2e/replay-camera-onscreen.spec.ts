@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 // Resolve a real ride id at runtime — dev-DB ids aren't fixed, so don't hardcode.
 async function firstRideId(request: import('@playwright/test').APIRequestContext): Promise<string | null> {
-  const acts = await (await request.get('http://localhost:8085/api/activities')).json()
+  const acts = await (await request.get('http://localhost:18085/api/activities')).json()
   return acts[0]?.id ?? null
 }
 

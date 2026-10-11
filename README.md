@@ -109,10 +109,10 @@ the Inbox view) and click **Import**.
 **Prerequisites (source build only):** JDK 25+, Node 20+.
 
 ```bash
-# Backend  → http://localhost:8085
+# Backend  → http://localhost:18085
 cd server && mvn spring-boot:run
 
-# Frontend → http://localhost:5173  (dev server, proxies /api → 8085)
+# Frontend → http://localhost:5173  (dev server, proxies /api → 18085)
 cd frontend && npm install && npm run dev
 ```
 

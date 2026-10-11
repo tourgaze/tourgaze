@@ -41,12 +41,12 @@ segment builder).
 **Prerequisites:** JDK 25+, Node 20+.
 
 ```bash
-cd server   && mvn spring-boot:run          # → http://localhost:8085
-cd frontend && npm install && npm run dev    # → http://localhost:5173 (proxies /api → 8085)
+cd server   && mvn spring-boot:run          # → http://localhost:18085
+cd frontend && npm install && npm run dev    # → http://localhost:5173 (proxies /api → 18085)
 ```
 
 The Vite dev server proxies **`/api/**`** only — hit the backend directly on
-`:8085` for `/v3/api-docs`, etc.
+`:18085` for `/v3/api-docs`, etc.
 
 ## Database & schema
 
@@ -69,11 +69,11 @@ The backend is the source of truth for API types. Regenerate after any DTO/enum/
 endpoint change — **don't hand-edit `schema.ts`**:
 
 ```bash
-# 1. Spec — boots the app on a throwaway in-memory DB (port 8089), pulls
-#    /v3/api-docs, writes spec/openapi.json, stops. Doesn't touch :8085 or real data.
+# 1. Spec — boots the app on a throwaway in-memory DB (port 18089), pulls
+#    /v3/api-docs, writes spec/openapi.json, stops. Doesn't touch :18085 or real data.
 cd server && mvn -Pspec verify -DskipTests
 
-#    (manual fallback: curl -s http://localhost:8085/v3/api-docs -o ../spec/openapi.json)
+#    (manual fallback: curl -s http://localhost:18085/v3/api-docs -o ../spec/openapi.json)
 
 # 2. Types — schema.ts (openapi-typescript) + enums/generated/* (per OpenAPI enum)
 cd frontend && npm run generate          # = gen:api + gen:enums

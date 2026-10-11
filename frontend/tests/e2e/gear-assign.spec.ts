@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const API = 'http://localhost:8085/api'
+const API = 'http://localhost:18085/api'
 const gearOf = async (request: any, id: string) =>
   (await (await request.get(`${API}/activities`)).json()).find((a: any) => a.id === id)?.gearId ?? null
 

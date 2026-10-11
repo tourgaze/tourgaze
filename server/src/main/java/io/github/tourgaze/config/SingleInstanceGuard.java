@@ -5,14 +5,19 @@
  */
 package io.github.tourgaze.config;
 
+import java.io.Reader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.Yaml;
 
 /**
  * Double-start guard for the desktop build. Double-clicking the launcher while
@@ -26,6 +31,11 @@ import org.slf4j.LoggerFactory;
  * local server we would silently "open" instead of reporting the port clash),
  * so it checks the served page for the app title. If the port is busy with
  * something else, startup proceeds and fails on the bind as before.
+ *
+ * <p>
+ * Desktop launches only (the bundle passes {@code -Djava.awt.headless=false}):
+ * a dev backend or server JAR started next to a running desktop app must start
+ * (or fail) on its own, not redirect to it.
  */
 public final class SingleInstanceGuard {
 
@@ -42,7 +52,9 @@ public final class SingleInstanceGuard {
 	 * normally.
 	 */
 	public static boolean redirectToRunningInstance(String[] args) {
-		String url = "http://localhost:" + resolvePort(args);
+		if (!"false".equals(System.getProperty("java.awt.headless")))
+			return false;
+		String url = "http://localhost:" + resolvePort(args, HomeConfigScaffold.userConfigFile());
 		if (!isTourgazeAt(url))
 			return false;
 		log.info("TourGaze is already running at {} — opening it instead of starting a second instance.", url);
@@ -53,10 +65,11 @@ public final class SingleInstanceGuard {
 	/**
 	 * The port Spring WILL bind, resolved without booting Spring: command line
 	 * ({@code --server.port=…}) beats system property beats {@code SERVER_PORT}
-	 * env, else the packaged default. Relaxed-binding exotica isn't needed — the
-	 * desktop launcher passes no args at all.
+	 * env beats the user config file (where the "port in use" dialog tells people
+	 * to move it), else the packaged default. Relaxed-binding exotica isn't needed —
+	 * the desktop launcher passes no args at all.
 	 */
-	private static int resolvePort(String[] args) {
+	static int resolvePort(String[] args, Path userConfig) {
 		for (String a : args)
 			if (a.startsWith("--server.port="))
 				return parsePort(a.substring("--server.port=".length()));
@@ -66,7 +79,27 @@ public final class SingleInstanceGuard {
 		String env = System.getenv("SERVER_PORT");
 		if (env != null)
 			return parsePort(env);
+		Object configured = portFromUserConfig(userConfig);
+		if (configured != null)
+			return parsePort(configured.toString());
 		return DEFAULT_PORT;
+	}
+
+	/** {@code server.port} from the user config file — nested or flat key — or {@code null}. */
+	private static Object portFromUserConfig(Path file) {
+		if (!Files.isRegularFile(file))
+			return null;
+		try (Reader reader = Files.newBufferedReader(file)) {
+			if (new Yaml().load(reader) instanceof Map<?, ?> root) {
+				if (root.get("server.port") != null)
+					return root.get("server.port");
+				if (root.get("server") instanceof Map<?, ?> server)
+					return server.get("port");
+			}
+		} catch (Exception e) {
+			// Unreadable or malformed — Spring reports that properly at boot.
+		}
+		return null;
 	}
 
 	private static int parsePort(String s) {

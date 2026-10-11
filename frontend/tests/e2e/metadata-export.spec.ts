@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-const API = 'http://localhost:8085/api'
+const API = 'http://localhost:18085/api'
 
 test('ride metadata endpoint + recovery export zip', async ({ request }) => {
   const acts = await (await request.get(`${API}/activities`)).json()

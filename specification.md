@@ -39,7 +39,7 @@ Raw GPS track points are **never** stored in the database. The system relies on 
     *   `SettingsView`: Manages global settings and Users.
 
 ## 7. Implementation Quirks & Environment Constraints
-*   **Port Assignments**: Backend runs on `8085` to avoid traditional 8080 conflicts. Vite proxy maps `^/api` to `localhost:8085`.
+*   **Port Assignments**: The packaged app serves on `8085` (avoids the classic 8080 clash). The dev backend (`dev` profile) runs on `18085` and the Vite proxy maps `^/api` there, because Windows reserves port blocks around 8000 for WSL / Hyper-V / Docker; the spec build uses `18089`.
 *   **Vite Ports**: Vite prefers `5173`. When zombie node processes hold `5173`, Vite silently jumps to `5174+`. If the front-end seems "missing", kill zombie `node.exe` processes and enforce `strictPort: true` in Vite.
-*   **Code Generation**: Running the API gen script (`npm run gen:api`) pulls from `http://localhost:8085/v3/api-docs` initially or the exported JSON in `spec/openapi.json`. It will completely overwrite `schema.ts`.
+*   **Code Generation**: Running the API gen script (`npm run gen:api`) pulls from `http://localhost:18085/v3/api-docs` initially or the exported JSON in `spec/openapi.json`. It will completely overwrite `schema.ts`.
 *   **Environment**: Built under Windows PowerShell. If `.ps1` blockages appear due to Execution Policies, bypass them by invoking the commands explicitly (e.g., `& "npm.cmd" run ...` or `& "mvn.cmd" ...`).

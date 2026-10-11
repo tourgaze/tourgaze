@@ -64,9 +64,14 @@ public class HomeConfigScaffold {
 			#  address: 0.0.0.0
 			""";
 
+	/** {@code ~/.config/tourgaze/tourgaze.yaml} — also read before Spring boots (SingleInstanceGuard). */
+	public static Path userConfigFile() {
+		return Path.of(System.getProperty("user.home"), ".config", "tourgaze", "tourgaze.yaml");
+	}
+
 	@PostConstruct
 	void scaffold() {
-		Path file = Path.of(System.getProperty("user.home"), ".config", "tourgaze", "tourgaze.yaml");
+		Path file = userConfigFile();
 		try {
 			if (Files.exists(file))
 				return;

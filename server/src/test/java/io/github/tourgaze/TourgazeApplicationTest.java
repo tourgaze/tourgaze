@@ -10,6 +10,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.web.server.PortInUseException;
+import org.springframework.context.ApplicationContextException;
 
 class TourgazeApplicationTest {
 
@@ -32,6 +34,31 @@ class TourgazeApplicationTest {
 	void desktopBundleListensOnThisComputerOnly() {
 		System.setProperty("java.awt.headless", "false"); // what the jpackage launcher passes
 		assertThat(TourgazeApplication.desktopDefaults()).containsEntry("server.address", "127.0.0.1");
+	}
+
+	@Test
+	void blockedPortExplainsHowToMoveIt() {
+		// How Spring Boot surfaces it: wrapped in the lifecycle's ApplicationContextException.
+		Throwable failure = new ApplicationContextException("Failed to start bean 'webServerStartStop'",
+				new PortInUseException(8085));
+
+		assertThat(TourgazeApplication.startupFailureMessage(failure))
+				.contains("Port 8085 is already in use", "reserved by", "tourgaze.yaml", "server:\n  port: 18085");
+	}
+
+	@Test
+	void blockedAlternativePortSuggestsAnotherOne() {
+		assertThat(TourgazeApplication.startupFailureMessage(new PortInUseException(18085)))
+				.contains("Port 18085", "port: 18086");
+	}
+
+	@Test
+	void otherFailuresShowTheRootCauseAndWhereTheLogIs() {
+		Throwable failure = new IllegalStateException("context failed", new IllegalArgumentException("disk is full"));
+
+		assertThat(TourgazeApplication.startupFailureMessage(failure))
+				.startsWith("disk is full")
+				.contains("logs/tourgaze.log");
 	}
 
 	@Test
