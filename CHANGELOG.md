@@ -5,6 +5,8 @@ All notable changes to TourGaze are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [1.4.2] — 2026-10-11
+
 ### Fixed
 - **Saving behind a reverse proxy** ([#10](https://github.com/tourgaze/tourgaze/issues/10), reported and first fix by [@GermanDZ](https://github.com/GermanDZ)) — allowed origins were hardcoded to the two Vite dev-server ports, so a reverse-proxied deployment (e.g. `https://tourgaze.example.com`) got a 403 "Invalid CORS request" on every save, upload and delete: the app only saw its own `http://localhost:8085` and took the browser's same-origin requests for a foreign site. **Upgrading a proxied install under your own domain? Set your public address via the new `TOURGAZE_ALLOWED_ORIGINS` (comma-separated)** — without it the new host check below refuses every request (with a page saying exactly that). The Helm chart fills it from the ingress hosts. The Docker image now also trusts the proxy's `X-Forwarded-Proto`/`-Host`, so it sees the `https://…` address it is served under.
 
@@ -12,6 +14,10 @@ All notable changes to TourGaze are documented here. Format loosely follows
 - **Other websites can no longer reach your library** — TourGaze has no login, so its only defence against a page you visit calling it through your browser was a side effect of the CORS config. That is now an explicit, tested guard: requests from foreign origins are refused, and so are requests addressed to unknown host names, which closes **DNS rebinding** (a site re-pointing its own domain at `127.0.0.1` or your NAS to pass as same-origin). `localhost`, IP addresses and LAN names (`nas`, `nas.local`, `*.internal`, `*.home.arpa`) work out of the box; any other domain goes in `TOURGAZE_ALLOWED_ORIGINS`. Wildcards there are refused at startup.
 - **Desktop app listens on this computer only** — it used to listen on every network interface, so anyone on the same (café, hotel, office) Wi-Fi could open the library. Opt back in for a trusted home network with `server.address: 0.0.0.0` in `~/.config/tourgaze/tourgaze.yaml`. The headless JAR and Docker image still listen on the network.
 - **Dev-server ports no longer trusted in releases** — `localhost:5173/5174` were allowed origins in every build, so any other Vite project running on those ports could call TourGaze. The dev proxy now keeps the browser's `Host`, which makes dev requests same-origin; no origin is trusted by default.
+
+## [1.4.1] — 2026-08-09
+
+### Fixed
 - **Starting TourGaze twice now opens the running app** — double-clicking the launcher while TourGaze was already running booted a second instance that died on the port bind, leaving its splash stuck on "Starting…" with no explanation. The app now probes its port before starting: if a running TourGaze answers there, the browser opens at it and the second process exits cleanly. An unrelated program on the port still fails with the normal bind error instead of being silently "opened".
 - **Weather for fresh rides** — the inbox weather lookup (and the on-import weather fetch) always queried Open-Meteo's *archive* endpoint, whose reanalysis data lags real time by ~5 days — so a just-recorded ride, the normal inbox case, got an empty weather section and imported with no weather stored. Rides from the last 7 days now use the forecast endpoint (which covers the recent past in the same format); older rides keep using the archive. Also covers rain-event detection along the route.
 
